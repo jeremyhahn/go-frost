@@ -1,0 +1,175 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.23'
+
+    - name: Get version from tag
+      id: get_version
+      run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+    - name: Get version from VERSION file
+      id: version_file
+      run: echo "FILE_VERSION=$(cat VERSION)" >> $GITHUB_OUTPUT
+
+    - name: Run tests before release
+      run: |
+        go list -f '{{if .TestGoFiles}}{{.ImportPath}}{{end}}' ./pkg/... | \
+          xargs go test -v -timeout 30s
+
+    - name: Build binaries for all platforms
+      env:
+        VERSION: ${{ steps.get_version.outputs.VERSION }}
+        CGO_ENABLED: 0
+      run: |
+        # Set build info
+        BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+        GIT_COMMIT=$(git rev-parse --short HEAD)
+        LDFLAGS="-s -w -X main.Version=${VERSION} -X main.GitCommit=${GIT_COMMIT} -X main.BuildDate=${BUILD_DATE}"
+
+        # Create dist directory
+        mkdir -p dist
+
+        # Build for each platform
+        platforms=(
+          "linux/amd64"
+          "linux/arm64"
+          "darwin/amd64"
+          "darwin/arm64"
+          "windows/amd64"
+          "windows/arm64"
+        )
+
+        for platform in "${platforms[@]}"; do
+          GOOS="${platform%/*}"
+          GOARCH="${platform#*/}"
+          output_name="frost-${VERSION}-${GOOS}-${GOARCH}"
+
+          if [ "$GOOS" = "windows" ]; then
+            output_name+=".exe"
+          fi
+
+          echo "Building for $GOOS/$GOARCH..."
+          GOOS=$GOOS GOARCH=$GOARCH go build \
+            -ldflags="${LDFLAGS}" \
+            -o "dist/${output_name}" \
+            ./cmd/frost
+        done
+
+    - name: Generate checksums
+      run: |
+        cd dist
+        sha256sum * > checksums.txt
+        cat checksums.txt
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract Docker metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ghcr.io/${{ github.repository_owner }}/frost
+        tags: |
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=semver,pattern={{major}}
+          type=raw,value=latest
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/amd64,linux/arm64
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        build-args: |
+          VERSION=${{ steps.get_version.outputs.VERSION }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          dist/*
+        body: |
+          ## FROST Threshold Signature Scheme v${{ steps.get_version.outputs.VERSION }}
+
+          RFC 9591 Implementation
+
+          ### Changes
+          See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details.
+
+          ### Installation
+
+          #### Docker (Recommended)
+
+          Pull and run the Docker image:
+          ```bash
+          docker pull ghcr.io/${{ github.repository_owner }}/frost:${{ steps.get_version.outputs.VERSION }}
+          docker run ghcr.io/${{ github.repository_owner }}/frost:${{ steps.get_version.outputs.VERSION }} version
+          ```
+
+          Or use the latest tag:
+          ```bash
+          docker pull ghcr.io/${{ github.repository_owner }}/frost:latest
+          docker run ghcr.io/${{ github.repository_owner }}/frost:latest version
+          ```
+
+          #### Binary Download
+
+          Download the appropriate binary for your platform:
+
+          - **Linux (AMD64)**: `frost-${{ steps.get_version.outputs.VERSION }}-linux-amd64`
+          - **Linux (ARM64)**: `frost-${{ steps.get_version.outputs.VERSION }}-linux-arm64`
+          - **macOS (Intel)**: `frost-${{ steps.get_version.outputs.VERSION }}-darwin-amd64`
+          - **macOS (Apple Silicon)**: `frost-${{ steps.get_version.outputs.VERSION }}-darwin-arm64`
+          - **Windows (AMD64)**: `frost-${{ steps.get_version.outputs.VERSION }}-windows-amd64.exe`
+          - **Windows (ARM64)**: `frost-${{ steps.get_version.outputs.VERSION }}-windows-arm64.exe`
+
+          Make executable and run:
+          ```bash
+          # Linux/macOS
+          chmod +x frost-${{ steps.get_version.outputs.VERSION }}-<platform>-<arch>
+          ./frost-${{ steps.get_version.outputs.VERSION }}-<platform>-<arch> version
+
+          # Windows (PowerShell)
+          .\frost-${{ steps.get_version.outputs.VERSION }}-windows-<arch>.exe version
+          ```
+
+          ### Checksums
+          Verify your download with SHA256 checksums in `checksums.txt`.
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
