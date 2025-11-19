@@ -8,9 +8,15 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/jeremyhahn/go-frost/pkg/frost"
+	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite"
+	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite/ed25519_sha512"
+	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite/ed448_shake256"
+	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite/p256_sha256"
 	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite/ristretto255_sha512"
+	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite/secp256k1_sha256"
 	"github.com/jeremyhahn/go-frost/pkg/frost/keygen"
 	"github.com/jeremyhahn/go-frost/pkg/frost/signing"
 )
@@ -23,6 +29,35 @@ var (
 	// BuildDate is set at build time via ldflags
 	BuildDate = "unknown"
 )
+
+// getCiphersuite returns the ciphersuite based on the given name.
+// Defaults to ristretto255 if name is empty or invalid.
+func getCiphersuite(name string) ciphersuite.Ciphersuite {
+	switch strings.ToLower(name) {
+	case "ed25519", "ed25519-sha512":
+		return ed25519_sha512.New()
+	case "p256", "p256-sha256":
+		return p256_sha256.New()
+	case "secp256k1", "secp256k1-sha256":
+		return secp256k1_sha256.New()
+	case "ed448", "ed448-shake256":
+		return ed448_shake256.New()
+	case "ristretto255", "ristretto255-sha512", "":
+		return ristretto255_sha512.New()
+	default:
+		fmt.Fprintf(os.Stderr, "Warning: unknown ciphersuite '%s', using ristretto255-sha512\n", name)
+		return ristretto255_sha512.New()
+	}
+}
+
+// getSupportedCiphersuites returns a string listing all supported ciphersuites
+func getSupportedCiphersuites() string {
+	return `  ristretto255 - FROST(ristretto255, SHA-512) [default, recommended]
+  ed25519      - FROST(Ed25519, SHA-512)
+  p256         - FROST(P-256, SHA-256) [NIST]
+  secp256k1    - FROST(secp256k1, SHA-256) [Bitcoin curve]
+  ed448        - FROST(Ed448, SHAKE256) [highest security]`
+}
 
 func main() {
 	if len(os.Args) < 2 {
@@ -94,6 +129,7 @@ func keygenCommand() {
 	minSigners := fs.Uint("min", 2, "Minimum number of signers (threshold)")
 	maxSigners := fs.Uint("max", 3, "Maximum number of signers (total participants)")
 	output := fs.String("output", "frost-keys.json", "Output file for key packages")
+	ciphersuiteFlag := fs.String("ciphersuite", "ristretto255", "Ciphersuite to use")
 
 	fs.Usage = func() {
 		fmt.Println("Usage: frost keygen [options]")
@@ -103,8 +139,12 @@ func keygenCommand() {
 		fmt.Println("Options:")
 		fs.PrintDefaults()
 		fmt.Println()
+		fmt.Println("Supported Ciphersuites:")
+		fmt.Println(getSupportedCiphersuites())
+		fmt.Println()
 		fmt.Println("Example:")
-		fmt.Println("  frost keygen --min 2 --max 3 --output keys.json")
+		fmt.Println("  frost keygen --min 2 --max 3 --ciphersuite ristretto255 --output keys.json")
+		fmt.Println("  frost keygen --min 2 --max 3 --ciphersuite ed25519 --output keys.json")
 	}
 
 	if err := fs.Parse(os.Args[2:]); err != nil {
@@ -123,7 +163,7 @@ func keygenCommand() {
 	}
 
 	// Create ciphersuite
-	suite := ristretto255_sha512.New()
+	suite := getCiphersuite(*ciphersuiteFlag)
 	grp := suite.Group()
 
 	// Generate participant IDs
@@ -197,6 +237,7 @@ func signCommand() {
 	message := fs.String("message", "", "Message to sign")
 	signers := fs.String("signers", "1,2", "Comma-separated list of signer identifiers (e.g., 1,2)")
 	output := fs.String("output", "frost-signature.json", "Output file for signature")
+	ciphersuiteFlag := fs.String("ciphersuite", "ristretto255", "Ciphersuite to use")
 
 	fs.Usage = func() {
 		fmt.Println("Usage: frost sign [options]")
@@ -206,8 +247,12 @@ func signCommand() {
 		fmt.Println("Options:")
 		fs.PrintDefaults()
 		fmt.Println()
+		fmt.Println("Supported Ciphersuites:")
+		fmt.Println(getSupportedCiphersuites())
+		fmt.Println()
 		fmt.Println("Example:")
 		fmt.Println("  frost sign --keys keys.json --message 'Hello World' --signers 1,2 --output sig.json")
+		fmt.Println("  frost sign --keys keys.json --message 'Hello World' --ciphersuite ed25519 --signers 1,2")
 	}
 
 	if err := fs.Parse(os.Args[2:]); err != nil {
@@ -254,7 +299,7 @@ func signCommand() {
 		}
 	}
 
-	suite := ristretto255_sha512.New()
+	suite := getCiphersuite(*ciphersuiteFlag)
 	grp := suite.Group()
 
 	// Parse group public key
@@ -382,6 +427,7 @@ func commitCommand() {
 	participantID := fs.Uint("id", 0, "Participant identifier")
 	outputCommitment := fs.String("output", "", "Output file for commitment (default: commitment-{id}.json)")
 	outputNonces := fs.String("nonces", "", "Output file for private nonces (default: nonces-{id}.json)")
+	ciphersuiteFlag := fs.String("ciphersuite", "ristretto255", "Ciphersuite to use")
 
 	fs.Usage = func() {
 		fmt.Println("Usage: frost commit [options]")
@@ -391,8 +437,12 @@ func commitCommand() {
 		fmt.Println("Options:")
 		fs.PrintDefaults()
 		fmt.Println()
+		fmt.Println("Supported Ciphersuites:")
+		fmt.Println(getSupportedCiphersuites())
+		fmt.Println()
 		fmt.Println("Example:")
 		fmt.Println("  frost commit --keys keys.json --id 1")
+		fmt.Println("  frost commit --keys keys.json --id 1 --ciphersuite ed25519")
 	}
 
 	if err := fs.Parse(os.Args[2:]); err != nil {
@@ -433,7 +483,7 @@ func commitCommand() {
 		os.Exit(1)
 	}
 
-	suite := ristretto255_sha512.New()
+	suite := getCiphersuite(*ciphersuiteFlag)
 	grp := suite.Group()
 
 	// Find the participant's key package
@@ -541,6 +591,7 @@ func signShareCommand() {
 	commitmentsFile := fs.String("commitments", "commitments.json", "Input file containing all commitments")
 	message := fs.String("message", "", "Message to sign")
 	output := fs.String("output", "", "Output file for signature share (default: share-{id}.json)")
+	ciphersuiteFlag := fs.String("ciphersuite", "ristretto255", "Ciphersuite to use")
 
 	fs.Usage = func() {
 		fmt.Println("Usage: frost sign-share [options]")
@@ -550,8 +601,12 @@ func signShareCommand() {
 		fmt.Println("Options:")
 		fs.PrintDefaults()
 		fmt.Println()
+		fmt.Println("Supported Ciphersuites:")
+		fmt.Println(getSupportedCiphersuites())
+		fmt.Println()
 		fmt.Println("Example:")
 		fmt.Println("  frost sign-share --keys keys.json --id 1 --commitments commitments.json --message 'Hello World'")
+		fmt.Println("  frost sign-share --keys keys.json --id 1 --ciphersuite ed25519 --commitments commitments.json --message 'Hello World'")
 	}
 
 	if err := fs.Parse(os.Args[2:]); err != nil {
@@ -579,7 +634,7 @@ func signShareCommand() {
 		*output = fmt.Sprintf("share-%d.json", *participantID)
 	}
 
-	suite := ristretto255_sha512.New()
+	suite := getCiphersuite(*ciphersuiteFlag)
 	grp := suite.Group()
 
 	// Read key packages
@@ -775,6 +830,7 @@ func aggregateCommand() {
 	sharesFile := fs.String("shares", "shares.json", "Input file containing all signature shares")
 	message := fs.String("message", "", "Message that was signed")
 	output := fs.String("output", "frost-signature.json", "Output file for final signature")
+	ciphersuiteFlag := fs.String("ciphersuite", "ristretto255", "Ciphersuite to use")
 
 	fs.Usage = func() {
 		fmt.Println("Usage: frost aggregate [options]")
@@ -784,8 +840,12 @@ func aggregateCommand() {
 		fmt.Println("Options:")
 		fs.PrintDefaults()
 		fmt.Println()
+		fmt.Println("Supported Ciphersuites:")
+		fmt.Println(getSupportedCiphersuites())
+		fmt.Println()
 		fmt.Println("Example:")
 		fmt.Println("  frost aggregate --keys keys.json --commitments commitments.json --shares shares.json --message 'Hello World'")
+		fmt.Println("  frost aggregate --keys keys.json --ciphersuite ed25519 --commitments commitments.json --shares shares.json --message 'Hello World'")
 	}
 
 	if err := fs.Parse(os.Args[2:]); err != nil {
@@ -799,7 +859,7 @@ func aggregateCommand() {
 		os.Exit(1)
 	}
 
-	suite := ristretto255_sha512.New()
+	suite := getCiphersuite(*ciphersuiteFlag)
 	grp := suite.Group()
 
 	// Read key packages
@@ -958,6 +1018,7 @@ func aggregateCommand() {
 func verifyCommand() {
 	fs := flag.NewFlagSet("verify", flag.ExitOnError)
 	sigFile := fs.String("signature", "frost-signature.json", "Input file containing signature")
+	ciphersuiteFlag := fs.String("ciphersuite", "ristretto255", "Ciphersuite to use")
 
 	fs.Usage = func() {
 		fmt.Println("Usage: frost verify [options]")
@@ -967,8 +1028,12 @@ func verifyCommand() {
 		fmt.Println("Options:")
 		fs.PrintDefaults()
 		fmt.Println()
+		fmt.Println("Supported Ciphersuites:")
+		fmt.Println(getSupportedCiphersuites())
+		fmt.Println()
 		fmt.Println("Example:")
 		fmt.Println("  frost verify --signature sig.json")
+		fmt.Println("  frost verify --signature sig.json --ciphersuite ed25519")
 	}
 
 	if err := fs.Parse(os.Args[2:]); err != nil {
@@ -994,7 +1059,7 @@ func verifyCommand() {
 		os.Exit(1)
 	}
 
-	suite := ristretto255_sha512.New()
+	suite := getCiphersuite(*ciphersuiteFlag)
 	grp := suite.Group()
 
 	// Parse public key

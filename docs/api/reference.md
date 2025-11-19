@@ -316,7 +316,9 @@ Defines the cryptographic primitives for a FROST instantiation.
 
 ### Supported Ciphersuites
 
-#### FROST(ristretto255, SHA-512)
+All 5 RFC 9591 ciphersuites are fully supported.
+
+#### FROST(ristretto255, SHA-512) - RFC 6.2
 
 ```go
 import "github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite/ristretto255_sha512"
@@ -325,11 +327,51 @@ suite := ristretto255_sha512.New()
 ```
 
 **Ciphersuite ID:** `FROST-RISTRETTO255-SHA512-v1`
+**Security:** 128-bit | **Group:** ristretto255 | **Hash:** SHA-512
 
-**Properties:**
-- Group: ristretto255
-- Hash: SHA-512
-- Context String: "FROST-RISTRETTO255-SHA512-v1"
+#### FROST(Ed25519, SHA-512) - RFC 6.1
+
+```go
+import "github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite/ed25519_sha512"
+
+suite := ed25519_sha512.New()
+```
+
+**Ciphersuite ID:** `FROST-ED25519-SHA512-v1`
+**Security:** 128-bit | **Group:** Ed25519 (edwards25519) | **Hash:** SHA-512
+
+#### FROST(P-256, SHA-256) - RFC 6.4
+
+```go
+import "github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite/p256_sha256"
+
+suite := p256_sha256.New()
+```
+
+**Ciphersuite ID:** `FROST-P256-SHA256-v1`
+**Security:** 128-bit | **Group:** P-256 (NIST secp256r1) | **Hash:** SHA-256
+
+#### FROST(secp256k1, SHA-256) - RFC 6.5
+
+```go
+import "github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite/secp256k1_sha256"
+
+suite := secp256k1_sha256.New()
+```
+
+**Ciphersuite ID:** `FROST-secp256k1-SHA256-v1`
+**Security:** 128-bit | **Group:** secp256k1 (Bitcoin curve) | **Hash:** SHA-256
+
+#### FROST(Ed448, SHAKE256) - RFC 6.3
+
+```go
+import "github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite/ed448_shake256"
+
+suite := ed448_shake256.New()
+```
+
+**Ciphersuite ID:** `FROST-ED448-SHAKE256-v1`
+**Security:** 224-bit (highest) | **Group:** Ed448 (edwards448) | **Hash:** SHAKE256
 
 ## Group Interface
 

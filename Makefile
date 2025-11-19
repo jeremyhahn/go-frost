@@ -1,7 +1,7 @@
 # Makefile for go-frost
 # FROST threshold signature scheme implementation
 
-.PHONY: all build test test-unit test-integration test-transport integration-test-transport test-coverage clean lint fmt vet docker-build docker-test bench help test-ristretto255-sha512 coverage-ristretto255-sha512 bench-ristretto255-sha512 test-keystore coverage-keystore bench-keystore
+.PHONY: all build test test-unit test-integration test-transport integration-test-transport test-coverage clean lint fmt vet docker-build docker-test bench help test-ristretto255-sha512 coverage-ristretto255-sha512 bench-ristretto255-sha512 test-keystore coverage-keystore bench-keystore test-ed25519 coverage-ed25519 bench-ed25519 test-ed25519-sha512 coverage-ed25519-sha512 bench-ed25519-sha512 test-ed448 coverage-ed448 bench-ed448 test-ed448-shake256 coverage-ed448-shake256 bench-ed448-shake256 test-p256 coverage-p256 bench-p256 test-p256-sha256 coverage-p256-sha256 bench-p256-sha256 test-secp256k1 coverage-secp256k1 bench-secp256k1 test-secp256k1-sha256 coverage-secp256k1-sha256 bench-secp256k1-sha256
 
 # Go parameters
 GOCMD=go
@@ -195,6 +195,142 @@ coverage-ristretto255-sha512:
 bench-ristretto255-sha512:
 	@echo "Running benchmarks for pkg/frost/ciphersuite/ristretto255_sha512..."
 	$(GOTEST) -bench=. -benchmem ./pkg/frost/ciphersuite/ristretto255_sha512/...
+
+## test-ed25519: Run tests for Ed25519 group package
+test-ed25519:
+	@echo "Running tests for pkg/frost/group/ed25519..."
+	$(GOTEST) -v -race -timeout 30s ./pkg/frost/group/ed25519/...
+
+## coverage-ed25519: Generate coverage for Ed25519 group package
+coverage-ed25519:
+	@echo "Generating coverage for pkg/frost/group/ed25519..."
+	@mkdir -p $(COVERAGE_DIR)
+	$(GOTEST) -v -race -coverprofile=$(COVERAGE_DIR)/ed25519.out -covermode=atomic ./pkg/frost/group/ed25519/...
+	$(GOCMD) tool cover -func=$(COVERAGE_DIR)/ed25519.out
+
+## bench-ed25519: Run benchmarks for Ed25519 group package
+bench-ed25519:
+	@echo "Running benchmarks for pkg/frost/group/ed25519..."
+	$(GOTEST) -bench=. -benchmem ./pkg/frost/group/ed25519/...
+
+## test-ed25519-sha512: Run tests for Ed25519-SHA512 ciphersuite
+test-ed25519-sha512:
+	@echo "Running tests for pkg/frost/ciphersuite/ed25519_sha512..."
+	$(GOTEST) -v -race -timeout 30s ./pkg/frost/ciphersuite/ed25519_sha512/...
+
+## coverage-ed25519-sha512: Generate coverage for Ed25519-SHA512 ciphersuite
+coverage-ed25519-sha512:
+	@echo "Generating coverage for pkg/frost/ciphersuite/ed25519_sha512..."
+	@mkdir -p $(COVERAGE_DIR)
+	$(GOTEST) -v -race -coverprofile=$(COVERAGE_DIR)/ed25519_sha512.out -covermode=atomic ./pkg/frost/ciphersuite/ed25519_sha512/...
+	$(GOCMD) tool cover -func=$(COVERAGE_DIR)/ed25519_sha512.out
+
+## bench-ed25519-sha512: Run benchmarks for Ed25519-SHA512 ciphersuite
+bench-ed25519-sha512:
+	@echo "Running benchmarks for pkg/frost/ciphersuite/ed25519_sha512..."
+	$(GOTEST) -bench=. -benchmem ./pkg/frost/ciphersuite/ed25519_sha512/...
+
+## test-ed448: Run tests for Ed448 group package
+test-ed448:
+	@echo "Running tests for pkg/frost/group/ed448..."
+	$(GOTEST) -v -race -timeout 30s ./pkg/frost/group/ed448/...
+
+## coverage-ed448: Generate coverage for Ed448 group package
+coverage-ed448:
+	@echo "Generating coverage for pkg/frost/group/ed448..."
+	@mkdir -p $(COVERAGE_DIR)
+	$(GOTEST) -v -race -coverprofile=$(COVERAGE_DIR)/ed448.out -covermode=atomic ./pkg/frost/group/ed448/...
+	$(GOCMD) tool cover -func=$(COVERAGE_DIR)/ed448.out
+
+## bench-ed448: Run benchmarks for Ed448 group package
+bench-ed448:
+	@echo "Running benchmarks for pkg/frost/group/ed448..."
+	$(GOTEST) -bench=. -benchmem ./pkg/frost/group/ed448/...
+
+## test-ed448-shake256: Run tests for Ed448-SHAKE256 ciphersuite
+test-ed448-shake256:
+	@echo "Running tests for pkg/frost/ciphersuite/ed448_shake256..."
+	$(GOTEST) -v -race -timeout 30s ./pkg/frost/ciphersuite/ed448_shake256/...
+
+## coverage-ed448-shake256: Generate coverage for Ed448-SHAKE256 ciphersuite
+coverage-ed448-shake256:
+	@echo "Generating coverage for pkg/frost/ciphersuite/ed448_shake256..."
+	@mkdir -p $(COVERAGE_DIR)
+	$(GOTEST) -v -race -coverprofile=$(COVERAGE_DIR)/ed448_shake256.out -covermode=atomic ./pkg/frost/ciphersuite/ed448_shake256/...
+	$(GOCMD) tool cover -func=$(COVERAGE_DIR)/ed448_shake256.out
+
+## bench-ed448-shake256: Run benchmarks for Ed448-SHAKE256 ciphersuite
+bench-ed448-shake256:
+	@echo "Running benchmarks for pkg/frost/ciphersuite/ed448_shake256..."
+	$(GOTEST) -bench=. -benchmem ./pkg/frost/ciphersuite/ed448_shake256/...
+
+## test-p256: Run tests for P-256 group package
+test-p256:
+	@echo "Running tests for pkg/frost/group/p256..."
+	$(GOTEST) -v -race -timeout 30s ./pkg/frost/group/p256/...
+
+## coverage-p256: Generate coverage for P-256 group package
+coverage-p256:
+	@echo "Generating coverage for pkg/frost/group/p256..."
+	@mkdir -p $(COVERAGE_DIR)
+	$(GOTEST) -v -race -coverprofile=$(COVERAGE_DIR)/p256.out -covermode=atomic ./pkg/frost/group/p256/...
+	$(GOCMD) tool cover -func=$(COVERAGE_DIR)/p256.out
+
+## bench-p256: Run benchmarks for P-256 group package
+bench-p256:
+	@echo "Running benchmarks for pkg/frost/group/p256..."
+	$(GOTEST) -bench=. -benchmem ./pkg/frost/group/p256/...
+
+## test-p256-sha256: Run tests for P-256 SHA-256 ciphersuite
+test-p256-sha256:
+	@echo "Running tests for pkg/frost/ciphersuite/p256_sha256..."
+	$(GOTEST) -v -race -timeout 30s ./pkg/frost/ciphersuite/p256_sha256/...
+
+## coverage-p256-sha256: Generate coverage for P-256 SHA-256 ciphersuite
+coverage-p256-sha256:
+	@echo "Generating coverage for pkg/frost/ciphersuite/p256_sha256..."
+	@mkdir -p $(COVERAGE_DIR)
+	$(GOTEST) -v -race -coverprofile=$(COVERAGE_DIR)/p256_sha256.out -covermode=atomic ./pkg/frost/ciphersuite/p256_sha256/...
+	$(GOCMD) tool cover -func=$(COVERAGE_DIR)/p256_sha256.out
+
+## bench-p256-sha256: Run benchmarks for P-256 SHA-256 ciphersuite
+bench-p256-sha256:
+	@echo "Running benchmarks for pkg/frost/ciphersuite/p256_sha256..."
+	$(GOTEST) -bench=. -benchmem ./pkg/frost/ciphersuite/p256_sha256/...
+
+## test-secp256k1: Run tests for secp256k1 group package
+test-secp256k1:
+	@echo "Running tests for pkg/frost/group/secp256k1..."
+	$(GOTEST) -v -race -timeout 30s ./pkg/frost/group/secp256k1/...
+
+## coverage-secp256k1: Generate coverage for secp256k1 group package
+coverage-secp256k1:
+	@echo "Generating coverage for pkg/frost/group/secp256k1..."
+	@mkdir -p $(COVERAGE_DIR)
+	$(GOTEST) -v -race -coverprofile=$(COVERAGE_DIR)/secp256k1.out -covermode=atomic ./pkg/frost/group/secp256k1/...
+	$(GOCMD) tool cover -func=$(COVERAGE_DIR)/secp256k1.out
+
+## bench-secp256k1: Run benchmarks for secp256k1 group package
+bench-secp256k1:
+	@echo "Running benchmarks for pkg/frost/group/secp256k1..."
+	$(GOTEST) -bench=. -benchmem ./pkg/frost/group/secp256k1/...
+
+## test-secp256k1-sha256: Run tests for secp256k1 SHA-256 ciphersuite
+test-secp256k1-sha256:
+	@echo "Running tests for pkg/frost/ciphersuite/secp256k1_sha256..."
+	$(GOTEST) -v -race -timeout 30s ./pkg/frost/ciphersuite/secp256k1_sha256/...
+
+## coverage-secp256k1-sha256: Generate coverage for secp256k1 SHA-256 ciphersuite
+coverage-secp256k1-sha256:
+	@echo "Generating coverage for pkg/frost/ciphersuite/secp256k1_sha256..."
+	@mkdir -p $(COVERAGE_DIR)
+	$(GOTEST) -v -race -coverprofile=$(COVERAGE_DIR)/secp256k1_sha256.out -covermode=atomic ./pkg/frost/ciphersuite/secp256k1_sha256/...
+	$(GOCMD) tool cover -func=$(COVERAGE_DIR)/secp256k1_sha256.out
+
+## bench-secp256k1-sha256: Run benchmarks for secp256k1 SHA-256 ciphersuite
+bench-secp256k1-sha256:
+	@echo "Running benchmarks for pkg/frost/ciphersuite/secp256k1_sha256..."
+	$(GOTEST) -bench=. -benchmem ./pkg/frost/ciphersuite/secp256k1_sha256/...
 
 ## bench: Run all benchmarks
 bench:
