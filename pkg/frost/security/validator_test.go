@@ -1,4 +1,4 @@
-// Copyright (c) 2025 go-frost authors
+// Copyright (c) 2025 Jeremy Hahn
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@ func TestNoOpValidator_ValidateStructure(t *testing.T) {
 	testCases := [][]byte{
 		[]byte("valid message"),
 		[]byte(""),
-		make([]byte, 1024*1024), // 1 MB
+		make([]byte, 1024*1024),    // 1 MB
 		make([]byte, 10*1024*1024), // 10 MB
 	}
 
@@ -38,7 +38,7 @@ func TestNoOpValidator_ValidateSize(t *testing.T) {
 	// Should accept any size
 	testCases := [][]byte{
 		[]byte("small"),
-		make([]byte, 1024*1024), // 1 MB
+		make([]byte, 1024*1024),     // 1 MB
 		make([]byte, 100*1024*1024), // 100 MB
 	}
 
@@ -315,7 +315,7 @@ func TestCompositeValidator_ValidatePolicy(t *testing.T) {
 
 // TestCompositeValidator_FailFast tests that validation stops on first error.
 func TestCompositeValidator_FailFast(t *testing.T) {
-	validator1 := NewSizeValidator(100) // Will fail
+	validator1 := NewSizeValidator(100)  // Will fail
 	validator2 := NewSizeValidator(1000) // Would pass
 
 	composite := NewCompositeValidator(validator1, validator2)

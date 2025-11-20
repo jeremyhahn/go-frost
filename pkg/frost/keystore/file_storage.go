@@ -1,4 +1,4 @@
-// Copyright (c) 2025 go-frost authors
+// Copyright (c) 2025 Jeremy Hahn
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -6,18 +6,15 @@
 package keystore
 
 import (
-	"os"
-
-	"github.com/jeremyhahn/go-keychain/pkg/storage"
-	"github.com/jeremyhahn/go-keychain/pkg/storage/file"
+	"github.com/jeremyhahn/go-frost/pkg/storage"
 )
 
 // FileStorage implements StorageBackend using file-based storage.
 //
-// This adapter wraps the go-keychain file storage backend to provide
+// This adapter wraps the go-frost storage backend to provide
 // a compatible implementation of the StorageBackend interface.
 //
-// Thread-safe: Yes (provided by underlying go-keychain implementation)
+// Thread-safe: Yes (provided by underlying storage implementation)
 type FileStorage struct {
 	backend storage.Backend
 }
@@ -39,7 +36,7 @@ type FileStorage struct {
 //	}
 //	defer storage.Close()
 func NewFileStorage(storagePath string) (StorageBackend, error) {
-	backend, err := file.New(storagePath)
+	backend, err := storage.NewFileBackend(storagePath)
 	if err != nil {
 		return nil, ErrStorageBackend.Wrap(err)
 	}
@@ -55,12 +52,11 @@ func (f *FileStorage) Put(key string, data []byte, opts *PutOptions) error {
 		opts = DefaultPutOptions()
 	}
 
-	// Convert our PutOptions to go-keychain storage.Options
+	// Convert our PutOptions to storage.Options
 	storageOpts := storage.DefaultOptions()
-	storageOpts.Permissions = os.FileMode(opts.Permissions)
-
-	// Note: go-keychain file storage doesn't support Metadata or TTL
-	// These fields are silently ignored for file-based storage
+	storageOpts.Permissions = opts.Permissions
+	storageOpts.Metadata = opts.Metadata
+	storageOpts.TTL = opts.TTL
 
 	if err := f.backend.Put(key, data, storageOpts); err != nil {
 		return ErrStorageBackend.Wrap(err)

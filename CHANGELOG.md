@@ -7,6 +7,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+#### Storage Package (`pkg/storage/`)
+- **Independent storage implementations** - go-frost now includes its own storage backends
+  - `MemoryBackend`: In-memory storage with TTL support, thread-safe, ideal for testing
+  - `FileBackend`: File system storage with atomic writes, secure permissions (0600 default), and path traversal protection
+  - `Backend` interface: Compatible with go-keychain and go-objstore for external integrations
+- **Interface compatibility** - Storage backends work seamlessly with go-keychain and go-objstore
+- **Extensible architecture** - Easy to implement custom backends (HSM, TPM, cloud KMS, DHT, etc.)
+
+#### Signer Package (`pkg/signer/`)
+- **Crypto.Signer abstraction** - Flexible key management supporting multiple backends
+  - `Ed25519Signer`: Software-based Ed25519 signing using crypto/ed25519
+  - `FromCryptoSigner()`: Adapter for HSM, TPM, and cloud KMS signers
+  - `MultiSigner`: Manages multiple participant signers
+- **Hardware security module support** - Use any crypto.Signer implementation (PKCS#11, cloud KMS)
+- **Standard interface** - All signers implement Go's crypto.Signer for maximum compatibility
+
+#### Security Enhancements (`pkg/frost/security/`)
+- `SignCommitmentWithSigner()`: Sign FROST commitments using crypto.Signer (enables HSM/TPM)
+- `SignSignatureShareWithSigner()`: Sign signature shares using crypto.Signer
+- Backward compatible with existing `ed25519.PrivateKey` functions
+
+#### Keystore Updates (`pkg/frost/keystore/`)
+- `NewMemoryStorage()`: In-memory storage adapter for testing and development
+- Updated `NewFileStorage()`: Now uses go-frost's own storage implementation
+
+### Changed
+
+- **Removed go-keychain dependency** - go-frost is now fully self-contained
+  - Maintains interface compatibility for users who want to use go-keychain
+  - No breaking changes to existing APIs
+- **Storage implementation** - Keystore now uses `pkg/storage` internally
+- **Enhanced flexibility** - Applications can now inject custom storage and signer implementations
+
+### Fixed
+
+- File storage `List()` method now correctly handles filename prefix matching
+- File storage properly propagates permission errors on base directory access
+
+### Documentation
+
+- Updated README.md with Storage and Key Management section
+- Added comprehensive package documentation for `pkg/storage/` and `pkg/signer/`
+- Included usage examples for HSM/TPM integration
+- Clarified optional dependencies (go-keychain, go-objstore, HSM/TPM libraries)
+
+### Migration Notes
+
+For users currently using go-keychain:
+- **No action required** - Interface compatibility means existing code continues to work
+- **Optional migration** - Can switch to built-in storage: `storage.NewFileBackend()` instead of go-keychain's `file.New()`
+- **HSM/TPM users** - Can now use `signer.FromCryptoSigner()` to integrate hardware-backed keys
+
+### Security
+
+- File storage uses atomic writes to prevent data corruption
+- Default file permissions set to 0600 (owner read/write only)
+- Path traversal protection (rejects keys containing "..")
+- Thread-safe storage operations with proper locking
+
 ## [0.1.1-alpha] - 2025-01-19
 
 ### Added

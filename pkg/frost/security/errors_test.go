@@ -1,4 +1,4 @@
-// Copyright (c) 2025 go-frost authors
+// Copyright (c) 2025 Jeremy Hahn
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,69 +18,69 @@ func TestErrorSanitizer_Sanitize_ProductionMode(t *testing.T) {
 	sanitizer := NewErrorSanitizer(DefaultProductionErrorConfig())
 
 	tests := []struct {
-		name        string
-		input       error
-		wantContain string
+		name           string
+		input          error
+		wantContain    string
 		wantNotContain []string
 	}{
 		{
-			name:        "hex values are redacted",
-			input:       fmt.Errorf("scalar value: 0x1234567890abcdef1234567890abcdef"),
-			wantContain: "scalar value",
+			name:           "hex values are redacted",
+			input:          fmt.Errorf("scalar value: 0x1234567890abcdef1234567890abcdef"),
+			wantContain:    "scalar value",
 			wantNotContain: []string{"0x1234567890abcdef", "1234567890abcdef"},
 		},
 		{
-			name:        "base64 values are redacted",
-			input:       fmt.Errorf("commitment: SGVsbG8gV29ybGQhIFRoaXMgaXMgYSB0ZXN0"),
-			wantContain: "commitment",
+			name:           "base64 values are redacted",
+			input:          fmt.Errorf("commitment: SGVsbG8gV29ybGQhIFRoaXMgaXMgYSB0ZXN0"),
+			wantContain:    "commitment",
 			wantNotContain: []string{"SGVsbG8gV29ybGQ"},
 		},
 		{
-			name:        "byte arrays are redacted",
-			input:       fmt.Errorf("nonce bytes: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]"),
-			wantContain: "nonce bytes",
+			name:           "byte arrays are redacted",
+			input:          fmt.Errorf("nonce bytes: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]"),
+			wantContain:    "nonce bytes",
 			wantNotContain: []string{"[1, 2, 3,", "16]"},
 		},
 		{
-			name:        "scalar field values are redacted",
-			input:       fmt.Errorf("verification failed: scalar=0xabcd1234abcd1234abcd1234"),
-			wantContain: "verification failed",
+			name:           "scalar field values are redacted",
+			input:          fmt.Errorf("verification failed: scalar=0xabcd1234abcd1234abcd1234"),
+			wantContain:    "verification failed",
 			wantNotContain: []string{"0xabcd1234"},
 		},
 		{
-			name:        "nonce values are redacted",
-			input:       fmt.Errorf("nonce reuse: nonce=secret_nonce_value_123456789"),
-			wantContain: "nonce reuse",
+			name:           "nonce values are redacted",
+			input:          fmt.Errorf("nonce reuse: nonce=secret_nonce_value_123456789"),
+			wantContain:    "nonce reuse",
 			wantNotContain: []string{"secret_nonce_value"},
 		},
 		{
-			name:        "commitment values are redacted",
-			input:       fmt.Errorf("hiding=0x123456789abcdef0123456789abcdef0, binding=0xfedcba9876543210fedcba9876543210"),
-			wantContain: "hiding=[REDACTED]",
+			name:           "commitment values are redacted",
+			input:          fmt.Errorf("hiding=0x123456789abcdef0123456789abcdef0, binding=0xfedcba9876543210fedcba9876543210"),
+			wantContain:    "hiding=[REDACTED]",
 			wantNotContain: []string{"0x123456789abcdef0", "0xfedcba987654"},
 		},
 		{
-			name:        "signature values are redacted",
-			input:       fmt.Errorf("signature verification failed: signature=0x9876543210abcdef9876543210abcdef"),
-			wantContain: "signature=[REDACTED]",
+			name:           "signature values are redacted",
+			input:          fmt.Errorf("signature verification failed: signature=0x9876543210abcdef9876543210abcdef"),
+			wantContain:    "signature=[REDACTED]",
 			wantNotContain: []string{"0x987654321"},
 		},
 		{
-			name:        "session IDs are redacted in production",
-			input:       fmt.Errorf("session abc-123-def failed"),
-			wantContain: "[REDACTED]",
+			name:           "session IDs are redacted in production",
+			input:          fmt.Errorf("session abc-123-def failed"),
+			wantContain:    "[REDACTED]",
 			wantNotContain: []string{"abc-123-def"},
 		},
 		{
-			name:        "multiple sensitive values are redacted",
-			input:       fmt.Errorf("failed: scalar=0x1234567890abcdef1234, nonce=0xabcdefabcdefabcdefabcdef"),
-			wantContain: "failed",
+			name:           "multiple sensitive values are redacted",
+			input:          fmt.Errorf("failed: scalar=0x1234567890abcdef1234, nonce=0xabcdefabcdefabcdefabcdef"),
+			wantContain:    "failed",
 			wantNotContain: []string{"0x1234567890", "0xabcdefabcdef"},
 		},
 		{
-			name:        "preserves error type for commitment reuse",
-			input:       fmt.Errorf("commitment reuse detected: %w", ErrCommitmentReused),
-			wantContain: "commitment reuse",
+			name:           "preserves error type for commitment reuse",
+			input:          fmt.Errorf("commitment reuse detected: %w", ErrCommitmentReused),
+			wantContain:    "commitment reuse",
 			wantNotContain: []string{},
 		},
 	}
@@ -112,39 +112,39 @@ func TestErrorSanitizer_Sanitize_DevelopmentMode(t *testing.T) {
 	sanitizer := NewErrorSanitizer(config)
 
 	tests := []struct {
-		name        string
-		input       error
-		wantContain []string
+		name           string
+		input          error
+		wantContain    []string
 		wantNotContain []string
 	}{
 		{
-			name:        "hex values show length in development (without field name)",
-			input:       fmt.Errorf("error with standalone hex: 0x1234567890abcdef1234567890abcdef"),
-			wantContain: []string{"error with standalone hex", "[HEX:"},
+			name:           "hex values show length in development (without field name)",
+			input:          fmt.Errorf("error with standalone hex: 0x1234567890abcdef1234567890abcdef"),
+			wantContain:    []string{"error with standalone hex", "[HEX:"},
 			wantNotContain: []string{"0x1234567890abcdef"},
 		},
 		{
-			name:        "base64 values show length in development (without field name)",
-			input:       fmt.Errorf("error with standalone base64: SGVsbG8gV29ybGQhIFRoaXMgaXMgYSB0ZXN0"),
-			wantContain: []string{"error with standalone base64", "[B64:"},
+			name:           "base64 values show length in development (without field name)",
+			input:          fmt.Errorf("error with standalone base64: SGVsbG8gV29ybGQhIFRoaXMgaXMgYSB0ZXN0"),
+			wantContain:    []string{"error with standalone base64", "[B64:"},
 			wantNotContain: []string{"SGVsbG8gV29ybGQ"},
 		},
 		{
-			name:        "scalar fields are redacted but field name preserved",
-			input:       fmt.Errorf("nonce=secret_value_12345678"),
-			wantContain: []string{"nonce=[REDACTED]"},
+			name:           "scalar fields are redacted but field name preserved",
+			input:          fmt.Errorf("nonce=secret_value_12345678"),
+			wantContain:    []string{"nonce=[REDACTED]"},
 			wantNotContain: []string{"secret_value"},
 		},
 		{
-			name:        "commitment fields are redacted but field name preserved",
-			input:       fmt.Errorf("hiding=0x1234567890abcdef1234567890abcdef"),
-			wantContain: []string{"hiding=[REDACTED]"},
+			name:           "commitment fields are redacted but field name preserved",
+			input:          fmt.Errorf("hiding=0x1234567890abcdef1234567890abcdef"),
+			wantContain:    []string{"hiding=[REDACTED]"},
 			wantNotContain: []string{"0x123456789"},
 		},
 		{
-			name:        "session IDs preserved in development",
-			input:       fmt.Errorf("session abc-123-def failed"),
-			wantContain: []string{"session abc-123-def"},
+			name:           "session IDs preserved in development",
+			input:          fmt.Errorf("session abc-123-def failed"),
+			wantContain:    []string{"session abc-123-def"},
 			wantNotContain: []string{},
 		},
 	}
@@ -209,12 +209,12 @@ func TestErrorSanitizer_SanitizeCommitmentError(t *testing.T) {
 		wantNotContain []string
 	}{
 		{
-			name:          "production mode with participant ID",
-			config:        DefaultProductionErrorConfig(),
-			sessionID:     "session-123",
-			participantID: 42,
-			baseErr:       ErrCommitmentReused,
-			wantContain:   []string{"commitment validation failed", "participant 42"},
+			name:           "production mode with participant ID",
+			config:         DefaultProductionErrorConfig(),
+			sessionID:      "session-123",
+			participantID:  42,
+			baseErr:        ErrCommitmentReused,
+			wantContain:    []string{"commitment validation failed", "participant 42"},
 			wantNotContain: []string{"session-123"},
 		},
 		{
@@ -224,32 +224,32 @@ func TestErrorSanitizer_SanitizeCommitmentError(t *testing.T) {
 				AllowParticipantID: false,
 				AllowSessionID:     false,
 			},
-			sessionID:     "session-123",
-			participantID: 42,
-			baseErr:       ErrCommitmentReused,
-			wantContain:   []string{"commitment validation failed"},
+			sessionID:      "session-123",
+			participantID:  42,
+			baseErr:        ErrCommitmentReused,
+			wantContain:    []string{"commitment validation failed"},
 			wantNotContain: []string{"42", "session-123"},
 		},
 		{
-			name:          "development mode with all IDs",
-			config:        DefaultDevelopmentErrorConfig(),
-			sessionID:     "session-123",
-			participantID: 42,
-			baseErr:       ErrCommitmentReused,
-			wantContain:   []string{"commitment validation failed", "participant 42", "session session-123"},
+			name:           "development mode with all IDs",
+			config:         DefaultDevelopmentErrorConfig(),
+			sessionID:      "session-123",
+			participantID:  42,
+			baseErr:        ErrCommitmentReused,
+			wantContain:    []string{"commitment validation failed", "participant 42", "session session-123"},
 			wantNotContain: []string{},
 		},
 		{
-			name:          "disabled mode returns base error",
+			name: "disabled mode returns base error",
 			config: ErrorSanitizerConfig{
 				Mode:               ErrorSanitizationDisabled,
 				AllowParticipantID: true,
 				AllowSessionID:     true,
 			},
-			sessionID:     "session-123",
-			participantID: 42,
-			baseErr:       ErrCommitmentReused,
-			wantContain:   []string{"commitment reused"},
+			sessionID:      "session-123",
+			participantID:  42,
+			baseErr:        ErrCommitmentReused,
+			wantContain:    []string{"commitment reused"},
 			wantNotContain: []string{},
 		},
 	}
