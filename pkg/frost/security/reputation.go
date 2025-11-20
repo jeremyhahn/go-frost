@@ -1,4 +1,4 @@
-// Copyright (c) 2025 go-frost authors
+// Copyright (c) 2025 Jeremy Hahn
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -224,10 +224,10 @@ func DefaultReputationConfig() ReputationConfig {
 // This implementation is thread-safe and suitable for single-node deployments.
 // For distributed systems, use a persistent implementation with shared storage.
 type InMemoryReputationTracker struct {
-	config     ReputationConfig
-	mu         sync.RWMutex
+	config      ReputationConfig
+	mu          sync.RWMutex
 	reputations map[frost.Identifier]*ParticipantReputation
-	history    map[frost.Identifier][]MisbehaviorRecord
+	history     map[frost.Identifier][]MisbehaviorRecord
 }
 
 // NewInMemoryReputationTracker creates a new in-memory reputation tracker.

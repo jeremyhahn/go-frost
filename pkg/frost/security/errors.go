@@ -1,4 +1,4 @@
-// Copyright (c) 2025 go-frost authors
+// Copyright (c) 2025 Jeremy Hahn
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -46,6 +46,7 @@ var (
 	// This indicates the participant has exceeded misbehavior thresholds.
 	ErrParticipantExcluded = errors.New("participant is excluded due to misbehavior")
 )
+
 type ErrorSanitizationMode int
 
 const (

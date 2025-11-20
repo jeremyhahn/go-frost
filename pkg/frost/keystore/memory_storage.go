@@ -9,45 +9,42 @@ import (
 	"github.com/jeremyhahn/go-frost/pkg/storage"
 )
 
-// FileStorage implements StorageBackend using file-based storage.
+// MemoryStorage implements StorageBackend using in-memory storage.
 //
-// This adapter wraps the go-frost storage backend to provide
+// This adapter wraps the go-frost memory storage backend to provide
 // a compatible implementation of the StorageBackend interface.
 //
 // Thread-safe: Yes (provided by underlying storage implementation)
-type FileStorage struct {
+//
+// WARNING: All data is lost when the process terminates.
+// This implementation is suitable for:
+//   - Testing
+//   - Development
+//   - Temporary storage
+//   - Caching layer
+type MemoryStorage struct {
 	backend storage.Backend
 }
 
-// NewFileStorage creates a new file-based storage backend.
-//
-// Parameters:
-//   - storagePath: Base directory for file storage
+// NewMemoryStorage creates a new in-memory storage backend.
 //
 // Returns:
-//   - StorageBackend: File storage implementation
-//   - error: Any error that occurred during initialization
+//   - StorageBackend: Memory storage implementation
 //
 // Example:
 //
-//	storage, err := keystore.NewFileStorage("/var/lib/frost/keystore")
-//	if err != nil {
-//	    return err
-//	}
+//	storage := keystore.NewMemoryStorage()
 //	defer storage.Close()
-func NewFileStorage(storagePath string) (StorageBackend, error) {
-	backend, err := storage.NewFileBackend(storagePath)
-	if err != nil {
-		return nil, ErrStorageBackend.Wrap(err)
-	}
+func NewMemoryStorage() StorageBackend {
+	backend := storage.NewMemoryBackend()
 
-	return &FileStorage{
+	return &MemoryStorage{
 		backend: backend,
-	}, nil
+	}
 }
 
 // Put stores data at the given key with optional metadata/options.
-func (f *FileStorage) Put(key string, data []byte, opts *PutOptions) error {
+func (m *MemoryStorage) Put(key string, data []byte, opts *PutOptions) error {
 	if opts == nil {
 		opts = DefaultPutOptions()
 	}
@@ -58,7 +55,7 @@ func (f *FileStorage) Put(key string, data []byte, opts *PutOptions) error {
 	storageOpts.Metadata = opts.Metadata
 	storageOpts.TTL = opts.TTL
 
-	if err := f.backend.Put(key, data, storageOpts); err != nil {
+	if err := m.backend.Put(key, data, storageOpts); err != nil {
 		return ErrStorageBackend.Wrap(err)
 	}
 
@@ -66,8 +63,8 @@ func (f *FileStorage) Put(key string, data []byte, opts *PutOptions) error {
 }
 
 // Get retrieves data for the given key.
-func (f *FileStorage) Get(key string) ([]byte, error) {
-	data, err := f.backend.Get(key)
+func (m *MemoryStorage) Get(key string) ([]byte, error) {
+	data, err := m.backend.Get(key)
 	if err != nil {
 		if err == storage.ErrNotFound {
 			return nil, ErrNotFound
@@ -79,8 +76,8 @@ func (f *FileStorage) Get(key string) ([]byte, error) {
 }
 
 // Delete removes the data at the given key.
-func (f *FileStorage) Delete(key string) error {
-	if err := f.backend.Delete(key); err != nil {
+func (m *MemoryStorage) Delete(key string) error {
+	if err := m.backend.Delete(key); err != nil {
 		if err == storage.ErrNotFound {
 			return ErrNotFound
 		}
@@ -91,8 +88,8 @@ func (f *FileStorage) Delete(key string) error {
 }
 
 // Exists checks if a key exists in storage.
-func (f *FileStorage) Exists(key string) (bool, error) {
-	exists, err := f.backend.Exists(key)
+func (m *MemoryStorage) Exists(key string) (bool, error) {
+	exists, err := m.backend.Exists(key)
 	if err != nil {
 		return false, ErrStorageBackend.Wrap(err)
 	}
@@ -101,8 +98,8 @@ func (f *FileStorage) Exists(key string) (bool, error) {
 }
 
 // List returns all keys matching the given prefix.
-func (f *FileStorage) List(prefix string) ([]string, error) {
-	keys, err := f.backend.List(prefix)
+func (m *MemoryStorage) List(prefix string) ([]string, error) {
+	keys, err := m.backend.List(prefix)
 	if err != nil {
 		return nil, ErrStorageBackend.Wrap(err)
 	}
@@ -111,9 +108,9 @@ func (f *FileStorage) List(prefix string) ([]string, error) {
 }
 
 // Close releases any resources held by the storage backend.
-func (f *FileStorage) Close() error {
-	if f.backend != nil {
-		return f.backend.Close()
+func (m *MemoryStorage) Close() error {
+	if m.backend != nil {
+		return m.backend.Close()
 	}
 	return nil
 }

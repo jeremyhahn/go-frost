@@ -3,16 +3,30 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 
-package keystore
-
-// StorageBackend defines the interface for pluggable storage implementations.
+// Package storage provides storage backend implementations compatible with
+// go-keychain and go-objstore interfaces.
 //
-// This interface is compatible with go-objstore's Get/Put/Delete operations
-// and allows applications to provide their own storage implementations
-// (file-based, DHT, cloud storage, etc.).
+// This package allows go-frost to have its own storage implementations while
+// maintaining interface compatibility with external storage providers like
+// go-keychain and go-objstore.
+package storage
+
+// Backend defines the storage interface compatible with go-keychain and go-objstore.
 //
 // All implementations MUST be thread-safe.
-type StorageBackend interface {
+//
+// Interface compatibility:
+//   - go-keychain: github.com/jeremyhahn/go-keychain/pkg/storage.Backend
+//   - go-objstore: Compatible with Get/Put/Delete operations
+//
+// This interface can be implemented by:
+//   - Memory-based storage (for testing)
+//   - File system storage (for local persistence)
+//   - Cloud KMS (AWS KMS, Google Cloud KMS, Azure Key Vault)
+//   - Hardware Security Modules (HSM)
+//   - Trusted Platform Modules (TPM)
+//   - Distributed Hash Tables (DHT)
+type Backend interface {
 	// Put stores data at the given key with optional metadata/options.
 	// If the key already exists, it should be overwritten.
 	//
@@ -23,7 +37,7 @@ type StorageBackend interface {
 	//
 	// Returns:
 	//   - error: Any error that occurred during storage
-	Put(key string, data []byte, opts *PutOptions) error
+	Put(key string, data []byte, opts *Options) error
 
 	// Get retrieves data for the given key.
 	//
@@ -71,8 +85,10 @@ type StorageBackend interface {
 	Close() error
 }
 
-// PutOptions provides options for storage operations.
-type PutOptions struct {
+// Options provides options for storage operations.
+//
+// Compatible with go-keychain's storage.Options.
+type Options struct {
 	// Permissions specifies the file permissions (for file-based storage).
 	// This field may be ignored by non-file-based storage backends.
 	// Example: 0600 for owner read/write only
@@ -88,9 +104,11 @@ type PutOptions struct {
 	TTL int64
 }
 
-// DefaultPutOptions returns default storage options.
-func DefaultPutOptions() *PutOptions {
-	return &PutOptions{
+// DefaultOptions returns default storage options.
+//
+// Compatible with go-keychain's storage.DefaultOptions().
+func DefaultOptions() *Options {
+	return &Options{
 		Permissions: 0600, // Owner read/write only (secure default)
 		Metadata:    make(map[string]string),
 		TTL:         0, // No expiration

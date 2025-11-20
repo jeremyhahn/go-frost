@@ -1,4 +1,4 @@
-// Copyright (c) 2025 go-frost authors
+// Copyright (c) 2025 Jeremy Hahn
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -141,13 +141,13 @@ func InsecureConfig() SecurityConfig {
 		IdentifiableAbortEnabled: false,
 		NonceReuseProtection:     false,
 		NonceTracker:             nil,
-		SessionTimeout:           0, // No timeout
-		CommitmentExpiration:     0, // No expiration
-		MaxSignersPerSession:     0, // No limit
-		RequireCommitmentsSorted: true, // Keep this for protocol correctness
+		SessionTimeout:           0,                  // No timeout
+		CommitmentExpiration:     0,                  // No expiration
+		MaxSignersPerSession:     0,                  // No limit
+		RequireCommitmentsSorted: true,               // Keep this for protocol correctness
 		MessageValidator:         NewNoOpValidator(), // No validation
-		MaxMessageSize:           0, // No size limit
-		ReputationTracker:        nil, // No reputation tracking
+		MaxMessageSize:           0,                  // No size limit
+		ReputationTracker:        nil,                // No reputation tracking
 	}
 }
 

@@ -1,4 +1,4 @@
-// Copyright (c) 2025 go-frost authors
+// Copyright (c) 2025 Jeremy Hahn
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -6,6 +6,7 @@
 package security
 
 import (
+	"crypto"
 	"crypto/ed25519"
 	"fmt"
 
@@ -276,4 +277,92 @@ func SerializeCommitment(commitment frost.SigningCommitments) ([]byte, error) {
 func SerializeSignatureShare(share frost.SignatureShare) ([]byte, error) {
 	shareBytes := share.SignatureShare.Bytes()
 	return shareBytes, nil
+}
+
+// SignCommitmentWithSigner creates an authentication proof for a commitment using a crypto.Signer.
+//
+// This function allows using HSM, TPM, or other hardware-backed signers instead of
+// software keys. The signer must implement crypto.Signer (e.g., from go-keychain,
+// PKCS#11, or cloud KMS).
+//
+// Parameters:
+//   - participantID: The participant identifier
+//   - commitment: The signing commitments to authenticate
+//   - signer: A crypto.Signer implementation (software, HSM, TPM, etc.)
+//
+// Returns:
+//   - signature: The authentication proof
+//   - error: Any error that occurred during signing
+//
+// Example using go-frost's signer package:
+//
+//	import "github.com/jeremyhahn/go-frost/pkg/signer"
+//
+//	s, err := signer.GenerateEd25519Signer()
+//	if err != nil {
+//	    return err
+//	}
+//
+//	proof, err := security.SignCommitmentWithSigner(participantID, commitment, s)
+//
+// Example using HSM-backed signer:
+//
+//	hsmSigner := getHSMSigner() // Returns crypto.Signer
+//	proof, err := security.SignCommitmentWithSigner(participantID, commitment, hsmSigner)
+func SignCommitmentWithSigner(participantID frost.Identifier, commitment frost.SigningCommitments, signer crypto.Signer) ([]byte, error) {
+	auth := &Ed25519Authenticator{}
+	message := auth.serializeCommitment(participantID, commitment)
+
+	// Sign using crypto.Signer interface
+	// For Ed25519, opts can be nil or crypto.Hash(0)
+	signature, err := signer.Sign(nil, message, crypto.Hash(0))
+	if err != nil {
+		return nil, fmt.Errorf("failed to sign commitment: %w", err)
+	}
+
+	return signature, nil
+}
+
+// SignSignatureShareWithSigner creates an authentication proof for a signature share using a crypto.Signer.
+//
+// This function allows using HSM, TPM, or other hardware-backed signers instead of
+// software keys. The signer must implement crypto.Signer (e.g., from go-keychain,
+// PKCS#11, or cloud KMS).
+//
+// Parameters:
+//   - participantID: The participant identifier
+//   - share: The signature share to authenticate
+//   - signer: A crypto.Signer implementation (software, HSM, TPM, etc.)
+//
+// Returns:
+//   - signature: The authentication proof
+//   - error: Any error that occurred during signing
+//
+// Example using go-frost's signer package:
+//
+//	import "github.com/jeremyhahn/go-frost/pkg/signer"
+//
+//	s, err := signer.GenerateEd25519Signer()
+//	if err != nil {
+//	    return err
+//	}
+//
+//	proof, err := security.SignSignatureShareWithSigner(participantID, share, s)
+//
+// Example using HSM-backed signer:
+//
+//	hsmSigner := getHSMSigner() // Returns crypto.Signer
+//	proof, err := security.SignSignatureShareWithSigner(participantID, share, hsmSigner)
+func SignSignatureShareWithSigner(participantID frost.Identifier, share frost.SignatureShare, signer crypto.Signer) ([]byte, error) {
+	auth := &Ed25519Authenticator{}
+	message := auth.serializeSignatureShare(participantID, share)
+
+	// Sign using crypto.Signer interface
+	// For Ed25519, opts can be nil or crypto.Hash(0)
+	signature, err := signer.Sign(nil, message, crypto.Hash(0))
+	if err != nil {
+		return nil, fmt.Errorf("failed to sign signature share: %w", err)
+	}
+
+	return signature, nil
 }

@@ -23,11 +23,11 @@ FROST is a threshold signature scheme that enables a threshold number of partici
 
 All 5 RFC 9591 ciphersuites are fully implemented and production-ready:
 
-- **FROST(ristretto255, SHA-512)** - RFC 6.2 (recommended default)
 - **FROST(Ed25519, SHA-512)** - RFC 6.1 (Edwards curve, 128-bit security)
+- **FROST(ristretto255, SHA-512)** - RFC 6.2 (extra safety checks, default)
+- **FROST(Ed448, SHAKE256)** - RFC 6.3 (highest security, 224-bit security)
 - **FROST(P-256, SHA-256)** - RFC 6.4 (NIST standard, 128-bit security)
 - **FROST(secp256k1, SHA-256)** - RFC 6.5 (Bitcoin curve, 128-bit security)
-- **FROST(Ed448, SHAKE256)** - RFC 6.3 (highest security, 224-bit security)
 
 All ciphersuites: 95%+ test coverage, comprehensive benchmarks, table-driven integration tests
 
@@ -124,6 +124,8 @@ go get github.com/jeremyhahn/go-frost
 
 - Go 1.21 or higher
 - No external dependencies for core library
+- Optional: go-keychain or go-objstore for advanced storage backends
+- Optional: HSM/TPM libraries if using hardware-backed keys
 
 ## Documentation
 
@@ -168,21 +170,80 @@ make lint
 The implementation follows a clean, layered architecture:
 
 ```
-pkg/frost/
-├── types.go              # Core type definitions
-├── errors.go             # Typed error definitions
-├── group/                # Prime-order group interface and implementations
-├── ciphersuite/          # Ciphersuite implementations
-├── helpers/              # Protocol helper functions
-├── signing/              # Two-round signing protocol
-│   ├── participant.go    # Participant implementation
-│   ├── aggregator.go     # Signature aggregation
-│   └── coordinator.go    # Optional coordinator
-├── keygen/               # Key generation (trusted dealer)
-└── service/              # High-level service API
+pkg/
+├── frost/
+│   ├── types.go              # Core type definitions
+│   ├── errors.go             # Typed error definitions
+│   ├── group/                # Prime-order group interface and implementations
+│   ├── ciphersuite/          # Ciphersuite implementations
+│   ├── helpers/              # Protocol helper functions
+│   ├── signing/              # Two-round signing protocol
+│   │   ├── participant.go    # Participant implementation
+│   │   ├── aggregator.go     # Signature aggregation
+│   │   └── coordinator.go    # Optional coordinator
+│   ├── keygen/               # Key generation (trusted dealer)
+│   ├── keystore/             # Secure key storage
+│   ├── security/             # Authentication and security
+│   └── service/              # High-level service API
+├── storage/                  # Storage backends (file, memory)
+└── signer/                   # Crypto signer abstraction (HSM, TPM support)
 ```
 
 See [Architecture Documentation](docs/architecture/README.md) for details.
+
+### Storage and Key Management
+
+go-frost includes its own storage and cryptographic signer implementations, with interface compatibility for external providers:
+
+**Storage Backends** (`pkg/storage/`):
+- **Memory Backend**: Fast in-memory storage for testing and development
+- **File Backend**: Secure file-based storage with atomic writes and configurable permissions
+- **Interface Compatible**: Works with go-keychain and go-objstore implementations
+- **Extensible**: Implement `storage.Backend` for custom backends (HSM, TPM, cloud KMS, DHT, etc.)
+
+**Crypto Signers** (`pkg/signer/`):
+- **Software Keys**: Ed25519 signing using crypto/ed25519
+- **HSM/TPM Support**: Use any `crypto.Signer` implementation (PKCS#11, cloud KMS, etc.)
+- **go-keychain Compatible**: Works with go-keychain backed signers
+- **Standard Interface**: All signers implement Go's `crypto.Signer`
+
+Example with custom storage:
+```go
+import (
+    "github.com/jeremyhahn/go-frost/pkg/storage"
+    "github.com/jeremyhahn/go-frost/pkg/frost/keystore"
+)
+
+// Use built-in file storage
+backend, err := storage.NewFileBackend("/var/lib/frost")
+if err != nil {
+    return err
+}
+
+// Or use go-keychain backend (interface compatible)
+// backend, err := keychain.NewFileBackend("/var/lib/frost")
+
+// Create keystore with any compatible backend
+store := keystore.NewKeychainStore(backend, groupCfg)
+```
+
+Example with HSM-backed signer:
+```go
+import (
+    "github.com/jeremyhahn/go-frost/pkg/signer"
+    "github.com/jeremyhahn/go-frost/pkg/frost/security"
+)
+
+// Use software signer
+softwareSigner, err := signer.GenerateEd25519Signer()
+
+// Or use HSM/TPM backed crypto.Signer
+hsmSigner := getHSMSigner() // Returns crypto.Signer
+frostSigner, err := signer.FromCryptoSigner(hsmSigner)
+
+// Sign FROST commitments with either signer
+proof, err := security.SignCommitmentWithSigner(participantID, commitment, frostSigner)
+```
 
 ## Security
 
