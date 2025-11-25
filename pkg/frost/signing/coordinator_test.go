@@ -245,12 +245,14 @@ func TestCoordinator_RequestSignatureShares_Success(t *testing.T) {
 
 	aggregator := NewAggregator(suite, 2)
 	coordinator := NewCoordinator(suite, participants, aggregator)
-
-	commitmentList := frost.CommitmentList{
-		participant1.commitments,
-		participant2.commitments,
-	}
 	msg := []byte("test message")
+
+	// First, request commitments (required for stateful coordinator)
+	participantIDs := []frost.Identifier{frost.Identifier(1), frost.Identifier(2)}
+	commitmentList, err := coordinator.RequestCommitments(participantIDs, msg)
+	if err != nil {
+		t.Fatalf("RequestCommitments failed: %v", err)
+	}
 
 	// Request signature shares
 	signatureShares, err := coordinator.RequestSignatureShares(commitmentList, msg)

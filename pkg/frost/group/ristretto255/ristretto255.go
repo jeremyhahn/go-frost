@@ -7,6 +7,22 @@
 //
 // This implementation uses github.com/gtank/ristretto255 for the underlying
 // cryptographic primitives.
+//
+// # Security Considerations
+//
+// This implementation provides FULL constant-time guarantees for all operations,
+// including both point and scalar arithmetic. This makes ristretto255 the
+// RECOMMENDED ciphersuite for deployments where timing side-channel attacks
+// are a concern.
+//
+// Unlike P-256 (partial constant-time) and secp256k1 (NOT constant-time),
+// ristretto255 uses constant-time implementations for ALL operations:
+// - Point addition, scalar multiplication, base multiplication
+// - Scalar addition, subtraction, multiplication, inversion
+// - Element/scalar encoding and decoding
+//
+// Per RFC 9591 Section 6.2, ristretto255 uses little-endian byte encoding
+// for scalars (unlike P-256/secp256k1 which use big-endian).
 package ristretto255
 
 import (
@@ -14,6 +30,7 @@ import (
 	"math/big"
 
 	"github.com/gtank/ristretto255"
+
 	"github.com/jeremyhahn/go-frost/pkg/frost"
 	"github.com/jeremyhahn/go-frost/pkg/frost/group"
 )
@@ -138,7 +155,8 @@ func (s *Scalar) Equal(other group.Scalar) bool {
 }
 
 // Bytes returns the canonical byte representation of this scalar.
-// Note: Returns big-endian bytes (FROST convention, RFC 9591).
+// Note: Returns little-endian bytes per RFC 9591 Section 6.2 (FROST(ristretto255, SHA-512)).
+// ristretto255 uses little-endian encoding, unlike P-256/secp256k1 which use big-endian.
 func (s *Scalar) Bytes() []byte {
 	return s.scalar.Encode(nil)
 }
@@ -162,15 +180,15 @@ func (s *Scalar) Copy() group.Scalar {
 func (s *Scalar) Compare(other group.Scalar) int {
 	otherScalar := other.(*Scalar)
 
-	// Encode both scalars to bytes for comparison (big-endian from Bytes())
+	// Encode both scalars to bytes for comparison (little-endian from Bytes())
 	sBytes := s.Bytes()
 	oBytes := otherScalar.Bytes()
 
-	// Convert to big.Int for comparison (big-endian)
+	// Reverse for big.Int comparison since ristretto255 uses little-endian
 	// NOTE: big.Int.Cmp() is NOT constant-time
 	// This is acceptable since Compare() is not used with secret values
-	sBig := new(big.Int).SetBytes(sBytes)
-	oBig := new(big.Int).SetBytes(oBytes)
+	sBig := new(big.Int).SetBytes(reverseBytes(sBytes))
+	oBig := new(big.Int).SetBytes(reverseBytes(oBytes))
 
 	return sBig.Cmp(oBig)
 }
@@ -287,16 +305,16 @@ func (g *Group) DeserializeElement(data []byte) (group.Element, error) {
 }
 
 // SerializeScalar encodes a scalar to its canonical byte representation.
-// Note: Returns big-endian bytes (FROST convention, RFC 9591).
-// The ristretto255 library uses little-endian, so Bytes() converts to big-endian.
+// Note: Returns little-endian bytes per RFC 9591 Section 6.2 (FROST(ristretto255, SHA-512)).
+// Unlike P-256/secp256k1 which use big-endian, ristretto255 uses little-endian encoding.
 func (g *Group) SerializeScalar(scalar group.Scalar) []byte {
 	scal := scalar.(*Scalar)
-	return scal.Bytes()  // Already in big-endian from Bytes()
+	return scal.Bytes()
 }
 
 // DeserializeScalar decodes a byte slice to a scalar.
-// Note: The FROST protocol uses big-endian encoding (RFC 9591).
-// The ristretto255 library accepts big-endian format directly.
+// Note: Expects little-endian bytes per RFC 9591 Section 6.2 (FROST(ristretto255, SHA-512)).
+// Unlike P-256/secp256k1 which use big-endian, ristretto255 uses little-endian encoding.
 func (g *Group) DeserializeScalar(data []byte) (group.Scalar, error) {
 	if len(data) != ScalarSize {
 		return nil, frost.NewParameterError("data", "invalid scalar encoding length", frost.ErrDeserializationFailed)
@@ -323,6 +341,11 @@ func (g *Group) ScalarLength() int {
 // Name returns a human-readable name for this group.
 func (g *Group) Name() string {
 	return "ristretto255"
+}
+
+// ByteOrder returns the native byte order for ristretto255 scalar serialization.
+func (g *Group) ByteOrder() group.ByteOrder {
+	return group.LittleEndian
 }
 
 // reverseBytes reverses a byte slice (for little-endian to big-endian conversion).

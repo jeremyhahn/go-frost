@@ -5,6 +5,16 @@
 // interface that all group implementations must satisfy.
 package group
 
+// ByteOrder represents the native byte order for scalar serialization.
+type ByteOrder int
+
+const (
+	// LittleEndian represents little-endian byte order (Ed25519, Ed448, ristretto255).
+	LittleEndian ByteOrder = iota
+	// BigEndian represents big-endian byte order (P-256, secp256k1).
+	BigEndian
+)
+
 // Element represents an element of the prime-order group G.
 // Elements support addition, negation, and scalar multiplication.
 type Element interface {
@@ -125,4 +135,9 @@ type Group interface {
 
 	// Name returns a human-readable name for this group (e.g., "ristretto255").
 	Name() string
+
+	// ByteOrder returns the native byte order for scalar serialization.
+	// - LittleEndian: Ed25519, Ed448, ristretto255
+	// - BigEndian: P-256, secp256k1
+	ByteOrder() ByteOrder
 }

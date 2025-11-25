@@ -125,7 +125,7 @@ func TestSection4_2_Polynomials(t *testing.T) {
 		}
 
 		// Evaluate at x = 0: f(0) = 3
-		x0 := grp.NewScalar()  // zero
+		x0 := grp.NewScalar() // zero
 		y0 := polyHelper.Evaluate(poly, x0)
 		if !y0.Equal(coeff0) {
 			t.Error("f(0) should equal the constant term")

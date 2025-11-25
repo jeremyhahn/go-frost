@@ -22,8 +22,8 @@ func TestParticipant_RoundOne_Success(t *testing.T) {
 	groupPubKey := grp.ScalarBaseMult(secretShare)
 
 	keyPackage := frost.KeyPackage{
-		Identifier:    frost.Identifier(1),
-		SecretShare:   secretShare,
+		Identifier:     frost.Identifier(1),
+		SecretShare:    secretShare,
 		GroupPublicKey: groupPubKey,
 	}
 
@@ -92,8 +92,8 @@ func TestParticipant_RoundOne_NonceUniqueness(t *testing.T) {
 	groupPubKey := grp.ScalarBaseMult(secretShare)
 
 	keyPackage := frost.KeyPackage{
-		Identifier:    frost.Identifier(1),
-		SecretShare:   secretShare,
+		Identifier:     frost.Identifier(1),
+		SecretShare:    secretShare,
 		GroupPublicKey: groupPubKey,
 	}
 
@@ -133,8 +133,8 @@ func TestParticipant_RoundTwo_Success(t *testing.T) {
 		groupPubKey := grp.ScalarBaseMult(secretShare)
 
 		keyPackages[i] = frost.KeyPackage{
-			Identifier:    frost.Identifier(i + 1),
-			SecretShare:   secretShare,
+			Identifier:     frost.Identifier(i + 1),
+			SecretShare:    secretShare,
 			GroupPublicKey: groupPubKey,
 		}
 
@@ -204,8 +204,8 @@ func TestParticipant_RoundTwo_DifferentMessages(t *testing.T) {
 	groupPubKey := grp.ScalarBaseMult(secretShare)
 
 	keyPackage := frost.KeyPackage{
-		Identifier:    frost.Identifier(1),
-		SecretShare:   secretShare,
+		Identifier:     frost.Identifier(1),
+		SecretShare:    secretShare,
 		GroupPublicKey: groupPubKey,
 	}
 
@@ -244,8 +244,8 @@ func TestParticipant_RoundTwo_EmptyCommitmentList(t *testing.T) {
 	groupPubKey := grp.ScalarBaseMult(secretShare)
 
 	keyPackage := frost.KeyPackage{
-		Identifier:    frost.Identifier(1),
-		SecretShare:   secretShare,
+		Identifier:     frost.Identifier(1),
+		SecretShare:    secretShare,
 		GroupPublicKey: groupPubKey,
 	}
 
@@ -270,8 +270,8 @@ func TestParticipant_RoundTwo_SingleParticipant(t *testing.T) {
 	groupPubKey := grp.ScalarBaseMult(secretShare)
 
 	keyPackage := frost.KeyPackage{
-		Identifier:    frost.Identifier(1),
-		SecretShare:   secretShare,
+		Identifier:     frost.Identifier(1),
+		SecretShare:    secretShare,
 		GroupPublicKey: groupPubKey,
 	}
 
@@ -451,8 +451,8 @@ func TestParticipant_Identifier(t *testing.T) {
 
 	for _, expectedID := range testCases {
 		keyPackage := frost.KeyPackage{
-			Identifier:    expectedID,
-			SecretShare:   secretShare,
+			Identifier:     expectedID,
+			SecretShare:    secretShare,
 			GroupPublicKey: groupPubKey,
 		}
 
@@ -544,8 +544,8 @@ func TestParticipant_NonceReusePrevention(t *testing.T) {
 	groupPubKey := grp.ScalarBaseMult(secretShare)
 
 	keyPackage := frost.KeyPackage{
-		Identifier:    frost.Identifier(1),
-		SecretShare:   secretShare,
+		Identifier:     frost.Identifier(1),
+		SecretShare:    secretShare,
 		GroupPublicKey: groupPubKey,
 	}
 
@@ -586,8 +586,8 @@ func TestParticipant_EmptyMessage(t *testing.T) {
 	groupPubKey := grp.ScalarBaseMult(secretShare)
 
 	keyPackage := frost.KeyPackage{
-		Identifier:    frost.Identifier(1),
-		SecretShare:   secretShare,
+		Identifier:     frost.Identifier(1),
+		SecretShare:    secretShare,
 		GroupPublicKey: groupPubKey,
 	}
 
@@ -617,8 +617,8 @@ func TestParticipant_LargeMessage(t *testing.T) {
 	groupPubKey := grp.ScalarBaseMult(secretShare)
 
 	keyPackage := frost.KeyPackage{
-		Identifier:    frost.Identifier(1),
-		SecretShare:   secretShare,
+		Identifier:     frost.Identifier(1),
+		SecretShare:    secretShare,
 		GroupPublicKey: groupPubKey,
 	}
 
@@ -648,8 +648,8 @@ func BenchmarkParticipant_RoundOne(b *testing.B) {
 	groupPubKey := grp.ScalarBaseMult(secretShare)
 
 	keyPackage := frost.KeyPackage{
-		Identifier:    frost.Identifier(1),
-		SecretShare:   secretShare,
+		Identifier:     frost.Identifier(1),
+		SecretShare:    secretShare,
 		GroupPublicKey: groupPubKey,
 	}
 
@@ -673,8 +673,8 @@ func BenchmarkParticipant_RoundTwo(b *testing.B) {
 	groupPubKey := grp.ScalarBaseMult(secretShare)
 
 	keyPackage := frost.KeyPackage{
-		Identifier:    frost.Identifier(1),
-		SecretShare:   secretShare,
+		Identifier:     frost.Identifier(1),
+		SecretShare:    secretShare,
 		GroupPublicKey: groupPubKey,
 	}
 

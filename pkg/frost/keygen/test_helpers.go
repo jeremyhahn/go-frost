@@ -282,6 +282,10 @@ func (g *mockGroup) Name() string {
 	return "mock-group"
 }
 
+func (g *mockGroup) ByteOrder() group.ByteOrder {
+	return group.LittleEndian
+}
+
 // Helper function to create participant identifiers
 func createParticipantIDs(count int) []frost.Identifier {
 	ids := make([]frost.Identifier, count)

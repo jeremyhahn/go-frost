@@ -2,33 +2,38 @@
 
 Comprehensive security guidance for deploying go-frost in production environments.
 
+## Security Audit
+
+- All 5 ciphersuites constant-time compliant
+- RFC 9591 fully compliant
+
 ## Critical Security Considerations
 
 ### Essential Reading
 
-1. **[error-sanitization.md](error-sanitization.md)** - Application validation and signing oracle prevention
+1. **[error-sanitization.md](error-sanitization.md)** - Signing oracle prevention
    - **CRITICAL**: Required reading before production deployment
-   - Prevents signing oracle attacks through proper message validation
+   - Prevents signing oracle attacks through message validation
 
-2. **[channel-security.md](channel-security.md)** - Network communication security
-   - TLS configuration and certificate management
+2. **[channel-security.md](channel-security.md)** - Network security
+   - TLS configuration
    - Participant authentication
    - Secure channel establishment
 
-3. **[misbehavior-tracking.md](misbehavior-tracking.md)** - Participant reputation and fault handling
-   - Detecting malicious or faulty participants
-   - Reputation systems and banning policies
-   - Recovery from participant failures
+3. **[misbehavior-tracking.md](misbehavior-tracking.md)** - Participant reputation
+   - Detecting malicious participants
+   - Reputation systems and banning
+   - Recovery from failures
 
-4. **[side-channel-protection.md](side-channel-protection.md)** - Side-channel attack mitigation
+4. **[side-channel-protection.md](side-channel-protection.md)** - Timing attacks
    - Constant-time operations
-   - Memory safety considerations
-   - Timing attack prevention
+   - Memory safety
+   - All ciphersuites verified secure
 
-5. **[testing.md](testing.md)** - Security testing procedures
-   - Side-channel testing methodology
+5. **[testing.md](testing.md)** - Security testing
+   - Side-channel testing
    - Security test coverage
-   - Fuzzing and stress testing
+   - Fuzzing procedures
 
 ## Security Principles
 

@@ -87,7 +87,7 @@ func TestSection3_1_PrimeOrderGroup(t *testing.T) {
 		// RFC 9591 Section 3.1: For any element A, ScalarMult(A, p) = I
 		// Note: This test would be very slow, so we test a different property
 		// ScalarBaseMult(0) should equal Identity
-		zeroScalar := grp.NewScalar()  // Creates zero scalar
+		zeroScalar := grp.NewScalar() // Creates zero scalar
 		zeroElement := grp.ScalarBaseMult(zeroScalar)
 		if !zeroElement.Equal(grp.Identity()) {
 			t.Error("ScalarBaseMult(0) should equal identity")

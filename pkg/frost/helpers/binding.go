@@ -52,14 +52,14 @@ type bindingFactorComputer struct {
 // H1(group_public_key || H4(msg) || H5(encoded_commitment_list) || identifier_i)
 //
 // Algorithm (from RFC 9591 Section 4.4):
-// 1. Serialize group public key
-// 2. Compute msg_hash = H4(msg)
-// 3. Encode commitment list and compute encoded_commitment_hash = H5(encode_group_commitment_list(commitment_list))
-// 4. Create rho_input_prefix = group_public_key_enc || msg_hash || encoded_commitment_hash
-// 5. For each participant:
-//    a. Compute rho_input = rho_input_prefix || identifier
-//    b. Compute binding_factor = H1(rho_input)
-//    c. Add (identifier, binding_factor) to list
+//  1. Serialize group public key
+//  2. Compute msg_hash = H4(msg)
+//  3. Encode commitment list and compute encoded_commitment_hash = H5(encode_group_commitment_list(commitment_list))
+//  4. Create rho_input_prefix = group_public_key_enc || msg_hash || encoded_commitment_hash
+//  5. For each participant:
+//     a. Compute rho_input = rho_input_prefix || identifier
+//     b. Compute binding_factor = H1(rho_input)
+//     c. Add (identifier, binding_factor) to list
 func (b *bindingFactorComputer) Compute(groupPublicKey group.Element, commitmentList frost.CommitmentList, msg []byte) (frost.BindingFactorList, error) {
 	if groupPublicKey == nil {
 		return nil, frost.NewParameterError("groupPublicKey", "cannot be nil", frost.ErrInvalidParameters)
@@ -95,9 +95,19 @@ func (b *bindingFactorComputer) Compute(groupPublicKey group.Element, commitment
 		// a. Compute rho_input = rho_input_prefix || identifier
 		identifierBytes := make([]byte, scalarLen)
 		id := uint32(commitment.Identifier)
-		// Encode as little-endian to match ristretto255 native format
-		for j := 0; j < 4 && j < len(identifierBytes); j++ {
-			identifierBytes[j] = byte(id >> (8 * j))
+
+		// Encode identifier using the group's native byte order
+		if b.suite.Group().ByteOrder() == group.BigEndian {
+			// Big-endian encoding
+			identifierBytes[scalarLen-1] = byte(id)
+			identifierBytes[scalarLen-2] = byte(id >> 8)
+			identifierBytes[scalarLen-3] = byte(id >> 16)
+			identifierBytes[scalarLen-4] = byte(id >> 24)
+		} else {
+			// Little-endian encoding (Ed25519, Ed448, ristretto255)
+			for j := 0; j < 4 && j < len(identifierBytes); j++ {
+				identifierBytes[j] = byte(id >> (8 * j))
+			}
 		}
 
 		rhoInput := append(rhoInputPrefix, identifierBytes...)

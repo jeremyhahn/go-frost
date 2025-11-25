@@ -6,8 +6,14 @@ import (
 	"testing"
 
 	"github.com/jeremyhahn/go-frost/pkg/frost"
+	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite"
+	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite/ed25519_sha512"
+	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite/ed448_shake256"
+	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite/p256_sha256"
 	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite/ristretto255_sha512"
+	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite/secp256k1_sha256"
 	"github.com/jeremyhahn/go-frost/pkg/frost/group"
+	"github.com/jeremyhahn/go-frost/pkg/frost/helpers"
 	"github.com/jeremyhahn/go-frost/pkg/frost/keygen"
 	"github.com/jeremyhahn/go-frost/pkg/frost/signing"
 )
@@ -324,4 +330,251 @@ func computeLagrangeCoefficient(grp group.Group, i frost.Identifier, participant
 	}
 
 	return result
+}
+
+// TestIdentifierToScalar_AllCiphersuites tests that the IdentifierToScalar helper
+// function works correctly with all supported ciphersuites.
+//
+// This test verifies:
+// 1. Little-endian encoding for Ed25519, Ed448, ristretto255
+// 2. Big-endian encoding for P-256, secp256k1
+// 3. Correct round-trip behavior for each group
+func TestIdentifierToScalar_AllCiphersuites(t *testing.T) {
+	testCases := []struct {
+		name        string
+		suite       ciphersuite.Ciphersuite
+		isBigEndian bool
+	}{
+		{"Ed25519-SHA512", ed25519_sha512.New(), false},
+		{"Ed448-SHAKE256", ed448_shake256.New(), false},
+		{"ristretto255-SHA512", ristretto255_sha512.New(), false},
+		{"P-256-SHA256", p256_sha256.New(), true},
+		{"secp256k1-SHA256", secp256k1_sha256.New(), true},
+	}
+
+	identifiers := []frost.Identifier{1, 2, 3, 42, 255, 256, 1000, 65535, 0x12345678}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			grp := tc.suite.Group()
+
+			for _, id := range identifiers {
+				t.Run("ID_"+string(rune(id)), func(t *testing.T) {
+					// Convert using helper function
+					scalar, err := helpers.IdentifierToScalar(grp, id)
+					if err != nil {
+						t.Fatalf("IdentifierToScalar(%d) error: %v", id, err)
+					}
+
+					// Verify scalar is not zero for non-zero identifier
+					if scalar.IsZero() && id != 0 {
+						t.Errorf("IdentifierToScalar(%d) produced zero scalar", id)
+					}
+
+					// Verify byte encoding matches expected endianness
+					bytes := scalar.Bytes()
+					idVal := uint32(id)
+
+					if tc.isBigEndian {
+						// Big-endian: value at end of byte array
+						scalarLen := grp.ScalarLength()
+						if bytes[scalarLen-1] != byte(idVal) {
+							t.Errorf("Big-endian byte[%d] = %d, want %d", scalarLen-1, bytes[scalarLen-1], byte(idVal))
+						}
+					} else {
+						// Little-endian: value at start of byte array
+						if bytes[0] != byte(idVal) {
+							t.Errorf("Little-endian byte[0] = %d, want %d", bytes[0], byte(idVal))
+						}
+					}
+
+					t.Logf("ID %d -> %s", id, hex.EncodeToString(bytes[:8]))
+				})
+			}
+		})
+	}
+}
+
+// TestIdentifierEncoding_FullSigningWorkflow_AllCiphersuites tests the complete
+// signing workflow with all ciphersuites to ensure identifier encoding is correct
+// throughout the entire protocol (key generation, signing, verification).
+func TestIdentifierEncoding_FullSigningWorkflow_AllCiphersuites(t *testing.T) {
+	testCases := []struct {
+		name  string
+		suite ciphersuite.Ciphersuite
+	}{
+		{"Ed25519-SHA512", ed25519_sha512.New()},
+		{"Ed448-SHAKE256", ed448_shake256.New()},
+		{"ristretto255-SHA512", ristretto255_sha512.New()},
+		{"P-256-SHA256", p256_sha256.New()},
+		{"secp256k1-SHA256", secp256k1_sha256.New()},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			suite := tc.suite
+			grp := suite.Group()
+
+			// Test 2-of-3 threshold with participants 1, 2, 3
+			minSigners := uint32(2)
+			maxSigners := uint32(3)
+			participants := []frost.Identifier{1, 2, 3}
+
+			// 1. Generate keys
+			dealer := keygen.NewDealer(suite)
+			secret, err := grp.RandomScalar()
+			if err != nil {
+				t.Fatalf("Failed to generate secret: %v", err)
+			}
+
+			keyPackages, groupPublicKey, err := dealer.GenerateShares(secret, minSigners, maxSigners, participants)
+			if err != nil {
+				t.Fatalf("Failed to generate shares: %v", err)
+			}
+
+			// 2. Verify each share using VSS
+			vss := keygen.NewVSS(grp)
+			for _, pkg := range keyPackages {
+				err := vss.VerifyShare(pkg.Identifier, pkg.SecretShare, pkg.VerificationShares)
+				if err != nil {
+					t.Fatalf("P%d share verification failed: %v", pkg.Identifier, err)
+				}
+			}
+
+			// 3. Select signers (P1 and P3) and perform signing
+			signerIDs := []frost.Identifier{1, 3}
+			var signingPackages []frost.KeyPackage
+			for _, signerID := range signerIDs {
+				for _, pkg := range keyPackages {
+					if pkg.Identifier == signerID {
+						signingPackages = append(signingPackages, pkg)
+						break
+					}
+				}
+			}
+
+			// Round 1
+			signingParticipants := make([]signing.Participant, len(signingPackages))
+			nonces := make([]frost.SigningNonces, len(signingPackages))
+			commitments := make(frost.CommitmentList, len(signingPackages))
+
+			for i, pkg := range signingPackages {
+				participant := signing.NewParticipant(pkg, suite)
+				signingParticipants[i] = participant
+
+				n, c, err := participant.RoundOne()
+				if err != nil {
+					t.Fatalf("P%d RoundOne failed: %v", pkg.Identifier, err)
+				}
+				nonces[i] = n
+				commitments[i] = c
+			}
+
+			// Round 2
+			message := []byte("Test message for " + tc.name)
+			signatureShares := make([]frost.SignatureShare, len(signingPackages))
+
+			for i, participant := range signingParticipants {
+				share, err := participant.RoundTwo(nonces[i], message, commitments)
+				if err != nil {
+					t.Fatalf("P%d RoundTwo failed: %v", signingPackages[i].Identifier, err)
+				}
+				signatureShares[i] = share
+			}
+
+			// 4. Aggregate
+			aggregator := signing.NewAggregator(suite, minSigners)
+			signature, err := aggregator.Aggregate(groupPublicKey, commitments, message, signatureShares)
+			if err != nil {
+				t.Fatalf("Aggregate failed: %v", err)
+			}
+
+			// 5. Verify
+			sigBytes := append(signature.R.Bytes(), signature.Z.Bytes()...)
+			err = suite.VerifySignature(message, sigBytes, groupPublicKey)
+			if err != nil {
+				t.Fatalf("Signature verification failed: %v", err)
+			}
+
+			t.Logf("✓ %s: Full signing workflow passed with P1,P3", tc.name)
+		})
+	}
+}
+
+// TestIdentifierEncoding_RecoverSecret_AllCiphersuites verifies that the dealer's
+// RecoverSecret function works correctly with all ciphersuites, which depends on
+// correct identifier encoding for Lagrange interpolation.
+func TestIdentifierEncoding_RecoverSecret_AllCiphersuites(t *testing.T) {
+	testCases := []struct {
+		name  string
+		suite ciphersuite.Ciphersuite
+	}{
+		{"Ed25519-SHA512", ed25519_sha512.New()},
+		{"Ed448-SHAKE256", ed448_shake256.New()},
+		{"ristretto255-SHA512", ristretto255_sha512.New()},
+		{"P-256-SHA256", p256_sha256.New()},
+		{"secp256k1-SHA256", secp256k1_sha256.New()},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			suite := tc.suite
+			grp := suite.Group()
+
+			// Generate a known secret
+			secret, err := grp.RandomScalar()
+			if err != nil {
+				t.Fatalf("Failed to generate secret: %v", err)
+			}
+
+			// Create 2-of-3 shares
+			dealer := keygen.NewDealer(suite)
+			participants := []frost.Identifier{1, 2, 3}
+			keyPackages, _, err := dealer.GenerateShares(secret, 2, 3, participants)
+			if err != nil {
+				t.Fatalf("Failed to generate shares: %v", err)
+			}
+
+			// Recover using P1 and P2
+			shares12 := map[frost.Identifier]group.Scalar{
+				keyPackages[0].Identifier: keyPackages[0].SecretShare,
+				keyPackages[1].Identifier: keyPackages[1].SecretShare,
+			}
+			recovered12, err := dealer.RecoverSecret(shares12)
+			if err != nil {
+				t.Fatalf("Failed to recover secret from P1,P2: %v", err)
+			}
+			if !recovered12.Equal(secret) {
+				t.Errorf("Recovered secret from P1,P2 doesn't match original")
+			}
+
+			// Recover using P1 and P3
+			shares13 := map[frost.Identifier]group.Scalar{
+				keyPackages[0].Identifier: keyPackages[0].SecretShare,
+				keyPackages[2].Identifier: keyPackages[2].SecretShare,
+			}
+			recovered13, err := dealer.RecoverSecret(shares13)
+			if err != nil {
+				t.Fatalf("Failed to recover secret from P1,P3: %v", err)
+			}
+			if !recovered13.Equal(secret) {
+				t.Errorf("Recovered secret from P1,P3 doesn't match original")
+			}
+
+			// Recover using P2 and P3
+			shares23 := map[frost.Identifier]group.Scalar{
+				keyPackages[1].Identifier: keyPackages[1].SecretShare,
+				keyPackages[2].Identifier: keyPackages[2].SecretShare,
+			}
+			recovered23, err := dealer.RecoverSecret(shares23)
+			if err != nil {
+				t.Fatalf("Failed to recover secret from P2,P3: %v", err)
+			}
+			if !recovered23.Equal(secret) {
+				t.Errorf("Recovered secret from P2,P3 doesn't match original")
+			}
+
+			t.Logf("✓ %s: Secret recovery works with all participant combinations", tc.name)
+		})
+	}
 }

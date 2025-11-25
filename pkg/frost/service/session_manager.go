@@ -11,18 +11,18 @@ import (
 
 // signingSession implements SigningSession interface.
 type signingSession struct {
-	id                 string
-	participantIDs     []frost.Identifier
-	message            []byte
-	commitments        map[frost.Identifier]frost.SigningCommitments
-	signatureShares    map[frost.Identifier]frost.SignatureShare
-	commitmentList     frost.CommitmentList
-	finalSignature     frost.Signature
-	isComplete         bool
-	isCanceled         bool
-	service            FrostService
-	minParticipants    int
-	mu                 sync.RWMutex
+	id              string
+	participantIDs  []frost.Identifier
+	message         []byte
+	commitments     map[frost.Identifier]frost.SigningCommitments
+	signatureShares map[frost.Identifier]frost.SignatureShare
+	commitmentList  frost.CommitmentList
+	finalSignature  frost.Signature
+	isComplete      bool
+	isCanceled      bool
+	service         FrostService
+	minParticipants int
+	mu              sync.RWMutex
 }
 
 // newSigningSession creates a new signing session.

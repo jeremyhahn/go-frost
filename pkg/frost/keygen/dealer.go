@@ -135,14 +135,9 @@ func (d *dealer) GenerateShares(secret group.Scalar, minSigners, maxSigners uint
 
 	for i, participantID := range participantIDs {
 		// Convert participant ID to scalar for polynomial evaluation
-		idBytes := make([]byte, grp.ScalarLength())
-		idValue := uint32(participantID)
-		// Encode as little-endian to match ristretto255 native format
-		for j := 0; j < 4 && j < len(idBytes); j++ {
-			idBytes[j] = byte(idValue >> (8 * j))
-		}
-
-		idScalar, err := grp.DeserializeScalar(idBytes)
+		// Uses group-specific byte ordering (little-endian for Ed25519/Ed448/ristretto255,
+		// big-endian for P-256/secp256k1)
+		idScalar, err := helpers.IdentifierToScalar(grp, participantID)
 		if err != nil {
 			return nil, nil, frost.NewParameterError("participantID", "failed to convert to scalar", err)
 		}
@@ -189,15 +184,8 @@ func (d *dealer) RecoverSecret(shares map[frost.Identifier]group.Scalar) (group.
 	for id := range shares {
 		identifiers = append(identifiers, id)
 
-		// Convert ID to scalar
-		idBytes := make([]byte, grp.ScalarLength())
-		idValue := uint32(id)
-		// Encode as little-endian to match ristretto255 native format
-		for j := 0; j < 4 && j < len(idBytes); j++ {
-			idBytes[j] = byte(idValue >> (8 * j))
-		}
-
-		idScalar, err := grp.DeserializeScalar(idBytes)
+		// Convert ID to scalar using group-specific byte ordering
+		idScalar, err := helpers.IdentifierToScalar(grp, id)
 		if err != nil {
 			return nil, frost.NewParameterError("identifier", "failed to convert to scalar", err)
 		}

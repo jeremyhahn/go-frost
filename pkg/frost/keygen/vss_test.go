@@ -110,7 +110,7 @@ func TestVSS_VerifyShare(t *testing.T) {
 
 	// Create commitments
 	commitments, err := vss.CreateCommitments(polynomial)
-	if err != nil{
+	if err != nil {
 		t.Fatalf("Failed to create commitments: %v", err)
 	}
 

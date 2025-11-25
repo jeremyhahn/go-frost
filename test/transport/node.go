@@ -104,16 +104,16 @@ type RoundOneRequest struct {
 
 // RoundOneResponse represents the response from round one.
 type RoundOneResponse struct {
-	SessionID   string                   `json:"session_id"`
-	Identifier  frost.Identifier         `json:"identifier"`
-	Commitments SerializableCommitments  `json:"commitments"`
+	SessionID   string                  `json:"session_id"`
+	Identifier  frost.Identifier        `json:"identifier"`
+	Commitments SerializableCommitments `json:"commitments"`
 }
 
 // RoundTwoRequest represents a request to perform round two.
 type RoundTwoRequest struct {
-	SessionID      string                     `json:"session_id"`
-	Message        []byte                     `json:"message"`
-	CommitmentList []SerializableCommitments  `json:"commitment_list"`
+	SessionID      string                    `json:"session_id"`
+	Message        []byte                    `json:"message"`
+	CommitmentList []SerializableCommitments `json:"commitment_list"`
 }
 
 // RoundTwoResponse represents the response from round two.
@@ -124,9 +124,9 @@ type RoundTwoResponse struct {
 
 // VerifyRequest represents a signature verification request.
 type VerifyRequest struct {
-	Message       []byte `json:"message"`
-	SignatureR    []byte `json:"signature_r"`
-	SignatureZ    []byte `json:"signature_z"`
+	Message        []byte `json:"message"`
+	SignatureR     []byte `json:"signature_r"`
+	SignatureZ     []byte `json:"signature_z"`
 	GroupPublicKey []byte `json:"group_public_key"`
 }
 
@@ -139,8 +139,8 @@ type VerifyResponse struct {
 // SerializableCommitments represents commitments in a serializable format.
 type SerializableCommitments struct {
 	Identifier             frost.Identifier `json:"identifier"`
-	HidingNonceCommitment  []byte          `json:"hiding_nonce_commitment"`
-	BindingNonceCommitment []byte          `json:"binding_nonce_commitment"`
+	HidingNonceCommitment  []byte           `json:"hiding_nonce_commitment"`
+	BindingNonceCommitment []byte           `json:"binding_nonce_commitment"`
 }
 
 // handleRoundOne handles round one requests.

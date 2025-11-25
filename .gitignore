@@ -42,6 +42,9 @@ build/
 tmp/
 *.tmp
 
+# Log files
+*.log
+
 # Claude Code
 .claude
 CLAUDE.md

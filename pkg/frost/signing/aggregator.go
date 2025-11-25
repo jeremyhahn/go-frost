@@ -151,12 +151,12 @@ func (a *aggregator) Aggregate(groupPublicKey group.Element, commitmentList fros
 //
 // Algorithm:
 // 1-4. Same as Aggregate (validate, compute binding factors, group commitment)
-// 5. For each signature share:
-//    a. Find participant's verification key
-//    b. Verify share using verification equation
-//    c. If verification fails, return error identifying the malicious participant
-// 6. Sum all signature shares into z (only if all shares verified)
-// 7. Return signature (R, z)
+//  5. For each signature share:
+//     a. Find participant's verification key
+//     b. Verify share using verification equation
+//     c. If verification fails, return error identifying the malicious participant
+//  6. Sum all signature shares into z (only if all shares verified)
+//  7. Return signature (R, z)
 func (a *aggregator) AggregateWithVerification(groupPublicKey group.Element, commitmentList frost.CommitmentList, msg []byte, signatureShares []frost.SignatureShare, verificationShares []frost.VerificationShare) (frost.Signature, error) {
 	// Create helper instances
 	encoder := helpers.NewCommitmentListEncoder(a.suite.Group())
@@ -205,15 +205,12 @@ func (a *aggregator) AggregateWithVerification(groupPublicKey group.Element, com
 	}
 
 	// Get participant identifiers from commitment list for Lagrange interpolation
+	// Uses group-specific byte ordering (little-endian for Ed25519/Ed448/ristretto255,
+	// big-endian for P-256/secp256k1)
 	participants := encoder.GetParticipants(commitmentList)
 	participantScalars := make([]group.Scalar, len(participants))
 	for i, id := range participants {
-		idBytes := make([]byte, grp.ScalarLength())
-		idVal := uint32(id)
-		for j := 0; j < 4 && j < len(idBytes); j++ {
-			idBytes[j] = byte(idVal >> (8 * j))
-		}
-		scalar, err := grp.DeserializeScalar(idBytes)
+		scalar, err := helpers.IdentifierToScalar(grp, id)
 		if err != nil {
 			return frost.Signature{}, frost.NewParameterError("participantScalar", "failed to create", err)
 		}
@@ -260,13 +257,7 @@ func (a *aggregator) AggregateWithVerification(groupPublicKey group.Element, com
 		}
 
 		// Compute lambda_i (Lagrange coefficient) for this participant
-		shareIDBytes := make([]byte, grp.ScalarLength())
-		shareIDVal := uint32(share.Identifier)
-		for j := 0; j < 4 && j < len(shareIDBytes); j++ {
-			shareIDBytes[j] = byte(shareIDVal >> (8 * j))
-		}
-
-		shareIDScalar, err := grp.DeserializeScalar(shareIDBytes)
+		shareIDScalar, err := helpers.IdentifierToScalar(grp, share.Identifier)
 		if err != nil {
 			return frost.Signature{}, frost.NewParameterError("shareIDScalar", "failed to create", err)
 		}

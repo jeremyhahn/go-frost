@@ -60,7 +60,8 @@ type polynomialHelper struct {
 // Algorithm:
 // result = coefficients[degree]
 // for i from degree-1 down to 0:
-//     result = result * x + coefficients[i]
+//
+//	result = result * x + coefficients[i]
 func (p *polynomialHelper) Evaluate(poly frost.Polynomial, x group.Scalar) group.Scalar {
 	if len(poly.Coefficients) == 0 {
 		return p.group.NewScalar()
@@ -120,7 +121,10 @@ func (p *polynomialHelper) DeriveInterpolatingValue(xCoords []group.Scalar, xi g
 	}
 
 	// Step 3: Compute Lagrange coefficient
-	// Special case: if only one coordinate, coefficient is 1
+	// Special case: if only one coordinate, coefficient is 1 (mathematically correct).
+	// NOTE: In FROST, this case should never occur because threshold >= 2 is enforced
+	// during key generation (see dealer.go:82-84). This check exists for mathematical
+	// completeness and defense-in-depth.
 	if len(xCoords) == 1 {
 		// Create scalar value 1
 		// For ristretto255, scalars use little-endian encoding (LSB first)

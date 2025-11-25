@@ -2,6 +2,7 @@ package signing
 
 import (
 	"sort"
+	"sync"
 
 	"github.com/jeremyhahn/go-frost/pkg/frost"
 	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite"
@@ -122,6 +123,10 @@ type coordinator struct {
 	groupPublicKey    group.Element
 	authenticator     security.ParticipantAuthenticator // Optional: for authenticated channels (RFC 9591 Section 7.2)
 	reputationTracker security.ReputationTracker        // Optional: for misbehavior tracking and DoS prevention
+
+	// Nonce management for stateful signing sessions
+	mu        sync.Mutex
+	noncesMap map[frost.Identifier]frost.SigningNonces
 }
 
 // RequestCommitments implements Coordinator.RequestCommitments
@@ -159,6 +164,11 @@ func (c *coordinator) RequestCommitments(participantIDs []frost.Identifier, msg 
 	// 2 & 3. Request and collect commitments from each participant
 	commitments := make(frost.CommitmentList, 0, len(participantIDs))
 
+	// Initialize nonces storage for this signing session
+	c.mu.Lock()
+	c.noncesMap = make(map[frost.Identifier]frost.SigningNonces)
+	c.mu.Unlock()
+
 	for _, id := range participantIDs {
 		participant, exists := c.participants[id]
 		if !exists {
@@ -166,7 +176,7 @@ func (c *coordinator) RequestCommitments(participantIDs []frost.Identifier, msg 
 		}
 
 		// Request round one from participant
-		_, commitment, err := participant.RoundOne()
+		nonces, commitment, err := participant.RoundOne()
 		if err != nil {
 			// Track invalid commitment misbehavior
 			if c.reputationTracker != nil {
@@ -174,6 +184,11 @@ func (c *coordinator) RequestCommitments(participantIDs []frost.Identifier, msg 
 			}
 			return nil, frost.NewParticipantError(id, "failed to generate commitment", err)
 		}
+
+		// Store nonces for use in round two
+		c.mu.Lock()
+		c.noncesMap[id] = nonces
+		c.mu.Unlock()
 
 		commitments = append(commitments, commitment)
 	}
@@ -200,13 +215,13 @@ func (c *coordinator) RequestCommitments(participantIDs []frost.Identifier, msg 
 // collects their signature shares.
 //
 // Algorithm (from RFC 9591 Section 5.2):
-// 1. Validate commitment list
-// 2. For each participant in commitment list:
-//    a. Look up participant
-//    b. Request signature share with commitment list and message
-//    c. Optionally verify signature share (identifiable abort)
-// 3. Collect all signature shares
-// 4. Return signature shares
+//  1. Validate commitment list
+//  2. For each participant in commitment list:
+//     a. Look up participant
+//     b. Request signature share with commitment list and message
+//     c. Optionally verify signature share (identifiable abort)
+//  3. Collect all signature shares
+//  4. Return signature shares
 func (c *coordinator) RequestSignatureShares(commitmentList frost.CommitmentList, msg []byte) ([]frost.SignatureShare, error) {
 	// 1. Validate commitment list
 	encoder := helpers.NewCommitmentListEncoder(c.suite.Group())
@@ -224,11 +239,25 @@ func (c *coordinator) RequestSignatureShares(commitmentList frost.CommitmentList
 			return nil, frost.NewParticipantError(commitment.Identifier, "not found in participant map", frost.ErrInvalidParticipant)
 		}
 
-		// b. Request signature share
-		// Note: We need to pass the nonces from round one, but they're not available here
-		// In a real implementation, the coordinator would need to store the nonces
-		// For now, we'll call RoundTwo with empty nonces - the participant should have stored them
-		share, err := participant.RoundTwo(frost.SigningNonces{}, msg, commitmentList)
+		// b. Retrieve stored nonces from round one
+		c.mu.Lock()
+		nonces, nonceExists := c.noncesMap[commitment.Identifier]
+		if nonceExists {
+			// Remove from map immediately (will be zeroized after use)
+			delete(c.noncesMap, commitment.Identifier)
+		}
+		c.mu.Unlock()
+
+		if !nonceExists {
+			return nil, frost.NewParticipantError(commitment.Identifier, "nonces not found - RequestCommitments must be called first", frost.ErrInvalidNonce)
+		}
+
+		// c. Request signature share with stored nonces
+		share, err := participant.RoundTwo(nonces, msg, commitmentList)
+
+		// Zeroize nonces immediately after use per RFC 9591 Section 7.3
+		nonces.Zeroize()
+
 		if err != nil {
 			// Track invalid share misbehavior
 			if c.reputationTracker != nil {
@@ -237,9 +266,10 @@ func (c *coordinator) RequestSignatureShares(commitmentList frost.CommitmentList
 			return nil, frost.NewParticipantError(commitment.Identifier, "failed to generate signature share", err)
 		}
 
-		// c. Optionally verify signature share (identifiable abort)
-		// This step is optional but recommended for detecting malicious participants
-		// We skip it here to keep the implementation simple
+		// d. Optionally verify signature share (identifiable abort)
+		// Per RFC 9591 Section 7.4, share verification is optional but enables identifying
+		// malicious participants. Use AggregateWithVerification() instead of Aggregate()
+		// to enable signature share verification with identifiable abort support.
 
 		// 3. Collect signature share
 		signatureShares = append(signatureShares, share)

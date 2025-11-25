@@ -38,33 +38,33 @@ func TestSection7_5_ProductionModeSanitization(t *testing.T) {
 	sanitizer := security.NewErrorSanitizer(security.DefaultProductionErrorConfig())
 
 	testCases := []struct {
-		name           string
-		input          error
+		name             string
+		input            error
 		shouldNotContain []string
 	}{
 		{
-			name:  "Hex values removed",
-			input: errors.New("signature verification failed: scalar=0x1234567890abcdef1234"),
+			name:             "Hex values removed",
+			input:            errors.New("signature verification failed: scalar=0x1234567890abcdef1234"),
 			shouldNotContain: []string{"0x1234567890abcdef1234", "1234567890abcdef1234"},
 		},
 		{
-			name:  "Base64 values removed",
-			input: errors.New("commitment invalid: dGhpc2lzYWJhc2U2NGVuY29kZWRzdHJpbmc="),
+			name:             "Base64 values removed",
+			input:            errors.New("commitment invalid: dGhpc2lzYWJhc2U2NGVuY29kZWRzdHJpbmc="),
 			shouldNotContain: []string{"dGhpc2lzYWJhc2U2NGVuY29kZWRzdHJpbmc="},
 		},
 		{
-			name:  "Scalar values redacted",
-			input: errors.New("nonce reuse detected: scalar=abc123def456"),
+			name:             "Scalar values redacted",
+			input:            errors.New("nonce reuse detected: scalar=abc123def456"),
 			shouldNotContain: []string{"abc123def456"},
 		},
 		{
-			name:  "Commitment values redacted",
-			input: errors.New("invalid commitment: hiding=0xabcd1234, binding=0xef567890"),
+			name:             "Commitment values redacted",
+			input:            errors.New("invalid commitment: hiding=0xabcd1234, binding=0xef567890"),
 			shouldNotContain: []string{"0xabcd1234", "0xef567890"},
 		},
 		{
-			name:  "Signature values redacted",
-			input: errors.New("signature verification failed: signature=longbase64value123456"),
+			name:             "Signature values redacted",
+			input:            errors.New("signature verification failed: signature=longbase64value123456"),
 			shouldNotContain: []string{"longbase64value123456"},
 		},
 	}
@@ -97,16 +97,16 @@ func TestSection7_5_DevelopmentModeSanitization(t *testing.T) {
 	sanitizer := security.NewErrorSanitizer(config)
 
 	testCases := []struct {
-		name              string
-		input             error
-		shouldContain     []string
-		shouldNotContain  []string
+		name             string
+		input            error
+		shouldContain    []string
+		shouldNotContain []string
 	}{
 		{
-			name:              "Context preserved with redaction",
-			input:             errors.New("signature verification failed: scalar=0x1234567890abcdef"),
-			shouldContain:     []string{"signature verification failed"},
-			shouldNotContain:  []string{"0x1234567890abcdef"},
+			name:             "Context preserved with redaction",
+			input:            errors.New("signature verification failed: scalar=0x1234567890abcdef"),
+			shouldContain:    []string{"signature verification failed"},
+			shouldNotContain: []string{"0x1234567890abcdef"},
 		},
 	}
 

@@ -60,6 +60,7 @@ package main
 
 import (
     "fmt"
+    "sort"
     "github.com/jeremyhahn/go-frost/pkg/frost"
     "github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite/ristretto255_sha512"
     "github.com/jeremyhahn/go-frost/pkg/frost/signing"
@@ -67,48 +68,61 @@ import (
 
 func main() {
     suite := ristretto255_sha512.New()
+    minSigners := uint32(2)
 
     // ... (key generation omitted for brevity)
+    // Assume keyPackage1, keyPackage2, groupPublicKey are generated
 
     message := []byte("Distributed signing example")
 
-    // Round 1: Each participant generates commitments
+    // Create participants
     participant1 := signing.NewParticipant(keyPackage1, suite)
     participant2 := signing.NewParticipant(keyPackage2, suite)
 
-    commitments1, err := participant1.Commit()
+    // Round 1: Generate nonces and commitments
+    nonces1, commitment1, err := participant1.RoundOne()
     if err != nil {
         panic(err)
     }
 
-    commitments2, err := participant2.Commit()
+    nonces2, commitment2, err := participant2.RoundOne()
     if err != nil {
         panic(err)
     }
 
-    // Collect commitments (in real app, exchange over network)
-    allCommitments := []frost.SigningCommitments{commitments1, commitments2}
+    // Collect and sort commitments by identifier
+    commitmentList := frost.CommitmentList{commitment1, commitment2}
+    sort.Slice(commitmentList, func(i, j int) bool {
+        return commitmentList[i].Identifier < commitmentList[j].Identifier
+    })
 
-    // Round 2: Each participant generates signature shares
-    share1, err := participant1.Sign(message, allCommitments)
+    // Round 2: Generate signature shares (must pass nonces from Round 1)
+    share1, err := participant1.RoundTwo(nonces1, message, commitmentList)
     if err != nil {
         panic(err)
     }
+    nonces1.Zeroize() // CRITICAL: Zeroize nonces after use per RFC 9591
 
-    share2, err := participant2.Sign(message, allCommitments)
+    share2, err := participant2.RoundTwo(nonces2, message, commitmentList)
     if err != nil {
         panic(err)
     }
+    nonces2.Zeroize() // CRITICAL: Zeroize nonces after use per RFC 9591
 
     // Aggregate signature shares
-    aggregator := signing.NewAggregator(suite, allCommitments)
-    signature, err := aggregator.Aggregate(message, []frost.SignatureShare{share1, share2})
+    aggregator := signing.NewAggregator(suite, minSigners)
+    signature, err := aggregator.Aggregate(
+        groupPublicKey,
+        commitmentList,
+        message,
+        []frost.SignatureShare{share1, share2},
+    )
     if err != nil {
         panic(err)
     }
 
-    // Verify
-    err = suite.Verify(message, signature, groupPublicKey)
+    // Verify signature
+    err = aggregator.Verify(message, signature, groupPublicKey)
     if err != nil {
         fmt.Println("Verification failed:", err)
         return
@@ -127,9 +141,29 @@ For examples of using different ciphersuites (Ed25519, P-256, secp256k1), see th
 Example of using the optional coordinator for managing signing sessions:
 
 ```go
-coordinator := signing.NewCoordinator(suite, config)
-session, err := coordinator.CreateSession(participantIDs, message)
-// ... manage multi-round signing session
+// Create participants map
+participants := make(map[frost.Identifier]signing.Participant)
+for _, kp := range keyPackages {
+    participants[kp.Identifier] = signing.NewParticipant(kp, suite)
+}
+
+// Create aggregator and coordinator
+aggregator := signing.NewAggregator(suite, minSigners)
+coordinator := signing.NewCoordinatorWithPublicKey(
+    suite,
+    participants,
+    aggregator,
+    groupPublicKey,
+)
+
+// Sign message (coordinator manages both rounds)
+signature, err := coordinator.Sign(participantIDs, message)
+if err != nil {
+    panic(err)
+}
+
+// Verify
+err = aggregator.Verify(message, signature, groupPublicKey)
 ```
 
 ### Error Handling

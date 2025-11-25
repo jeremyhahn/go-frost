@@ -65,8 +65,11 @@ func (c *challengeComputer) Compute(groupCommitment group.Element, groupPublicKe
 	// 4. Return H2(challenge_input)
 	challenge := c.suite.H2(challengeInput)
 
+	// A zero challenge indicates a potential hash collision or implementation bug.
+	// This should essentially never happen with proper hash functions (probability ~2^-256).
+	// Use VerificationError as this is a protocol-level failure, not a parameter issue.
 	if challenge.IsZero() {
-		return nil, frost.NewParameterError("challenge", "resulted in zero challenge", frost.ErrInvalidChallenge)
+		return nil, frost.NewVerificationError("challenge", "computed challenge is zero - possible hash collision", frost.ErrInvalidChallenge)
 	}
 
 	return challenge, nil

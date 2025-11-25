@@ -22,6 +22,7 @@ import (
 	"crypto/sha512"
 
 	"filippo.io/edwards25519"
+
 	"github.com/jeremyhahn/go-frost/pkg/frost"
 	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite"
 	"github.com/jeremyhahn/go-frost/pkg/frost/group"

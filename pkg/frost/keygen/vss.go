@@ -3,6 +3,7 @@ package keygen
 import (
 	"github.com/jeremyhahn/go-frost/pkg/frost"
 	"github.com/jeremyhahn/go-frost/pkg/frost/group"
+	"github.com/jeremyhahn/go-frost/pkg/frost/helpers"
 )
 
 // VSS implements Verifiable Secret Sharing operations.
@@ -90,30 +91,16 @@ func (v *vss) VerifyShare(identifier frost.Identifier, share group.Scalar, commi
 
 	// Compute right side: sum_{j=0}^{degree} commitment_j * identifier^j
 	right := v.group.Identity()
-	idScalar := v.group.NewScalar()
 
-	// Convert identifier to scalar (little-endian encoding for ristretto255)
-	// Ristretto255 uses little-endian internally, so we encode identifiers as little-endian
-	idBytes := make([]byte, v.group.ScalarLength())
-	idValue := uint32(identifier)
-	// Encode as little-endian to match ristretto255 native format
-	for j := 0; j < 4 && j < len(idBytes); j++ {
-		idBytes[j] = byte(idValue >> (8 * j))
-	}
-
-	var err error
-	idScalar, err = v.group.DeserializeScalar(idBytes)
+	// Convert identifier to scalar using group-specific byte ordering
+	idScalar, err := helpers.IdentifierToScalar(v.group, identifier)
 	if err != nil {
 		return frost.NewParameterError("identifier", "failed to convert to scalar", err)
 	}
 
 	// Compute identifier^j for each term
-	idPower := v.group.NewScalar()
-	// Start with id^0 = 1
-	// Note: ristretto255 uses little-endian internally, so 1 is [1, 0, ..., 0]
-	oneBytes := make([]byte, v.group.ScalarLength())
-	oneBytes[0] = 1
-	idPower, _ = v.group.DeserializeScalar(oneBytes)
+	// Start with id^0 = 1 (use IdentifierToScalar for consistent encoding)
+	idPower, _ := helpers.IdentifierToScalar(v.group, frost.Identifier(1))
 
 	for j := 0; j < len(commitments); j++ {
 		// term = commitment[j] * identifier^j
