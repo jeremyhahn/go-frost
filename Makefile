@@ -1,7 +1,7 @@
 # Makefile for go-frost
 # FROST threshold signature scheme implementation
 
-.PHONY: all build build-lib build-lib-shared build-lib-static build-lib-fips build-release test test-unit test-integration test-transport integration-test-transport test-coverage clean lint fmt vet docker-build docker-test bench help ci gosec govulncheck staticcheck test-ristretto255-sha512 coverage-ristretto255-sha512 bench-ristretto255-sha512 test-keystore coverage-keystore bench-keystore test-ed25519 coverage-ed25519 bench-ed25519 test-ed25519-sha512 coverage-ed25519-sha512 bench-ed25519-sha512 test-ed448 coverage-ed448 bench-ed448 test-ed448-shake256 coverage-ed448-shake256 bench-ed448-shake256 test-p256 coverage-p256 bench-p256 test-p256-sha256 coverage-p256-sha256 bench-p256-sha256 test-secp256k1 coverage-secp256k1 bench-secp256k1 test-secp256k1-sha256 coverage-secp256k1-sha256 bench-secp256k1-sha256
+.PHONY: all build build-fips build-lib build-lib-shared build-lib-static build-lib-fips build-all-fips build-release test test-unit test-integration test-transport integration-test-transport test-coverage clean lint fmt vet docker-build docker-test bench help ci gosec govulncheck staticcheck test-ristretto255-sha512 coverage-ristretto255-sha512 bench-ristretto255-sha512 test-keystore coverage-keystore bench-keystore test-ed25519 coverage-ed25519 bench-ed25519 test-ed25519-sha512 coverage-ed25519-sha512 bench-ed25519-sha512 test-ed448 coverage-ed448 bench-ed448 test-ed448-shake256 coverage-ed448-shake256 bench-ed448-shake256 test-p256 coverage-p256 bench-p256 test-p256-sha256 coverage-p256-sha256 bench-p256-sha256 test-secp256k1 coverage-secp256k1 bench-secp256k1 test-secp256k1-sha256 coverage-secp256k1-sha256 bench-secp256k1-sha256
 
 # Go parameters
 GOCMD=go
@@ -75,6 +75,13 @@ build-lib-static:
 	CGO_ENABLED=1 $(GOBUILD) -buildmode=c-archive -ldflags="$(LDFLAGS)" -o $(DIST_DIR)/$(LIB_NAME).a $(LIB_PATH)
 	@echo "Built $(DIST_DIR)/$(LIB_NAME).a"
 
+## build-fips: Build CLI binary with FIPS 140 mode enabled (Go 1.24+)
+build-fips:
+	@echo "Building FIPS-compliant CLI binary..."
+	@mkdir -p $(DIST_DIR)/fips
+	GOFIPS140=latest CGO_ENABLED=0 $(GOBUILD) -ldflags="$(LDFLAGS)" -o $(DIST_DIR)/fips/$(BINARY_NAME)-fips $(BINARY_PATH)
+	@echo "Built $(DIST_DIR)/fips/$(BINARY_NAME)-fips"
+
 ## build-lib-fips: Build libraries with FIPS 140 mode enabled (Go 1.24+)
 build-lib-fips:
 	@echo "Building FIPS-compliant libraries..."
@@ -83,8 +90,12 @@ build-lib-fips:
 	GOFIPS140=latest CGO_ENABLED=1 $(GOBUILD) -buildmode=c-archive -ldflags="$(LDFLAGS)" -o $(DIST_DIR)/fips/$(LIB_NAME)-fips.a $(LIB_PATH)
 	@echo "Built FIPS libraries in $(DIST_DIR)/fips/"
 
-## build-all: Build CLI, libraries, and FIPS libraries
-build-all: build build-lib build-lib-fips
+## build-all-fips: Build both FIPS CLI binary and libraries
+build-all-fips: build-fips build-lib-fips
+	@echo "All FIPS builds complete in $(DIST_DIR)/fips/"
+
+## build-all: Build CLI, libraries, FIPS binary, and FIPS libraries
+build-all: build build-lib build-fips build-lib-fips
 	@echo "All builds complete"
 
 ## test: Run all tests
