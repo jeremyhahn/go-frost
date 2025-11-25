@@ -299,18 +299,18 @@ func TestFrostService_Verify(t *testing.T) {
 			description: "signature should fail with wrong public key",
 		},
 		{
-			name:      "nil signature R",
-			message:   message,
-			signature: frost.Signature{R: nil, Z: signature.Z},
-			publicKey: groupPubKey,
+			name:        "nil signature R",
+			message:     message,
+			signature:   frost.Signature{R: nil, Z: signature.Z},
+			publicKey:   groupPubKey,
 			expectError: true,
 			description: "nil R component should fail",
 		},
 		{
-			name:      "nil signature Z",
-			message:   message,
-			signature: frost.Signature{R: signature.R, Z: nil},
-			publicKey: groupPubKey,
+			name:        "nil signature Z",
+			message:     message,
+			signature:   frost.Signature{R: signature.R, Z: nil},
+			publicKey:   groupPubKey,
 			expectError: true,
 			description: "nil Z component should fail",
 		},
@@ -673,10 +673,10 @@ func TestFrostService_Sign_Validation(t *testing.T) {
 	}
 
 	tests := []struct {
-		name           string
-		keyPackages    []frost.KeyPackage
-		expectError    bool
-		description    string
+		name        string
+		keyPackages []frost.KeyPackage
+		expectError bool
+		description string
 	}{
 		{
 			name:        "single key package",

@@ -18,7 +18,8 @@ import (
 	"crypto/sha256"
 	"math/big"
 
-	secp "github.com/decred/dcrd/dcrec/secp256k1/v4"
+	secp "gitlab.com/yawning/secp256k1-voi"
+
 	"github.com/jeremyhahn/go-frost/pkg/frost"
 	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite"
 	"github.com/jeremyhahn/go-frost/pkg/frost/group"
@@ -38,6 +39,27 @@ const (
 	domainH3 = "nonce" // Nonce generation
 	domainH4 = "msg"   // Message hashing
 	domainH5 = "com"   // Commitment list hashing
+)
+
+// secp256k1 curve parameters
+var (
+	// groupOrder is the order of the secp256k1 group
+	// n = FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
+	groupOrder = new(big.Int).SetBytes([]byte{
+		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFE,
+		0xBA, 0xAE, 0xDC, 0xE6, 0xAF, 0x48, 0xA0, 0x3B,
+		0xBF, 0xD2, 0x5E, 0x8C, 0xD0, 0x36, 0x41, 0x41,
+	})
+
+	// fieldPrime is the field prime for secp256k1
+	// p = FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F
+	fieldPrime = new(big.Int).SetBytes([]byte{
+		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+		0xFF, 0xFF, 0xFF, 0xFE, 0xFF, 0xFF, 0xFC, 0x2F,
+	})
 )
 
 // Secp256k1SHA256 implements the FROST(secp256k1, SHA-256) ciphersuite.
@@ -129,7 +151,7 @@ func (cs *Secp256k1SHA256) HashToCurve(data []byte) (group.Element, error) {
 		// Use the hash as x-coordinate and solve for y
 		x := new(big.Int).SetBytes(hash)
 		// Reduce x modulo the field prime
-		x.Mod(x, secp.S256().P)
+		x.Mod(x, fieldPrime)
 
 		// Try to find a valid y for this x
 		if point := cs.tryFindPoint(x); point != nil {
@@ -225,32 +247,110 @@ func (cs *Secp256k1SHA256) VerifySignature(message []byte, signature []byte, pub
 	return nil
 }
 
-// hashToScalar implements hash-to-scalar for secp256k1 using SHA-256.
-// According to RFC 9591 Section 6.5, this uses wide reduction modulo the group order.
+// hashToScalar implements hash-to-scalar for secp256k1 using hash_to_field from RFC 9380.
+// Per RFC 9591 Section 6.5, this uses expand_message_xmd with SHA-256 and L=48.
 func (cs *Secp256k1SHA256) hashToScalar(domain string, data []byte) group.Scalar {
-	// Create domain-separated input
-	input := cs.domainSeparate(domain, data)
+	// DST = contextString || domain (e.g., "FROST-secp256k1-SHA256-v1" || "rho")
+	dst := []byte(contextString + domain)
 
-	// Hash with SHA-256 (32 bytes output)
-	hash := cs.Hash(input)
-
-	// For secp256k1 with SHA-256, we need to perform wide reduction
-	// We can hash again to get 64 bytes for better uniformity
-	hash2 := cs.Hash(append(hash, 0x00))
-	wideHash := append(hash, hash2...)
+	// Use expand_message_xmd with L=48 bytes per RFC 9591 Section 6.5
+	uniformBytes := expandMessageXMD(data, dst, 48)
 
 	// Convert to big.Int and reduce modulo group order
-	// Get the group order from secp256k1
-	groupOrder := secp.S256().N
-
-	hashInt := new(big.Int).SetBytes(wideHash)
+	hashInt := new(big.Int).SetBytes(uniformBytes)
 	hashInt.Mod(hashInt, groupOrder)
 
-	// Convert to ModNScalar
-	var scalar secp.ModNScalar
-	scalar.SetByteSlice(hashInt.Bytes())
+	// Convert to scalar via bytes
+	scalarBytes := hashInt.Bytes()
+	// Pad to 32 bytes (big-endian)
+	padded := make([]byte, 32)
+	copy(padded[32-len(scalarBytes):], scalarBytes)
+
+	var buf [32]byte
+	copy(buf[:], padded)
+	// NewScalarFromBytes returns (scalar, wasReduced) where wasReduced is 0 if canonical, 1 if reduced
+	// Since we already reduced modulo order, this should always succeed
+	scalar, _ := secp.NewScalarFromBytes(&buf)
 
 	return secp256k1.NewScalar(scalar)
+}
+
+// expandMessageXMD implements expand_message_xmd from RFC 9380 Section 5.3.1.
+// This is used for hash_to_field to produce uniform random bytes.
+//
+// Parameters (for SHA-256):
+// - b_in_bytes = 32 (SHA-256 output size)
+// - s_in_bytes = 64 (SHA-256 input block size)
+func expandMessageXMD(msg, dst []byte, lenInBytes int) []byte {
+	const (
+		bInBytes = 32 // SHA-256 output size
+		sInBytes = 64 // SHA-256 input block size
+	)
+
+	// Step 1: ell = ceil(len_in_bytes / b_in_bytes)
+	ell := (lenInBytes + bInBytes - 1) / bInBytes
+
+	// Step 2: Abort checks (len(DST) <= 255, ell <= 255, len_in_bytes <= 65535)
+	if ell > 255 || len(dst) > 255 || lenInBytes > 65535 {
+		panic("expandMessageXMD: invalid parameters")
+	}
+
+	// Step 3: DST_prime = DST || I2OSP(len(DST), 1)
+	dstPrime := append(dst, byte(len(dst)))
+
+	// Step 4: Z_pad = I2OSP(0, s_in_bytes)
+	zPad := make([]byte, sInBytes)
+
+	// Step 5: l_i_b_str = I2OSP(len_in_bytes, 2)
+	libStr := []byte{byte(lenInBytes >> 8), byte(lenInBytes)}
+
+	// Step 6: msg_prime = Z_pad || msg || l_i_b_str || I2OSP(0, 1) || DST_prime
+	msgPrime := make([]byte, 0, sInBytes+len(msg)+2+1+len(dstPrime))
+	msgPrime = append(msgPrime, zPad...)
+	msgPrime = append(msgPrime, msg...)
+	msgPrime = append(msgPrime, libStr...)
+	msgPrime = append(msgPrime, 0x00)
+	msgPrime = append(msgPrime, dstPrime...)
+
+	// Step 7: b_0 = H(msg_prime)
+	b0Hash := sha256.Sum256(msgPrime)
+	b0 := b0Hash[:]
+
+	// Step 8: b_1 = H(b_0 || I2OSP(1, 1) || DST_prime)
+	b1Input := make([]byte, 0, bInBytes+1+len(dstPrime))
+	b1Input = append(b1Input, b0...)
+	b1Input = append(b1Input, 0x01)
+	b1Input = append(b1Input, dstPrime...)
+	b1Hash := sha256.Sum256(b1Input)
+	b1 := b1Hash[:]
+
+	// Collect b values
+	uniformBytes := make([]byte, 0, ell*bInBytes)
+	uniformBytes = append(uniformBytes, b1...)
+
+	// Step 9-10: for i in (2, ..., ell): b_i = H(strxor(b_0, b_(i-1)) || I2OSP(i, 1) || DST_prime)
+	bPrev := b1
+	for i := 2; i <= ell; i++ {
+		// strxor(b_0, b_(i-1))
+		xored := make([]byte, bInBytes)
+		for j := 0; j < bInBytes; j++ {
+			xored[j] = b0[j] ^ bPrev[j]
+		}
+
+		// H(strxor(b_0, b_(i-1)) || I2OSP(i, 1) || DST_prime)
+		biInput := make([]byte, 0, bInBytes+1+len(dstPrime))
+		biInput = append(biInput, xored...)
+		biInput = append(biInput, byte(i))
+		biInput = append(biInput, dstPrime...)
+		biHash := sha256.Sum256(biInput)
+		bi := biHash[:]
+
+		uniformBytes = append(uniformBytes, bi...)
+		bPrev = bi
+	}
+
+	// Step 12: return substr(uniform_bytes, 0, len_in_bytes)
+	return uniformBytes[:lenInBytes]
 }
 
 // domainSeparate prepends the context string and domain tag to the data.

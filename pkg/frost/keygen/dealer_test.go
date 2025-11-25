@@ -269,12 +269,12 @@ func TestDealer_VerifyShare(t *testing.T) {
 	share1 := polyHelper.Evaluate(polynomial, idScalar)
 
 	tests := []struct {
-		name                string
-		identifier          frost.Identifier
-		secretShare         group.Scalar
-		verificationShares  []frost.VerificationShare
-		expectError         bool
-		description         string
+		name               string
+		identifier         frost.Identifier
+		secretShare        group.Scalar
+		verificationShares []frost.VerificationShare
+		expectError        bool
+		description        string
 	}{
 		{
 			name:               "valid share verification",

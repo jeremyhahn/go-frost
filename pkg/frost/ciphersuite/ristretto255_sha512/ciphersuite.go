@@ -18,6 +18,7 @@ import (
 	"crypto/sha512"
 
 	ristretto "github.com/gtank/ristretto255"
+
 	"github.com/jeremyhahn/go-frost/pkg/frost"
 	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite"
 	"github.com/jeremyhahn/go-frost/pkg/frost/group"

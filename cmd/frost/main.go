@@ -189,10 +189,10 @@ func keygenCommand() {
 
 	// Prepare output data
 	outputData := struct {
-		MinSigners     uint32                `json:"min_signers"`
-		MaxSigners     uint32                `json:"max_signers"`
-		GroupPublicKey string                `json:"group_public_key"`
-		KeyPackages    []KeyPackageExport    `json:"key_packages"`
+		MinSigners     uint32             `json:"min_signers"`
+		MaxSigners     uint32             `json:"max_signers"`
+		GroupPublicKey string             `json:"group_public_key"`
+		KeyPackages    []KeyPackageExport `json:"key_packages"`
 	}{
 		MinSigners:     uint32(*minSigners),
 		MaxSigners:     uint32(*maxSigners),
@@ -536,12 +536,12 @@ func commitCommand() {
 
 	// Save commitment for sharing
 	commitmentOutput := struct {
-		Identifier       uint16 `json:"identifier"`
-		HidingCommitment string `json:"hiding_commitment"`
+		Identifier        uint16 `json:"identifier"`
+		HidingCommitment  string `json:"hiding_commitment"`
 		BindingCommitment string `json:"binding_commitment"`
 	}{
-		Identifier:       uint16(commitment.Identifier),
-		HidingCommitment: hex.EncodeToString(commitment.HidingNonceCommitment.Bytes()),
+		Identifier:        uint16(commitment.Identifier),
+		HidingCommitment:  hex.EncodeToString(commitment.HidingNonceCommitment.Bytes()),
 		BindingCommitment: hex.EncodeToString(commitment.BindingNonceCommitment.Bytes()),
 	}
 
@@ -558,13 +558,13 @@ func commitCommand() {
 
 	// Save private nonces (keep secret!)
 	noncesOutput := struct {
-		Identifier    uint16 `json:"identifier"`
-		HidingNonce   string `json:"hiding_nonce"`
-		BindingNonce  string `json:"binding_nonce"`
+		Identifier   uint16 `json:"identifier"`
+		HidingNonce  string `json:"hiding_nonce"`
+		BindingNonce string `json:"binding_nonce"`
 	}{
-		Identifier:    uint16(*participantID),
-		HidingNonce:   hex.EncodeToString(nonces.HidingNonce.Bytes()),
-		BindingNonce:  hex.EncodeToString(nonces.BindingNonce.Bytes()),
+		Identifier:   uint16(*participantID),
+		HidingNonce:  hex.EncodeToString(nonces.HidingNonce.Bytes()),
+		BindingNonce: hex.EncodeToString(nonces.BindingNonce.Bytes()),
 	}
 
 	noncesData, err := json.MarshalIndent(noncesOutput, "", "  ")

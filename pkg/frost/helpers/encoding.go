@@ -67,15 +67,27 @@ func (e *commitmentListEncoder) Encode(commitmentList frost.CommitmentList) ([]b
 
 	result := make([]byte, 0, totalLen)
 
+	// Determine byte order based on group
+	useBigEndian := e.group.ByteOrder() == group.BigEndian
+
 	// Encode each commitment
 	for _, commitment := range commitmentList {
 		// a. Serialize identifier as scalar
 		// Create a scalar from the identifier
 		identifierBytes := make([]byte, scalarLen)
-		// Encode as little-endian to match ristretto255 native format
 		id := uint32(commitment.Identifier)
-		for j := 0; j < 4 && j < len(identifierBytes); j++ {
-			identifierBytes[j] = byte(id >> (8 * j))
+
+		if useBigEndian {
+			// Big-endian encoding
+			identifierBytes[scalarLen-1] = byte(id)
+			identifierBytes[scalarLen-2] = byte(id >> 8)
+			identifierBytes[scalarLen-3] = byte(id >> 16)
+			identifierBytes[scalarLen-4] = byte(id >> 24)
+		} else {
+			// Little-endian encoding (Ed25519, Ed448, ristretto255)
+			for j := 0; j < 4 && j < len(identifierBytes); j++ {
+				identifierBytes[j] = byte(id >> (8 * j))
+			}
 		}
 
 		result = append(result, identifierBytes...)
@@ -131,4 +143,35 @@ func (e *commitmentListEncoder) ValidateCommitmentList(commitmentList frost.Comm
 	}
 
 	return nil
+}
+
+// IdentifierToScalar converts a participant identifier to a scalar using the
+// group's native byte ordering.
+//
+// Per RFC 9591, identifiers must be encoded as scalars in the field.
+// Different groups use different byte orderings:
+// - P-256, secp256k1: big-endian
+// - Ed25519, Ed448, ristretto255: little-endian
+//
+// This function ensures consistent encoding across all FROST operations.
+func IdentifierToScalar(grp group.Group, id frost.Identifier) (group.Scalar, error) {
+	idBytes := make([]byte, grp.ScalarLength())
+	idVal := uint32(id)
+
+	// Determine byte order based on group
+	if grp.ByteOrder() == group.BigEndian {
+		// Big-endian encoding
+		scalarLen := grp.ScalarLength()
+		idBytes[scalarLen-1] = byte(idVal)
+		idBytes[scalarLen-2] = byte(idVal >> 8)
+		idBytes[scalarLen-3] = byte(idVal >> 16)
+		idBytes[scalarLen-4] = byte(idVal >> 24)
+	} else {
+		// Little-endian encoding (Ed25519, Ed448, ristretto255)
+		for j := 0; j < 4 && j < len(idBytes); j++ {
+			idBytes[j] = byte(idVal >> (8 * j))
+		}
+	}
+
+	return grp.DeserializeScalar(idBytes)
 }

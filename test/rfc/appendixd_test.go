@@ -9,6 +9,17 @@ import (
 	"github.com/jeremyhahn/go-frost/pkg/frost/group"
 )
 
+// reverseBytes returns a new byte slice with bytes in reverse order.
+// This is needed because ristretto255 uses little-endian encoding but
+// big.Int.SetBytes() expects big-endian.
+func reverseBytes(b []byte) []byte {
+	reversed := make([]byte, len(b))
+	for i := 0; i < len(b); i++ {
+		reversed[i] = b[len(b)-1-i]
+	}
+	return reversed
+}
+
 // TestAppendixD_RandomScalarGeneration tests RFC 9591 Appendix D
 // Random Scalar Generation requirements
 func TestAppendixD_RandomScalarGeneration(t *testing.T) {
@@ -69,9 +80,10 @@ func TestAppendixD_RandomScalarGeneration(t *testing.T) {
 		scalarBytes := scalar.Bytes()
 
 		// Convert to big.Int for range checking
-		scalarInt := new(big.Int).SetBytes(scalarBytes)
+		// ristretto255 uses little-endian encoding, but big.Int.SetBytes expects big-endian
+		scalarInt := new(big.Int).SetBytes(reverseBytes(scalarBytes))
 		orderBytes := grp.Order()
-		order := new(big.Int).SetBytes(orderBytes)
+		order := new(big.Int).SetBytes(reverseBytes(orderBytes))
 
 		// Scalar should be less than group order
 		if scalarInt.Cmp(order) >= 0 {
@@ -100,7 +112,8 @@ func TestAppendixD_1_RejectionSampling(t *testing.T) {
 		suite := ristretto255_sha512.New()
 		grp := suite.Group()
 		orderBytes := grp.Order()
-		order := new(big.Int).SetBytes(orderBytes)
+		// ristretto255 uses little-endian encoding, but big.Int.SetBytes expects big-endian
+		order := new(big.Int).SetBytes(reverseBytes(orderBytes))
 
 		const maxAttempts = 1000
 		successCount := 0
@@ -171,7 +184,8 @@ func TestAppendixD_2_WideReduction(t *testing.T) {
 		suite := ristretto255_sha512.New()
 		grp := suite.Group()
 		orderBytes := grp.Order()
-		order := new(big.Int).SetBytes(orderBytes)
+		// ristretto255 uses little-endian encoding, but big.Int.SetBytes expects big-endian
+		order := new(big.Int).SetBytes(reverseBytes(orderBytes))
 
 		// Sample wide byte string (2x the order size)
 		wideByteLen := 2 * ((order.BitLen() + 7) / 8)
@@ -203,7 +217,8 @@ func TestAppendixD_2_WideReduction(t *testing.T) {
 		suite := ristretto255_sha512.New()
 		grp := suite.Group()
 		orderBytes := grp.Order()
-		order := new(big.Int).SetBytes(orderBytes)
+		// ristretto255 uses little-endian encoding, but big.Int.SetBytes expects big-endian
+		order := new(big.Int).SetBytes(reverseBytes(orderBytes))
 
 		// Generate multiple scalars using wide reduction
 		const samples = 100

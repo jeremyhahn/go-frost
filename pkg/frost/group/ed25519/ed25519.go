@@ -14,6 +14,7 @@ import (
 	"math/big"
 
 	"filippo.io/edwards25519"
+
 	"github.com/jeremyhahn/go-frost/pkg/frost"
 	"github.com/jeremyhahn/go-frost/pkg/frost/group"
 )
@@ -327,6 +328,11 @@ func (g *Group) ScalarLength() int {
 // Name returns a human-readable name for this group.
 func (g *Group) Name() string {
 	return "ed25519"
+}
+
+// ByteOrder returns the native byte order for Ed25519 scalar serialization.
+func (g *Group) ByteOrder() group.ByteOrder {
+	return group.LittleEndian
 }
 
 // reverseBytes reverses a byte slice (for little-endian to big-endian conversion).

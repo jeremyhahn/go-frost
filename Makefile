@@ -1,7 +1,7 @@
 # Makefile for go-frost
 # FROST threshold signature scheme implementation
 
-.PHONY: all build test test-unit test-integration test-transport integration-test-transport test-coverage clean lint fmt vet docker-build docker-test bench help test-ristretto255-sha512 coverage-ristretto255-sha512 bench-ristretto255-sha512 test-keystore coverage-keystore bench-keystore test-ed25519 coverage-ed25519 bench-ed25519 test-ed25519-sha512 coverage-ed25519-sha512 bench-ed25519-sha512 test-ed448 coverage-ed448 bench-ed448 test-ed448-shake256 coverage-ed448-shake256 bench-ed448-shake256 test-p256 coverage-p256 bench-p256 test-p256-sha256 coverage-p256-sha256 bench-p256-sha256 test-secp256k1 coverage-secp256k1 bench-secp256k1 test-secp256k1-sha256 coverage-secp256k1-sha256 bench-secp256k1-sha256
+.PHONY: all build build-lib build-lib-shared build-lib-static build-lib-fips build-release test test-unit test-integration test-transport integration-test-transport test-coverage clean lint fmt vet docker-build docker-test bench help ci gosec govulncheck staticcheck test-ristretto255-sha512 coverage-ristretto255-sha512 bench-ristretto255-sha512 test-keystore coverage-keystore bench-keystore test-ed25519 coverage-ed25519 bench-ed25519 test-ed25519-sha512 coverage-ed25519-sha512 bench-ed25519-sha512 test-ed448 coverage-ed448 bench-ed448 test-ed448-shake256 coverage-ed448-shake256 bench-ed448-shake256 test-p256 coverage-p256 bench-p256 test-p256-sha256 coverage-p256-sha256 bench-p256-sha256 test-secp256k1 coverage-secp256k1 bench-secp256k1 test-secp256k1-sha256 coverage-secp256k1-sha256 bench-secp256k1-sha256
 
 # Go parameters
 GOCMD=go
@@ -13,9 +13,14 @@ GOMOD=$(GOCMD) mod
 GOFMT=$(GOCMD) fmt
 GOVET=$(GOCMD) vet
 
-# Binary name
+# Binary names
 BINARY_NAME=frost
 BINARY_PATH=./cmd/frost
+LIB_NAME=libfrost
+LIB_PATH=./cmd/libfrost
+
+# Library output directory
+DIST_DIR=./dist
 
 # Directories
 PKG_DIR=./pkg/...
@@ -32,7 +37,13 @@ COVERAGE_HTML=$(COVERAGE_DIR)/coverage.html
 DOCKER_IMAGE=go-frost
 DOCKER_TAG=latest
 
-all: test build
+# Version info
+VERSION ?= $(shell cat VERSION 2>/dev/null || echo "dev")
+GIT_COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "none")
+BUILD_DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
+LDFLAGS = -s -w -X main.Version=$(VERSION) -X main.GitCommit=$(GIT_COMMIT) -X main.BuildDate=$(BUILD_DATE)
+
+all: test build build-lib
 
 ## build: Build the binary
 build:
@@ -43,12 +54,38 @@ build:
 ## build-release: Build release binaries with version info
 build-release:
 	@echo "Building release binaries..."
-	@VERSION=$$(cat VERSION 2>/dev/null || echo "dev") && \
-	GIT_COMMIT=$$(git rev-parse --short HEAD 2>/dev/null || echo "none") && \
-	BUILD_DATE=$$(date -u +"%Y-%m-%dT%H:%M:%SZ") && \
-	LDFLAGS="-s -w -X main.Version=$$VERSION -X main.GitCommit=$$GIT_COMMIT -X main.BuildDate=$$BUILD_DATE" && \
-	CGO_ENABLED=0 $(GOBUILD) -ldflags="$$LDFLAGS" -o $(BINARY_NAME) $(BINARY_PATH)
-	@echo "Built $(BINARY_NAME) version $$VERSION"
+	CGO_ENABLED=0 $(GOBUILD) -ldflags="$(LDFLAGS)" -o $(BINARY_NAME) $(BINARY_PATH)
+	@echo "Built $(BINARY_NAME) version $(VERSION)"
+
+## build-lib: Build both shared and static libraries
+build-lib: build-lib-shared build-lib-static
+	@echo "Libraries built in $(DIST_DIR)/"
+
+## build-lib-shared: Build shared library (libfrost.so)
+build-lib-shared:
+	@echo "Building shared library..."
+	@mkdir -p $(DIST_DIR)
+	CGO_ENABLED=1 $(GOBUILD) -buildmode=c-shared -ldflags="$(LDFLAGS)" -o $(DIST_DIR)/$(LIB_NAME).so $(LIB_PATH)
+	@echo "Built $(DIST_DIR)/$(LIB_NAME).so"
+
+## build-lib-static: Build static library (libfrost.a)
+build-lib-static:
+	@echo "Building static library..."
+	@mkdir -p $(DIST_DIR)
+	CGO_ENABLED=1 $(GOBUILD) -buildmode=c-archive -ldflags="$(LDFLAGS)" -o $(DIST_DIR)/$(LIB_NAME).a $(LIB_PATH)
+	@echo "Built $(DIST_DIR)/$(LIB_NAME).a"
+
+## build-lib-fips: Build libraries with FIPS 140 mode enabled (Go 1.24+)
+build-lib-fips:
+	@echo "Building FIPS-compliant libraries..."
+	@mkdir -p $(DIST_DIR)/fips
+	GOFIPS140=latest CGO_ENABLED=1 $(GOBUILD) -buildmode=c-shared -ldflags="$(LDFLAGS)" -o $(DIST_DIR)/fips/$(LIB_NAME)-fips.so $(LIB_PATH)
+	GOFIPS140=latest CGO_ENABLED=1 $(GOBUILD) -buildmode=c-archive -ldflags="$(LDFLAGS)" -o $(DIST_DIR)/fips/$(LIB_NAME)-fips.a $(LIB_PATH)
+	@echo "Built FIPS libraries in $(DIST_DIR)/fips/"
+
+## build-all: Build CLI, libraries, and FIPS libraries
+build-all: build build-lib build-lib-fips
+	@echo "All builds complete"
 
 ## test: Run all tests
 test: test-unit
@@ -355,21 +392,66 @@ bench-keygen:
 ## lint: Run linters
 lint:
 	@echo "Running linters..."
-	@which golangci-lint > /dev/null || (echo "golangci-lint not installed. Install with: curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$(go env GOPATH)/bin" && exit 1)
-	golangci-lint run --timeout=5m ./...
+	@which golangci-lint > /dev/null 2>&1 || test -f "$$(go env GOPATH)/bin/golangci-lint" || (echo "golangci-lint not installed. Install with: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest" && exit 1)
+	@if which golangci-lint > /dev/null 2>&1; then \
+		golangci-lint run --timeout=5m ./...; \
+	else \
+		$$(go env GOPATH)/bin/golangci-lint run --timeout=5m ./...; \
+	fi
+
+## gosec: Run security scanner
+## Excludes: G101 (hardcoded creds), G104 (unhandled errors), G115 (int overflow), G304 (file inclusion), G306 (file perms), G404 (weak rand)
+gosec:
+	@echo "Running gosec security scanner..."
+	@which gosec > /dev/null 2>&1 || go install github.com/securego/gosec/v2/cmd/gosec@latest
+	@which gosec > /dev/null 2>&1 && gosec -quiet -exclude=G101,G104,G115,G304,G306,G404 ./... || $$(go env GOPATH)/bin/gosec -quiet -exclude=G101,G104,G115,G304,G306,G404 ./...
+
+## govulncheck: Check for known vulnerabilities
+govulncheck:
+	@echo "Running govulncheck..."
+	@which govulncheck > /dev/null 2>&1 || go install golang.org/x/vuln/cmd/govulncheck@latest
+	@which govulncheck > /dev/null 2>&1 && govulncheck ./... || $$(go env GOPATH)/bin/govulncheck ./...
+
+## staticcheck: Run staticcheck linter
+staticcheck:
+	@echo "Running staticcheck..."
+	@which staticcheck > /dev/null 2>&1 || go install honnef.co/go/tools/cmd/staticcheck@latest
+	@which staticcheck > /dev/null 2>&1 && staticcheck ./... || $$(go env GOPATH)/bin/staticcheck ./...
+
+## ci: Run all CI checks (lint, security, tests, build)
+## Note: staticcheck is included in golangci-lint, so we skip the standalone version
+ci: tidy vet lint gosec govulncheck test build build-lib
+	@echo ""
+	@echo "========================================"
+	@echo "CI pipeline completed successfully!"
+	@echo "========================================"
+
+## ci-quick: Run quick CI checks (skip integration tests)
+ci-quick: tidy vet lint gosec test-unit build
+	@echo ""
+	@echo "========================================"
+	@echo "Quick CI completed successfully!"
+	@echo "========================================"
+
+## ci-full: Run full CI including integration tests and FIPS builds
+ci-full: ci test-integration build-lib-fips
+	@echo ""
+	@echo "========================================"
+	@echo "Full CI pipeline completed successfully!"
+	@echo "========================================"
 
 ## fmt: Format code
 fmt:
 	@echo "Formatting code..."
 	$(GOFMT) $(PKG_DIR)
-	$(GOFMT) $(INTERNAL_DIR)
+	@if [ -d "./internal" ]; then $(GOFMT) $(INTERNAL_DIR); fi
 	$(GOFMT) $(CMD_DIR)
 
 ## vet: Run go vet
 vet:
 	@echo "Running go vet..."
 	$(GOVET) $(PKG_DIR)
-	$(GOVET) $(INTERNAL_DIR)
+	@if [ -d "./internal" ]; then $(GOVET) $(INTERNAL_DIR); fi
 	$(GOVET) $(CMD_DIR)
 
 ## tidy: Tidy dependencies
@@ -383,6 +465,7 @@ clean:
 	$(GOCLEAN)
 	rm -f $(BINARY_NAME)
 	rm -rf $(COVERAGE_DIR)
+	rm -rf $(DIST_DIR)
 	rm -rf ./test/integration/data
 
 ## docker-build: Build Docker image

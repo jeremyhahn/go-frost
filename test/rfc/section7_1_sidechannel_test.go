@@ -49,10 +49,10 @@ import (
 
 const (
 	// Statistical parameters for timing analysis
-	minSampleSize     = 2000  // Minimum measurements per input class
-	tTestThreshold    = 5.0   // t-statistic threshold (p < 0.0000006)
-	warmupIterations  = 200   // Warmup iterations to stabilize cache/CPU
-	benchmarkDuration = 3     // Seconds per benchmark run
+	minSampleSize     = 2000 // Minimum measurements per input class
+	tTestThreshold    = 5.0  // t-statistic threshold (p < 0.0000006)
+	warmupIterations  = 200  // Warmup iterations to stabilize cache/CPU
+	benchmarkDuration = 3    // Seconds per benchmark run
 )
 
 // timingSample represents a collection of timing measurements

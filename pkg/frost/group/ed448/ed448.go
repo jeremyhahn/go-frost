@@ -5,36 +5,34 @@
 // - Fast, constant-time operations
 // - Compatible with RFC 8032 (Ed448 signatures)
 //
-// This implementation uses github.com/otrv4/ed448 for the underlying
-// cryptographic primitives.
+// This implementation uses github.com/cloudflare/circl/ecc/goldilocks for the
+// underlying cryptographic primitives.
 package ed448
 
 import (
 	"crypto/rand"
 	"math/big"
 
-	ed "github.com/otrv4/ed448"
+	"github.com/cloudflare/circl/ecc/goldilocks"
+
 	"github.com/jeremyhahn/go-frost/pkg/frost"
 	"github.com/jeremyhahn/go-frost/pkg/frost/group"
 )
 
 const (
 	// ElementSize is the byte length of a serialized group element.
-	// Ed448 uses 57 bytes (448 bits + 8 bits for flags)
+	// Ed448 uses 57 bytes (448 bits + sign bit, aligned to bytes)
 	ElementSize = 57
 
 	// ScalarSize is the byte length of a serialized scalar.
-	// Ed448 scalars are 57 bytes
+	// Ed448 scalars are 57 bytes in RFC encoding
 	ScalarSize = 57
 
-	// pointSize is the internal size used by the ed448 library (56 bytes = 448 bits)
-	pointSize = 56
-
-	// scalarSize is the internal size used by the ed448 library
-	scalarSize = 57
+	// internalScalarSize is the scalar size used by the circl library
+	internalScalarSize = 56
 )
 
-// groupOrderBytes is the order of the edwards448 group.
+// groupOrderBytes is the order of the edwards448 group (little-endian).
 // This is the prime order l = 2^446 - 13818066809895115352007386748515426880336692926039124645428935903040627522190572831145592726100
 var groupOrderBytes = []byte{
 	0xf3, 0x44, 0x58, 0xab, 0x92, 0xc2, 0x78, 0x23,
@@ -47,182 +45,236 @@ var groupOrderBytes = []byte{
 	0x00,
 }
 
-// Element wraps an ed448.Point to implement the group.Element interface.
+// groupOrder is the group order as big.Int (little-endian bytes converted)
+var groupOrder *big.Int
+
+func init() {
+	// Convert little-endian group order bytes to big.Int
+	groupOrder = new(big.Int).SetBytes(reverseBytes(groupOrderBytes[:56]))
+}
+
+// Element wraps a goldilocks.Point to implement the group.Element interface.
 type Element struct {
-	point ed.Point
+	point *goldilocks.Point
 }
 
 // Add returns the sum of this element and another element.
 func (e *Element) Add(other group.Element) group.Element {
 	otherElem := other.(*Element)
-	result := e.point.Copy()
-	result.Add(e.point, otherElem.point)
+	curve := goldilocks.Curve{}
+	result := curve.Add(e.point, otherElem.point)
 	return &Element{point: result}
 }
 
 // Negate returns the additive inverse of this element.
 func (e *Element) Negate() group.Element {
-	// Create identity point (encoded as all zeros, 56 bytes for the library)
-	identityBytes := make([]byte, pointSize)
-	identity := ed.NewPointFromBytes([][]byte{identityBytes}...)
+	curve := goldilocks.Curve{}
+	identity := curve.Identity()
+	// Negate by computing 0 - P
+	// We need to use the curve's negation: -P has the same x but negated y
+	// For Goldilocks, we can compute identity - P = -P
+	// However, circl doesn't have a direct Sub operation
+	// We need to use the Add with a negated point
 
-	result := identity.Copy()
-	result.Sub(identity, e.point)
-	return &Element{point: result}
+	// Get the bytes, negate the sign bit, and reconstruct
+	pointBytes, _ := e.point.MarshalBinary()
+
+	// For Edwards curves, negating a point flips the sign of the x coordinate
+	// The sign bit is the LSB of the last byte
+	negBytes := make([]byte, len(pointBytes))
+	copy(negBytes, pointBytes)
+	negBytes[len(negBytes)-1] ^= 0x80 // Flip the sign bit
+
+	negPoint, err := goldilocks.FromBytes(negBytes)
+	if err != nil {
+		// If decoding fails, fall back to computing 2*identity - P (which equals -P)
+		// This shouldn't happen for valid points
+		twoIdentity := curve.Double(identity)
+		negPoint = curve.Add(twoIdentity, e.point)
+	}
+
+	return &Element{point: negPoint}
 }
 
 // IsIdentity returns true if this element is the identity element.
 func (e *Element) IsIdentity() bool {
-	identityBytes := make([]byte, pointSize)
-	identity := ed.NewPointFromBytes([][]byte{identityBytes}...)
-	return e.point.Equals(identity)
+	curve := goldilocks.Curve{}
+	identity := curve.Identity()
+
+	// Compare by encoding
+	eBytes, _ := e.point.MarshalBinary()
+	iBytes, _ := identity.MarshalBinary()
+
+	if len(eBytes) != len(iBytes) {
+		return false
+	}
+	for i := range eBytes {
+		if eBytes[i] != iBytes[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // Equal returns true if this element equals another element.
 func (e *Element) Equal(other group.Element) bool {
 	otherElem := other.(*Element)
-	return e.point.Equals(otherElem.point)
+
+	eBytes, _ := e.point.MarshalBinary()
+	oBytes, _ := otherElem.point.MarshalBinary()
+
+	if len(eBytes) != len(oBytes) {
+		return false
+	}
+	for i := range eBytes {
+		if eBytes[i] != oBytes[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // Bytes returns the canonical byte representation of this element.
 func (e *Element) Bytes() []byte {
-	encoded := e.point.Encode()
-	// The library returns 56 bytes, but FROST expects 57 bytes
-	// Pad with a zero byte at the end
-	if len(encoded) == pointSize {
-		result := make([]byte, ElementSize)
-		copy(result, encoded)
-		return result
-	}
+	encoded, _ := e.point.MarshalBinary()
 	return encoded
 }
 
 // Copy returns a deep copy of this element.
 func (e *Element) Copy() group.Element {
-	return &Element{point: e.point.Copy()}
+	encoded, _ := e.point.MarshalBinary()
+	newPoint, _ := goldilocks.FromBytes(encoded)
+	return &Element{point: newPoint}
 }
 
-// Scalar wraps an ed448.Scalar to implement the group.Scalar interface.
+// Scalar wraps a goldilocks.Scalar to implement the group.Scalar interface.
+// Uses constant-time operations for all arithmetic to prevent timing attacks.
 type Scalar struct {
-	scalar ed.Scalar
+	value goldilocks.Scalar
 }
 
 // Add returns the sum of this scalar and another scalar modulo p.
+// Uses constant-time addition from goldilocks library.
 func (s *Scalar) Add(other group.Scalar) group.Scalar {
 	otherScalar := other.(*Scalar)
-	result := s.scalar.Copy()
-	result.Add(s.scalar, otherScalar.scalar)
-	return &Scalar{scalar: result}
+	var result goldilocks.Scalar
+	result.Add(&s.value, &otherScalar.value)
+	return &Scalar{value: result}
 }
 
 // Sub returns the difference of this scalar and another scalar modulo p.
+// Uses constant-time subtraction from goldilocks library.
 func (s *Scalar) Sub(other group.Scalar) group.Scalar {
 	otherScalar := other.(*Scalar)
-	result := s.scalar.Copy()
-	result.Sub(s.scalar, otherScalar.scalar)
-	return &Scalar{scalar: result}
+	var result goldilocks.Scalar
+	result.Sub(&s.value, &otherScalar.value)
+	return &Scalar{value: result}
 }
 
 // Mul returns the product of this scalar and another scalar modulo p.
+// Uses constant-time multiplication from goldilocks library.
 func (s *Scalar) Mul(other group.Scalar) group.Scalar {
 	otherScalar := other.(*Scalar)
-	result := s.scalar.Copy()
-	result.Mul(s.scalar, otherScalar.scalar)
-	return &Scalar{scalar: result}
+	var result goldilocks.Scalar
+	result.Mul(&s.value, &otherScalar.value)
+	return &Scalar{value: result}
 }
 
 // Inv returns the multiplicative inverse of this scalar modulo p.
+// Note: Uses big.Int for modular inverse computation. This is acceptable
+// because Inv is only used for Lagrange coefficient computation with public
+// participant identifiers, not secret values.
 func (s *Scalar) Inv() (group.Scalar, error) {
 	if s.IsZero() {
 		return nil, frost.ErrZeroScalar
 	}
-	result := s.scalar.Copy()
-	if !result.Invert() {
+	// Convert to big.Int for inverse computation
+	bigEndian := reverseBytes(s.value[:])
+	value := new(big.Int).SetBytes(bigEndian)
+	result := new(big.Int).ModInverse(value, groupOrder)
+	if result == nil {
 		return nil, frost.NewParameterError("scalar", "failed to invert scalar", frost.ErrInvalidParameters)
 	}
-	return &Scalar{scalar: result}, nil
+	// Convert back to goldilocks.Scalar
+	var invScalar goldilocks.Scalar
+	invScalar.FromBytes(reverseBytes(result.Bytes()))
+	return &Scalar{value: invScalar}, nil
 }
 
 // Negate returns the additive inverse of this scalar modulo p.
+// Uses constant-time negation from goldilocks library.
 func (s *Scalar) Negate() group.Scalar {
-	// Negate by computing 0 - scalar
-	zero := ed.NewScalar([][]byte{make([]byte, scalarSize)}...)
-	result := zero.Copy()
-	result.Sub(zero, s.scalar)
-	return &Scalar{scalar: result}
+	var result goldilocks.Scalar
+	copy(result[:], s.value[:])
+	result.Neg()
+	return &Scalar{value: result}
 }
 
 // IsZero returns true if this scalar is zero.
 func (s *Scalar) IsZero() bool {
-	zero := ed.NewScalar([][]byte{make([]byte, scalarSize)}...)
-	return s.scalar.Equals(zero)
+	return s.value.IsZero()
 }
 
 // Equal returns true if this scalar equals another scalar.
+// Uses constant-time comparison.
 func (s *Scalar) Equal(other group.Scalar) bool {
 	otherScalar := other.(*Scalar)
-	return s.scalar.Equals(otherScalar.scalar)
+	// Constant-time comparison using XOR
+	var diff byte
+	for i := 0; i < len(s.value); i++ {
+		diff |= s.value[i] ^ otherScalar.value[i]
+	}
+	return diff == 0
 }
 
 // Bytes returns the canonical byte representation of this scalar.
-// Note: Returns little-endian bytes (Ed448 convention).
+// Note: Returns little-endian bytes (Ed448 convention), padded to 57 bytes.
 func (s *Scalar) Bytes() []byte {
-	encoded := s.scalar.Encode()
-	// The library might return fewer than 57 bytes, pad to ScalarSize
-	if len(encoded) < ScalarSize {
-		result := make([]byte, ScalarSize)
-		copy(result, encoded)
-		return result
-	}
-	return encoded
+	// goldilocks.Scalar is already little-endian, just pad to 57 bytes
+	result := make([]byte, ScalarSize)
+	copy(result, s.value[:])
+	return result
 }
 
 // Copy returns a deep copy of this scalar.
 func (s *Scalar) Copy() group.Scalar {
-	return &Scalar{scalar: s.scalar.Copy()}
+	var result goldilocks.Scalar
+	copy(result[:], s.value[:])
+	return &Scalar{value: result}
 }
 
 // Compare compares this scalar with another scalar.
 // Returns -1 if this < other, 0 if equal, 1 if this > other.
-//
-// IMPORTANT: This implementation is NOT constant-time for ordering (< or >).
-// However, equality checks use constant-time comparison.
-// This method should NOT be used with secret scalar values for ordering comparisons.
-// For equality checks with secrets, use Equal() which is fully constant-time.
-//
-// Note: Currently unused in production code. Provided for interface completeness.
+// Note: This comparison is NOT constant-time and should only be used for
+// sorting public values, not for comparisons involving secrets.
 func (s *Scalar) Compare(other group.Scalar) int {
 	otherScalar := other.(*Scalar)
-
-	// Encode both scalars to bytes for comparison (little-endian from Bytes())
-	sBytes := s.Bytes()
-	oBytes := otherScalar.Bytes()
-
-	// Convert to big.Int for comparison (need to reverse for big-endian)
-	// NOTE: big.Int.Cmp() is NOT constant-time
-	// This is acceptable since Compare() is not used with secret values
-	sBig := new(big.Int).SetBytes(reverseBytes(sBytes))
-	oBig := new(big.Int).SetBytes(reverseBytes(oBytes))
-
-	return sBig.Cmp(oBig)
+	// Convert to big.Int for comparison (big-endian for proper ordering)
+	selfBE := reverseBytes(s.value[:])
+	otherBE := reverseBytes(otherScalar.value[:])
+	selfInt := new(big.Int).SetBytes(selfBE)
+	otherInt := new(big.Int).SetBytes(otherBE)
+	return selfInt.Cmp(otherInt)
 }
 
 // Group implements the FROST group interface for Ed448.
 type Group struct {
+	curve     goldilocks.Curve
 	generator *Element
 	identity  *Element
 }
 
 // NewGroup creates a new Ed448 group.
 func NewGroup() *Group {
-	identityBytes := make([]byte, pointSize) // Note: library uses 56 bytes for point encoding
+	curve := goldilocks.Curve{}
 	return &Group{
-		generator: &Element{point: ed.BasePoint},
-		identity:  &Element{point: ed.NewPointFromBytes([][]byte{identityBytes}...)},
+		curve:     curve,
+		generator: &Element{point: curve.Generator()},
+		identity:  &Element{point: curve.Identity()},
 	}
 }
 
-// Order returns the order of the group.
+// Order returns the order of the group (little-endian).
 func (g *Group) Order() []byte {
 	// Return a copy to prevent external modification
 	order := make([]byte, len(groupOrderBytes))
@@ -242,8 +294,8 @@ func (g *Group) Generator() group.Element {
 
 // NewScalar creates a new scalar initialized to zero.
 func (g *Group) NewScalar() group.Scalar {
-	zeroBytes := make([]byte, scalarSize)
-	return &Scalar{scalar: ed.NewScalar([][]byte{zeroBytes}...)}
+	var zero goldilocks.Scalar
+	return &Scalar{value: zero}
 }
 
 // NewElement creates a new element initialized to the identity.
@@ -253,40 +305,38 @@ func (g *Group) NewElement() group.Element {
 
 // RandomScalar generates a random scalar in the field.
 func (g *Group) RandomScalar() (group.Scalar, error) {
-	// Generate 114 random bytes for uniform reduction (2x the scalar size)
-	randomBytes := make([]byte, 114)
+	// Generate random bytes (use 64 bytes for uniform distribution after reduction)
+	randomBytes := make([]byte, 64)
 	_, err := rand.Read(randomBytes)
 	if err != nil {
 		return nil, frost.NewParameterError("random", "failed to generate random bytes", err)
 	}
 
-	// Use BarretDecode for uniform reduction modulo the group order
-	zeroBytes := make([]byte, scalarSize)
-	scalar := ed.NewScalar([][]byte{zeroBytes}...)
+	// Use goldilocks.Scalar.FromBytes which reduces mod order
+	var scalar goldilocks.Scalar
+	scalar.FromBytes(randomBytes)
 
-	if err := scalar.BarretDecode(randomBytes); err != nil {
-		return nil, frost.NewParameterError("random", "failed to decode random bytes", err)
-	}
-
-	return &Scalar{scalar: scalar}, nil
+	return &Scalar{value: scalar}, nil
 }
 
 // ScalarMult performs scalar multiplication between an element and a scalar.
+// Uses constant-time scalar multiplication from goldilocks library.
 func (g *Group) ScalarMult(element group.Element, scalar group.Scalar) group.Element {
 	elem := element.(*Element)
 	scal := scalar.(*Scalar)
 
-	result := ed.PointScalarMul(elem.point, scal.scalar)
-
+	// Use the goldilocks.Scalar directly
+	result := g.curve.ScalarMult(&scal.value, elem.point)
 	return &Element{point: result}
 }
 
 // ScalarBaseMult performs scalar multiplication with the generator.
+// Uses constant-time scalar multiplication from goldilocks library.
 func (g *Group) ScalarBaseMult(scalar group.Scalar) group.Element {
 	scal := scalar.(*Scalar)
 
-	result := ed.ScalarBaseMult(scal.scalar)
-
+	// Use the goldilocks.Scalar directly
+	result := g.curve.ScalarBaseMult(&scal.value)
 	return &Element{point: result}
 }
 
@@ -308,16 +358,13 @@ func (g *Group) DeserializeElement(data []byte) (group.Element, error) {
 		return nil, frost.NewParameterError("data", "invalid element encoding length", frost.ErrDeserializationFailed)
 	}
 
-	// The library expects 56 bytes, so we trim the padding byte if present
-	dataToUse := data
-	if len(data) == ElementSize {
-		dataToUse = data[:pointSize]
+	point, err := goldilocks.FromBytes(data)
+	if err != nil {
+		return nil, frost.NewParameterError("data", "failed to decode point", frost.ErrDeserializationFailed)
 	}
 
-	point := ed.NewPointFromBytes([][]byte{dataToUse}...)
-
 	// Check if the point is on the curve
-	if !point.IsOnCurve() {
+	if !g.curve.IsOnCurve(point) {
 		return nil, frost.NewParameterError("data", "point not on curve", frost.ErrDeserializationFailed)
 	}
 
@@ -339,23 +386,26 @@ func (g *Group) SerializeScalar(scalar group.Scalar) []byte {
 
 // DeserializeScalar decodes a byte slice to a scalar.
 // Note: Ed448 uses little-endian encoding.
+// Per RFC 9591, this function rejects scalars >= group order rather than reducing them.
 func (g *Group) DeserializeScalar(data []byte) (group.Scalar, error) {
 	if len(data) != ScalarSize {
 		return nil, frost.NewParameterError("data", "invalid scalar encoding length", frost.ErrDeserializationFailed)
 	}
 
-	zeroBytes := make([]byte, scalarSize)
-	scalar := ed.NewScalar([][]byte{zeroBytes}...)
+	// Convert little-endian bytes to big.Int for range check
+	bigEndian := reverseBytes(data[:internalScalarSize])
+	value := new(big.Int).SetBytes(bigEndian)
 
-	// The library expects exactly scalarSize bytes, trim padding if needed
-	dataToUse := data
-	if len(data) > scalarSize {
-		dataToUse = data[:scalarSize]
+	// Reject scalars >= group order (canonical check per RFC 9591)
+	if value.Cmp(groupOrder) >= 0 {
+		return nil, frost.NewParameterError("data", "scalar value >= group order", frost.ErrDeserializationFailed)
 	}
 
-	scalar.Decode(dataToUse)
+	// Create goldilocks.Scalar from valid bytes
+	var scalar goldilocks.Scalar
+	copy(scalar[:], data[:internalScalarSize])
 
-	return &Scalar{scalar: scalar}, nil
+	return &Scalar{value: scalar}, nil
 }
 
 // ElementLength returns the byte length of a serialized element.
@@ -373,6 +423,11 @@ func (g *Group) Name() string {
 	return "ed448"
 }
 
+// ByteOrder returns the native byte order for Ed448 scalar serialization.
+func (g *Group) ByteOrder() group.ByteOrder {
+	return group.LittleEndian
+}
+
 // reverseBytes reverses a byte slice (for little-endian to big-endian conversion).
 func reverseBytes(b []byte) []byte {
 	result := make([]byte, len(b))
@@ -382,14 +437,30 @@ func reverseBytes(b []byte) []byte {
 	return result
 }
 
-// NewElement creates a new Element wrapping an ed448.Point.
+// NewElement creates a new Element wrapping a goldilocks.Point.
 // This is used by ciphersuites to create group elements from underlying library elements.
-func NewElement(point ed.Point) *Element {
+func NewElement(point *goldilocks.Point) *Element {
 	return &Element{point: point}
 }
 
-// NewScalar creates a new Scalar wrapping an ed448.Scalar.
-// This is used by ciphersuites to create scalars from underlying library scalars.
-func NewScalar(scalar ed.Scalar) *Scalar {
-	return &Scalar{scalar: scalar}
+// NewScalar creates a new Scalar from a big.Int value.
+// This is used by ciphersuites to create scalars.
+func NewScalar(value *big.Int) *Scalar {
+	// Reduce value modulo group order
+	reduced := new(big.Int).Mod(value, groupOrder)
+	// Convert to goldilocks.Scalar (little-endian)
+	var scalar goldilocks.Scalar
+	bytes := reduced.Bytes()
+	littleEndian := reverseBytes(bytes)
+	copy(scalar[:], littleEndian)
+	return &Scalar{value: scalar}
+}
+
+// NewScalarFromBytes creates a new Scalar from little-endian bytes.
+// This is primarily used by the ciphersuite for hash-to-scalar operations.
+// Uses constant-time reduction via goldilocks.Scalar.FromBytes.
+func NewScalarFromBytes(data []byte) *Scalar {
+	var scalar goldilocks.Scalar
+	scalar.FromBytes(data)
+	return &Scalar{value: scalar}
 }

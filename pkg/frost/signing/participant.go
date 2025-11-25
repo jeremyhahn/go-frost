@@ -186,17 +186,11 @@ func (p *participant) RoundTwo(nonces frost.SigningNonces, msg []byte, commitmen
 	participants := encoder.GetParticipants(commitmentList)
 
 	// Convert participant identifiers to scalars for interpolation
+	// Uses group-specific byte ordering (little-endian for Ed25519/Ed448/ristretto255,
+	// big-endian for P-256/secp256k1)
 	participantScalars := make([]group.Scalar, len(participants))
 	for i, id := range participants {
-		// Create scalar from identifier
-		idBytes := make([]byte, grp.ScalarLength())
-		idVal := uint32(id)
-		// Encode as big-endian to match dealer.go convention
-		for j := 0; j < 4 && j < len(idBytes); j++ {
-			idBytes[len(idBytes)-1-j] = byte(idVal >> (8 * j))
-		}
-
-		scalar, err := grp.DeserializeScalar(idBytes)
+		scalar, err := helpers.IdentifierToScalar(grp, id)
 		if err != nil {
 			return frost.SignatureShare{}, frost.NewParameterError("participantScalar", "failed to create", err)
 		}
@@ -204,14 +198,7 @@ func (p *participant) RoundTwo(nonces frost.SigningNonces, msg []byte, commitmen
 	}
 
 	// 5. Compute lambda_i = derive_interpolating_value(identifiers, identifier)
-	myIDBytes := make([]byte, grp.ScalarLength())
-	myIDVal := uint32(p.keyPackage.Identifier)
-	// Encode as big-endian to match dealer.go convention
-	for j := 0; j < 4 && j < len(myIDBytes); j++ {
-		myIDBytes[len(myIDBytes)-1-j] = byte(myIDVal >> (8 * j))
-	}
-
-	myIDScalar, err := grp.DeserializeScalar(myIDBytes)
+	myIDScalar, err := helpers.IdentifierToScalar(grp, p.keyPackage.Identifier)
 	if err != nil {
 		return frost.SignatureShare{}, frost.NewParameterError("myIDScalar", "failed to create", err)
 	}
@@ -299,17 +286,11 @@ func (p *participant) VerifySignatureShare(share frost.SignatureShare, msg []byt
 	participants := encoder.GetParticipants(commitmentList)
 
 	// Convert participant identifiers to scalars for interpolation
+	// Uses group-specific byte ordering (little-endian for Ed25519/Ed448/ristretto255,
+	// big-endian for P-256/secp256k1)
 	participantScalars := make([]group.Scalar, len(participants))
 	for i, id := range participants {
-		// Create scalar from identifier (little-endian for ristretto255)
-		idBytes := make([]byte, grp.ScalarLength())
-		idVal := uint32(id)
-		// Encode as little-endian to match ristretto255 native format
-		for j := 0; j < 4 && j < len(idBytes); j++ {
-			idBytes[j] = byte(idVal >> (8 * j))
-		}
-
-		scalar, err := grp.DeserializeScalar(idBytes)
+		scalar, err := helpers.IdentifierToScalar(grp, id)
 		if err != nil {
 			return frost.NewParameterError("participantScalar", "failed to create", err)
 		}
@@ -317,14 +298,7 @@ func (p *participant) VerifySignatureShare(share frost.SignatureShare, msg []byt
 	}
 
 	// 5. Compute lambda_i for the share's participant
-	shareIDBytes := make([]byte, grp.ScalarLength())
-	shareIDVal := uint32(share.Identifier)
-	// Encode as little-endian to match ristretto255 native format
-	for j := 0; j < 4 && j < len(shareIDBytes); j++ {
-		shareIDBytes[j] = byte(shareIDVal >> (8 * j))
-	}
-
-	shareIDScalar, err := grp.DeserializeScalar(shareIDBytes)
+	shareIDScalar, err := helpers.IdentifierToScalar(grp, share.Identifier)
 	if err != nil {
 		return frost.NewParameterError("shareIDScalar", "failed to create", err)
 	}
@@ -366,30 +340,19 @@ func (p *participant) VerifySignatureShare(share frost.SignatureShare, msg []byt
 	// This is the counterpart to secret share evaluation in key generation.
 	// PK_i = sum_{j=0}^{degree} (commitment_j * identifier^j)
 	//
-	// NOTE: Must use little-endian encoding to match ristretto255 native format.
-	// The ristretto255 library's DeserializeScalar expects little-endian bytes.
+	// Uses group-specific byte ordering for identifier encoding.
 
-	// Convert participant identifier to scalar using LITTLE-ENDIAN encoding
-	// (matching ristretto255 native format used in vss.go)
-	polyIDBytes := make([]byte, grp.ScalarLength())
-	polyIDValue := uint32(share.Identifier)
-	for j := 0; j < 4 && j < len(polyIDBytes); j++ {
-		polyIDBytes[j] = byte(polyIDValue >> (8 * j))
-	}
-
-	polyIDScalar, err := grp.DeserializeScalar(polyIDBytes)
+	// Convert participant identifier to scalar using group-specific encoding
+	polyIDScalar, err := helpers.IdentifierToScalar(grp, share.Identifier)
 	if err != nil {
 		return frost.NewParameterError("polyIDScalar", "failed to create", err)
 	}
 
 	// Compute identifier^j for each power
 	verificationKey := grp.Identity()
-	idPower := grp.NewScalar()
 
-	// Start with id^0 = 1
-	oneBytes := make([]byte, grp.ScalarLength())
-	oneBytes[0] = 1
-	idPower, _ = grp.DeserializeScalar(oneBytes)
+	// Start with id^0 = 1 (use IdentifierToScalar for consistent encoding)
+	idPower, _ := helpers.IdentifierToScalar(grp, frost.Identifier(1))
 
 	// Evaluate polynomial: sum_{j=0}^{degree} (commitment_j * identifier^j)
 	for j := 0; j < len(p.keyPackage.VerificationShares); j++ {

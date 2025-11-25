@@ -194,7 +194,7 @@ func TestPolynomialHelper_DeriveInterpolatingValue_SinglePoint(t *testing.T) {
 	// For a single point, the Lagrange coefficient should be 1
 	// Create a properly sized byte slice for the scalar
 	oneBytes := make([]byte, 32) // Standard scalar size
-	oneBytes[0] = 1 // Little-endian encoding
+	oneBytes[0] = 1              // Little-endian encoding
 
 	one := grp.NewScalar().(*testutil.MockScalar)
 	one.SetBytes(oneBytes)

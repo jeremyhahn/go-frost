@@ -314,3 +314,202 @@ func BenchmarkEncode(b *testing.B) {
 		encoder.Encode(commitmentList)
 	}
 }
+
+// Tests for IdentifierToScalar function
+
+func TestIdentifierToScalar_LittleEndianGroups(t *testing.T) {
+	// Test groups that use little-endian encoding: ed25519, ed448, ristretto255
+	testCases := []struct {
+		name       string
+		groupName  string
+		identifier frost.Identifier
+		// First 4 bytes should be little-endian encoding of identifier
+	}{
+		{"ed25519_id_1", "ed25519", 1},
+		{"ed25519_id_256", "ed25519", 256},
+		{"ed25519_id_65536", "ed25519", 65536},
+		{"ristretto255_id_1", "ristretto255", 1},
+		{"ristretto255_id_42", "ristretto255", 42},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			grp := testutil.NewMockGroupWithName(tc.groupName)
+			scalar, err := IdentifierToScalar(grp, tc.identifier)
+			if err != nil {
+				t.Fatalf("IdentifierToScalar() error = %v", err)
+			}
+
+			// Get bytes and verify little-endian encoding
+			bytes := scalar.Bytes()
+			idVal := uint32(tc.identifier)
+
+			// Little-endian: least significant byte first
+			if bytes[0] != byte(idVal) {
+				t.Errorf("byte[0] = %d, want %d (little-endian LSB)", bytes[0], byte(idVal))
+			}
+			if bytes[1] != byte(idVal>>8) {
+				t.Errorf("byte[1] = %d, want %d", bytes[1], byte(idVal>>8))
+			}
+			if bytes[2] != byte(idVal>>16) {
+				t.Errorf("byte[2] = %d, want %d", bytes[2], byte(idVal>>16))
+			}
+			if bytes[3] != byte(idVal>>24) {
+				t.Errorf("byte[3] = %d, want %d", bytes[3], byte(idVal>>24))
+			}
+		})
+	}
+}
+
+func TestIdentifierToScalar_BigEndianGroups(t *testing.T) {
+	// Test groups that use big-endian encoding: p256, secp256k1
+	testCases := []struct {
+		name       string
+		groupName  string
+		identifier frost.Identifier
+	}{
+		{"p256_id_1", "p256", 1},
+		{"p256_id_256", "p256", 256},
+		{"p256_id_65536", "p256", 65536},
+		{"secp256k1_id_1", "secp256k1", 1},
+		{"secp256k1_id_42", "secp256k1", 42},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			grp := testutil.NewMockGroupWithName(tc.groupName)
+			scalar, err := IdentifierToScalar(grp, tc.identifier)
+			if err != nil {
+				t.Fatalf("IdentifierToScalar() error = %v", err)
+			}
+
+			// Get bytes and verify big-endian encoding
+			bytes := scalar.Bytes()
+			scalarLen := grp.ScalarLength()
+			idVal := uint32(tc.identifier)
+
+			// Big-endian: most significant byte first, value at end
+			if bytes[scalarLen-1] != byte(idVal) {
+				t.Errorf("byte[%d] = %d, want %d (big-endian LSB)", scalarLen-1, bytes[scalarLen-1], byte(idVal))
+			}
+			if bytes[scalarLen-2] != byte(idVal>>8) {
+				t.Errorf("byte[%d] = %d, want %d", scalarLen-2, bytes[scalarLen-2], byte(idVal>>8))
+			}
+			if bytes[scalarLen-3] != byte(idVal>>16) {
+				t.Errorf("byte[%d] = %d, want %d", scalarLen-3, bytes[scalarLen-3], byte(idVal>>16))
+			}
+			if bytes[scalarLen-4] != byte(idVal>>24) {
+				t.Errorf("byte[%d] = %d, want %d", scalarLen-4, bytes[scalarLen-4], byte(idVal>>24))
+			}
+		})
+	}
+}
+
+func TestIdentifierToScalar_Deterministic(t *testing.T) {
+	grp := testutil.NewMockGroup()
+	identifier := frost.Identifier(42)
+
+	// Call twice with same identifier
+	scalar1, err := IdentifierToScalar(grp, identifier)
+	if err != nil {
+		t.Fatalf("First IdentifierToScalar() error = %v", err)
+	}
+
+	scalar2, err := IdentifierToScalar(grp, identifier)
+	if err != nil {
+		t.Fatalf("Second IdentifierToScalar() error = %v", err)
+	}
+
+	// Results should be identical
+	if !scalar1.Equal(scalar2) {
+		t.Error("IdentifierToScalar() is not deterministic")
+	}
+}
+
+func TestIdentifierToScalar_DifferentIdentifiers(t *testing.T) {
+	grp := testutil.NewMockGroup()
+
+	// Different identifiers should produce different scalars
+	scalar1, err := IdentifierToScalar(grp, frost.Identifier(1))
+	if err != nil {
+		t.Fatalf("IdentifierToScalar(1) error = %v", err)
+	}
+
+	scalar2, err := IdentifierToScalar(grp, frost.Identifier(2))
+	if err != nil {
+		t.Fatalf("IdentifierToScalar(2) error = %v", err)
+	}
+
+	scalar3, err := IdentifierToScalar(grp, frost.Identifier(100))
+	if err != nil {
+		t.Fatalf("IdentifierToScalar(100) error = %v", err)
+	}
+
+	if scalar1.Equal(scalar2) {
+		t.Error("Identifier 1 and 2 produced equal scalars")
+	}
+	if scalar1.Equal(scalar3) {
+		t.Error("Identifier 1 and 100 produced equal scalars")
+	}
+	if scalar2.Equal(scalar3) {
+		t.Error("Identifier 2 and 100 produced equal scalars")
+	}
+}
+
+func TestIdentifierToScalar_EdgeCases(t *testing.T) {
+	grp := testutil.NewMockGroup()
+
+	testCases := []struct {
+		name       string
+		identifier frost.Identifier
+	}{
+		{"identifier_1", frost.Identifier(1)},
+		{"identifier_255", frost.Identifier(255)},
+		{"identifier_256", frost.Identifier(256)},
+		{"identifier_65535", frost.Identifier(65535)},
+		{"identifier_65536", frost.Identifier(65536)},
+		{"identifier_max_uint16", frost.Identifier(0xFFFF)},
+		{"identifier_large", frost.Identifier(0x12345678)},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			scalar, err := IdentifierToScalar(grp, tc.identifier)
+			if err != nil {
+				t.Fatalf("IdentifierToScalar(%d) error = %v", tc.identifier, err)
+			}
+			if scalar == nil {
+				t.Fatalf("IdentifierToScalar(%d) returned nil", tc.identifier)
+			}
+			if scalar.IsZero() && tc.identifier != 0 {
+				t.Errorf("IdentifierToScalar(%d) returned zero scalar for non-zero identifier", tc.identifier)
+			}
+		})
+	}
+}
+
+func TestIdentifierToScalar_NotZero(t *testing.T) {
+	// Valid participant identifiers should never produce zero scalars
+	grp := testutil.NewMockGroup()
+
+	for id := frost.Identifier(1); id <= 100; id++ {
+		scalar, err := IdentifierToScalar(grp, id)
+		if err != nil {
+			t.Fatalf("IdentifierToScalar(%d) error = %v", id, err)
+		}
+		if scalar.IsZero() {
+			t.Errorf("IdentifierToScalar(%d) produced zero scalar", id)
+		}
+	}
+}
+
+// BenchmarkIdentifierToScalar benchmarks identifier to scalar conversion
+func BenchmarkIdentifierToScalar(b *testing.B) {
+	grp := testutil.NewMockGroup()
+	identifier := frost.Identifier(42)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		IdentifierToScalar(grp, identifier)
+	}
+}

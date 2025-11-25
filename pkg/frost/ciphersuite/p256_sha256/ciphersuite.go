@@ -226,29 +226,101 @@ func (cs *P256SHA256) VerifySignature(message []byte, signature []byte, publicKe
 	return nil
 }
 
-// hashToScalar implements hash-to-scalar for P-256 using SHA-256.
-// According to RFC 9591 Section 6.4, this uses wide reduction modulo the group order.
+// hashToScalar implements hash-to-scalar for P-256 using hash_to_field from RFC 9380.
+// Per RFC 9591 Section 6.4, this uses expand_message_xmd with SHA-256 and L=48.
 func (cs *P256SHA256) hashToScalar(domain string, data []byte) group.Scalar {
-	// Create domain-separated input
-	input := cs.domainSeparate(domain, data)
+	// DST = contextString || domain (e.g., "FROST-P256-SHA256-v1" || "rho")
+	dst := []byte(contextString + domain)
 
-	// Hash with SHA-256 (32 bytes output)
-	hash := cs.Hash(input)
-
-	// For P-256 with SHA-256, we need to perform wide reduction
-	// We can hash again to get 64 bytes for better uniformity
-	hash2 := cs.Hash(append(hash, 0x00))
-	wideHash := append(hash, hash2...)
+	// Use expand_message_xmd with L=48 bytes per RFC 9591 Section 6.4
+	uniformBytes := expandMessageXMD(data, dst, 48)
 
 	// Convert to big.Int and reduce modulo group order
-	// Get the group order from the serialized form
 	orderBytes := cs.group.Order()
 	groupOrder := new(big.Int).SetBytes(orderBytes)
 
-	hashInt := new(big.Int).SetBytes(wideHash)
+	hashInt := new(big.Int).SetBytes(uniformBytes)
 	hashInt.Mod(hashInt, groupOrder)
 
-	return p256.NewScalar(hashInt)
+	return p256.NewScalarFromBigInt(hashInt)
+}
+
+// expandMessageXMD implements expand_message_xmd from RFC 9380 Section 5.3.1.
+// This is used for hash_to_field to produce uniform random bytes.
+//
+// Parameters (for SHA-256):
+// - b_in_bytes = 32 (SHA-256 output size)
+// - s_in_bytes = 64 (SHA-256 input block size)
+func expandMessageXMD(msg, dst []byte, lenInBytes int) []byte {
+	const (
+		bInBytes = 32 // SHA-256 output size
+		sInBytes = 64 // SHA-256 input block size
+	)
+
+	// Step 1: ell = ceil(len_in_bytes / b_in_bytes)
+	ell := (lenInBytes + bInBytes - 1) / bInBytes
+
+	// Step 2: Abort checks (len(DST) <= 255, ell <= 255, len_in_bytes <= 65535)
+	if ell > 255 || len(dst) > 255 || lenInBytes > 65535 {
+		panic("expandMessageXMD: invalid parameters")
+	}
+
+	// Step 3: DST_prime = DST || I2OSP(len(DST), 1)
+	dstPrime := append(dst, byte(len(dst)))
+
+	// Step 4: Z_pad = I2OSP(0, s_in_bytes)
+	zPad := make([]byte, sInBytes)
+
+	// Step 5: l_i_b_str = I2OSP(len_in_bytes, 2)
+	libStr := []byte{byte(lenInBytes >> 8), byte(lenInBytes)}
+
+	// Step 6: msg_prime = Z_pad || msg || l_i_b_str || I2OSP(0, 1) || DST_prime
+	msgPrime := make([]byte, 0, sInBytes+len(msg)+2+1+len(dstPrime))
+	msgPrime = append(msgPrime, zPad...)
+	msgPrime = append(msgPrime, msg...)
+	msgPrime = append(msgPrime, libStr...)
+	msgPrime = append(msgPrime, 0x00)
+	msgPrime = append(msgPrime, dstPrime...)
+
+	// Step 7: b_0 = H(msg_prime)
+	b0Hash := sha256.Sum256(msgPrime)
+	b0 := b0Hash[:]
+
+	// Step 8: b_1 = H(b_0 || I2OSP(1, 1) || DST_prime)
+	b1Input := make([]byte, 0, bInBytes+1+len(dstPrime))
+	b1Input = append(b1Input, b0...)
+	b1Input = append(b1Input, 0x01)
+	b1Input = append(b1Input, dstPrime...)
+	b1Hash := sha256.Sum256(b1Input)
+	b1 := b1Hash[:]
+
+	// Collect b values
+	uniformBytes := make([]byte, 0, ell*bInBytes)
+	uniformBytes = append(uniformBytes, b1...)
+
+	// Step 9-10: for i in (2, ..., ell): b_i = H(strxor(b_0, b_(i-1)) || I2OSP(i, 1) || DST_prime)
+	bPrev := b1
+	for i := 2; i <= ell; i++ {
+		// strxor(b_0, b_(i-1))
+		xored := make([]byte, bInBytes)
+		for j := 0; j < bInBytes; j++ {
+			xored[j] = b0[j] ^ bPrev[j]
+		}
+
+		// H(strxor(b_0, b_(i-1)) || I2OSP(i, 1) || DST_prime)
+		biInput := make([]byte, 0, bInBytes+1+len(dstPrime))
+		biInput = append(biInput, xored...)
+		biInput = append(biInput, byte(i))
+		biInput = append(biInput, dstPrime...)
+		biHash := sha256.Sum256(biInput)
+		bi := biHash[:]
+
+		uniformBytes = append(uniformBytes, bi...)
+		bPrev = bi
+	}
+
+	// Step 12: return substr(uniform_bytes, 0, len_in_bytes)
+	return uniformBytes[:lenInBytes]
 }
 
 // domainSeparate prepends the context string and domain tag to the data.

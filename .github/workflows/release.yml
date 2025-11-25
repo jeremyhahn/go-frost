@@ -9,10 +9,34 @@ permissions:
   contents: write
   packages: write
 
+
 jobs:
-  release:
-    name: Release
+  test:
+    name: Pre-release Tests
     runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.25.4'
+        cache: true
+
+    - name: Run tests
+      run: make test
+
+    - name: Run security scan
+      run: |
+        go install github.com/securego/gosec/v2/cmd/gosec@latest
+        gosec -quiet -exclude=G101,G104,G115,G304,G306,G404 ./...
+
+  build-binaries:
+    name: Build Binaries
+    runs-on: ubuntu-latest
+    needs: test
 
     steps:
     - name: Checkout code
@@ -23,35 +47,24 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.23'
+        go-version: '1.25.4'
+        cache: true
 
     - name: Get version from tag
       id: get_version
       run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
-
-    - name: Get version from VERSION file
-      id: version_file
-      run: echo "FILE_VERSION=$(cat VERSION)" >> $GITHUB_OUTPUT
-
-    - name: Run tests before release
-      run: |
-        go list -f '{{if .TestGoFiles}}{{.ImportPath}}{{end}}' ./pkg/... | \
-          xargs go test -v -timeout 30s
 
     - name: Build binaries for all platforms
       env:
         VERSION: ${{ steps.get_version.outputs.VERSION }}
         CGO_ENABLED: 0
       run: |
-        # Set build info
         BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
         GIT_COMMIT=$(git rev-parse --short HEAD)
         LDFLAGS="-s -w -X main.Version=${VERSION} -X main.GitCommit=${GIT_COMMIT} -X main.BuildDate=${BUILD_DATE}"
 
-        # Create dist directory
         mkdir -p dist
 
-        # Build for each platform
         platforms=(
           "linux/amd64"
           "linux/arm64"
@@ -76,6 +89,98 @@ jobs:
             -o "dist/${output_name}" \
             ./cmd/frost
         done
+
+    - name: Upload binary artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: binaries
+        path: dist/frost-*
+
+  build-libraries:
+    name: Build Libraries
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.25.4'
+        cache: true
+
+    - name: Install build dependencies
+      run: sudo apt-get update && sudo apt-get install -y build-essential
+
+    - name: Get version from tag
+      id: get_version
+      run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+    - name: Build standard libraries
+      env:
+        VERSION: ${{ steps.get_version.outputs.VERSION }}
+      run: |
+        make build-lib
+        # Rename with version
+        mv dist/libfrost.so dist/libfrost-${VERSION}-linux-amd64.so
+        mv dist/libfrost.a dist/libfrost-${VERSION}-linux-amd64.a
+        mv dist/libfrost.h dist/libfrost-${VERSION}.h
+
+    - name: Build FIPS libraries
+      env:
+        VERSION: ${{ steps.get_version.outputs.VERSION }}
+      run: |
+        make build-lib-fips
+        # Rename with version
+        mv dist/fips/libfrost-fips.so dist/libfrost-fips-${VERSION}-linux-amd64.so
+        mv dist/fips/libfrost-fips.a dist/libfrost-fips-${VERSION}-linux-amd64.a
+        mv dist/fips/libfrost-fips.h dist/libfrost-fips-${VERSION}.h
+
+    - name: Upload library artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: libraries
+        path: |
+          dist/libfrost-*.so
+          dist/libfrost-*.a
+          dist/libfrost-*.h
+
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: [build-binaries, build-libraries]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.25.4'
+        cache: true
+
+    - name: Get version from tag
+      id: get_version
+      run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+    - name: Download binary artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: binaries
+        path: dist/
+
+    - name: Download library artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: libraries
+        path: dist/
 
     - name: Generate checksums
       run: |
@@ -125,50 +230,71 @@ jobs:
         body: |
           ## FROST Threshold Signature Scheme v${{ steps.get_version.outputs.VERSION }}
 
-          RFC 9591 Implementation
+          RFC 9591 Implementation - Production Ready
 
           ### Changes
           See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details.
 
-          ### Installation
+          ### Downloads
 
-          #### Docker (Recommended)
+          #### CLI Binaries
+          | Platform | Binary |
+          |----------|--------|
+          | Linux (AMD64) | `frost-${{ steps.get_version.outputs.VERSION }}-linux-amd64` |
+          | Linux (ARM64) | `frost-${{ steps.get_version.outputs.VERSION }}-linux-arm64` |
+          | macOS (Intel) | `frost-${{ steps.get_version.outputs.VERSION }}-darwin-amd64` |
+          | macOS (Apple Silicon) | `frost-${{ steps.get_version.outputs.VERSION }}-darwin-arm64` |
+          | Windows (AMD64) | `frost-${{ steps.get_version.outputs.VERSION }}-windows-amd64.exe` |
+          | Windows (ARM64) | `frost-${{ steps.get_version.outputs.VERSION }}-windows-arm64.exe` |
 
-          Pull and run the Docker image:
+          #### Libraries (Linux AMD64)
+          | Type | Standard | FIPS 140 |
+          |------|----------|----------|
+          | Shared (.so) | `libfrost-${{ steps.get_version.outputs.VERSION }}-linux-amd64.so` | `libfrost-fips-${{ steps.get_version.outputs.VERSION }}-linux-amd64.so` |
+          | Static (.a) | `libfrost-${{ steps.get_version.outputs.VERSION }}-linux-amd64.a` | `libfrost-fips-${{ steps.get_version.outputs.VERSION }}-linux-amd64.a` |
+          | Header | `libfrost-${{ steps.get_version.outputs.VERSION }}.h` | `libfrost-fips-${{ steps.get_version.outputs.VERSION }}.h` |
+
+          #### Docker
           ```bash
           docker pull ghcr.io/${{ github.repository_owner }}/frost:${{ steps.get_version.outputs.VERSION }}
           docker run ghcr.io/${{ github.repository_owner }}/frost:${{ steps.get_version.outputs.VERSION }} version
           ```
 
-          Or use the latest tag:
-          ```bash
-          docker pull ghcr.io/${{ github.repository_owner }}/frost:latest
-          docker run ghcr.io/${{ github.repository_owner }}/frost:latest version
+          ### Using the Library
+
+          **C/C++ Integration:**
+          ```c
+          #include "libfrost.h"
+
+          // Generate 2-of-3 threshold keys
+          char *keys;
+          size_t keys_len;
+          uint8_t *pubkey;
+          size_t pubkey_len;
+
+          frost_error_t err = frost_generate_keys(
+              FROST_CIPHERSUITE_RISTRETTO255_SHA512,
+              2, 3,
+              &keys, &keys_len,
+              &pubkey, &pubkey_len
+          );
           ```
 
-          #### Binary Download
-
-          Download the appropriate binary for your platform:
-
-          - **Linux (AMD64)**: `frost-${{ steps.get_version.outputs.VERSION }}-linux-amd64`
-          - **Linux (ARM64)**: `frost-${{ steps.get_version.outputs.VERSION }}-linux-arm64`
-          - **macOS (Intel)**: `frost-${{ steps.get_version.outputs.VERSION }}-darwin-amd64`
-          - **macOS (Apple Silicon)**: `frost-${{ steps.get_version.outputs.VERSION }}-darwin-arm64`
-          - **Windows (AMD64)**: `frost-${{ steps.get_version.outputs.VERSION }}-windows-amd64.exe`
-          - **Windows (ARM64)**: `frost-${{ steps.get_version.outputs.VERSION }}-windows-arm64.exe`
-
-          Make executable and run:
+          **Link with:**
           ```bash
-          # Linux/macOS
-          chmod +x frost-${{ steps.get_version.outputs.VERSION }}-<platform>-<arch>
-          ./frost-${{ steps.get_version.outputs.VERSION }}-<platform>-<arch> version
+          # Shared library
+          gcc -o myapp myapp.c -L. -lfrost -Wl,-rpath,.
 
-          # Windows (PowerShell)
-          .\frost-${{ steps.get_version.outputs.VERSION }}-windows-<arch>.exe version
+          # Static library
+          gcc -o myapp myapp.c libfrost.a -lpthread -lm
           ```
 
           ### Checksums
           Verify your download with SHA256 checksums in `checksums.txt`.
+
+          ### Security
+          - All ciphersuites are constant-time compliant
+          - FIPS 140 builds use Go 1.24+ GOFIPS140=latest mode
         draft: false
         prerelease: false
       env:

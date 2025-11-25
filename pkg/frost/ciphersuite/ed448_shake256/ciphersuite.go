@@ -9,12 +9,13 @@
 // SHAKE256 is an extendable-output function (XOF), not a fixed-output hash.
 // We use SHAKE256 to generate variable-length output as needed.
 //
-// Like Ed25519, H2 (challenge hash) does NOT use the contextString prefix
-// for Ed448 compatibility with standard Ed448 signatures.
+// Per RFC 9591 Section 6.3, H2 uses the prefix "SigEd448" || 0x00 || 0x00
+// for compatibility with RFC 8032 Ed448 signatures. This is different from
+// Ed25519 which has no prefix at all.
 //
 // The ciphersuite provides five domain-separated hash functions:
 // - H1: Used for binding factor computation (domain: "rho")
-// - H2: Used for challenge computation (NO domain prefix - Ed448 compat!)
+// - H2: Used for challenge computation (prefix: "SigEd448" || 0x00 || 0x00)
 // - H3: Used for nonce generation (domain: "nonce")
 // - H4: Used for message hashing (domain: "msg")
 // - H5: Used for commitment list hashing (domain: "com")
@@ -23,9 +24,9 @@ package ed448_shake256
 import (
 	"bytes"
 
+	"github.com/cloudflare/circl/ecc/goldilocks"
 	"golang.org/x/crypto/sha3"
 
-	ed "github.com/otrv4/ed448"
 	"github.com/jeremyhahn/go-frost/pkg/frost"
 	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite"
 	"github.com/jeremyhahn/go-frost/pkg/frost/group"
@@ -41,10 +42,13 @@ const (
 
 	// Domain separation tags for hash functions
 	domainH1 = "rho"   // Binding factor
-	domainH2 = "chal"  // Challenge (NOTE: not used for H2 in Ed448!)
 	domainH3 = "nonce" // Nonce generation
 	domainH4 = "msg"   // Message hashing
 	domainH5 = "com"   // Commitment list hashing
+
+	// H2 prefix for RFC 8032 Ed448 compatibility
+	// Per RFC 9591 Section 6.3: H2(m) = H("SigEd448" || 0 || 0 || m)
+	ed448H2Prefix = "SigEd448"
 
 	// hashOutputSize is the output size for SHAKE256 when used as a hash function
 	// For hash-to-scalar, we use 2x the scalar size for wide reduction (114 bytes)
@@ -100,29 +104,23 @@ func (cs *Ed448SHAKE256) H1(data []byte) group.Scalar {
 }
 
 // H2 is a hash-to-scalar function for challenge computation.
-// CRITICAL: For Ed448, H2 does NOT use contextString prefix!
-// This ensures compatibility with standard Ed448 signatures.
-// Implements: SHAKE256(data) -> Scalar (no domain separation)
+// Per RFC 9591 Section 6.3, H2 uses the Ed448 signature prefix for RFC 8032 compatibility.
+// Implements: SHAKE256("SigEd448" || 0x00 || 0x00 || data) -> Scalar
 func (cs *Ed448SHAKE256) H2(data []byte) group.Scalar {
-	// IMPORTANT: No contextString prefix for Ed448 compatibility!
-	// Hash the data directly using SHAKE256
+	// Per RFC 9591 Section 6.3:
+	// H2(m): Implemented by computing H("SigEd448" || 0 || 0 || m)
+	// The two zero bytes represent the empty context string for Ed448ph compatibility
 	hash := sha3.NewShake256()
+	hash.Write([]byte(ed448H2Prefix)) // "SigEd448"
+	hash.Write([]byte{0x00, 0x00})    // Two zero bytes (empty context length + empty context)
 	hash.Write(data)
 
 	// Read 114 bytes for wide reduction (2x the 57-byte scalar size)
 	output := make([]byte, hashOutputSize)
 	hash.Read(output)
 
-	// Create scalar and use BarretDecode for uniform reduction
-	zeroBytes := make([]byte, 57)
-	scalar := ed.NewScalar([][]byte{zeroBytes}...)
-	if err := scalar.BarretDecode(output); err != nil {
-		// This should never happen with valid hash output
-		panic("failed to reduce hash to scalar: " + err.Error())
-	}
-
-	// Wrap in our Scalar type using the constructor
-	return ed448.NewScalar(scalar)
+	// Use NewScalarFromBytes for proper reduction
+	return ed448.NewScalarFromBytes(output)
 }
 
 // H3 is a domain-separated hash-to-scalar function for nonce generation.
@@ -153,6 +151,8 @@ func (cs *Ed448SHAKE256) HashToCurve(data []byte) (group.Element, error) {
 	// Use a domain-separated hash for hash-to-curve
 	input := cs.domainSeparate("h2c", data)
 
+	curve := goldilocks.Curve{}
+
 	// Try up to 256 iterations to find a valid point
 	for i := 0; i < 256; i++ {
 		// Hash the input with counter using SHAKE256
@@ -162,14 +162,14 @@ func (cs *Ed448SHAKE256) HashToCurve(data []byte) (group.Element, error) {
 		hash := sha3.NewShake256()
 		hash.Write(hashInput)
 
-		// Read 56 bytes for Ed448 point encoding
-		pointBytes := make([]byte, 56)
+		// Read 57 bytes for Ed448 point encoding
+		pointBytes := make([]byte, 57)
 		hash.Read(pointBytes)
 
 		// Try to decode as a point
-		point := ed.NewPointFromBytes([][]byte{pointBytes}...)
-		if point.IsOnCurve() {
-			// Successfully decoded a valid point
+		point, err := goldilocks.FromBytes(pointBytes)
+		if err == nil && curve.IsOnCurve(point) {
+			// Successfully decoded a valid point on the curve
 			return ed448.NewElement(point), nil
 		}
 		// If decoding failed or point not on curve, try the next counter value
@@ -252,16 +252,8 @@ func (cs *Ed448SHAKE256) hashToScalar(domain string, data []byte) group.Scalar {
 	output := make([]byte, hashOutputSize)
 	hash.Read(output)
 
-	// Use BarretDecode for proper wide reduction
-	zeroBytes := make([]byte, 57)
-	scalar := ed.NewScalar([][]byte{zeroBytes}...)
-	if err := scalar.BarretDecode(output); err != nil {
-		// This should never happen with valid hash output
-		panic("failed to reduce hash to scalar: " + err.Error())
-	}
-
-	// Wrap in our Scalar type using the constructor
-	return ed448.NewScalar(scalar)
+	// Use NewScalarFromBytes for proper reduction
+	return ed448.NewScalarFromBytes(output)
 }
 
 // domainSeparate prepends the context string and domain tag to the data.
