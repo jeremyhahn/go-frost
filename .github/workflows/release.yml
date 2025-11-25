@@ -74,6 +74,7 @@ jobs:
           "windows/arm64"
         )
 
+        # Build standard binaries
         for platform in "${platforms[@]}"; do
           GOOS="${platform%/*}"
           GOARCH="${platform#*/}"
@@ -85,6 +86,24 @@ jobs:
 
           echo "Building for $GOOS/$GOARCH..."
           GOOS=$GOOS GOARCH=$GOARCH go build \
+            -ldflags="${LDFLAGS}" \
+            -o "dist/${output_name}" \
+            ./cmd/frost
+        done
+
+        # Build FIPS binaries (Linux only - FIPS mode requires specific OS support)
+        fips_platforms=(
+          "linux/amd64"
+          "linux/arm64"
+        )
+
+        for platform in "${fips_platforms[@]}"; do
+          GOOS="${platform%/*}"
+          GOARCH="${platform#*/}"
+          output_name="frost-fips-${VERSION}-${GOOS}-${GOARCH}"
+
+          echo "Building FIPS binary for $GOOS/$GOARCH..."
+          GOFIPS140=latest GOOS=$GOOS GOARCH=$GOARCH go build \
             -ldflags="${LDFLAGS}" \
             -o "dist/${output_name}" \
             ./cmd/frost
@@ -238,14 +257,14 @@ jobs:
           ### Downloads
 
           #### CLI Binaries
-          | Platform | Binary |
-          |----------|--------|
-          | Linux (AMD64) | `frost-${{ steps.get_version.outputs.VERSION }}-linux-amd64` |
-          | Linux (ARM64) | `frost-${{ steps.get_version.outputs.VERSION }}-linux-arm64` |
-          | macOS (Intel) | `frost-${{ steps.get_version.outputs.VERSION }}-darwin-amd64` |
-          | macOS (Apple Silicon) | `frost-${{ steps.get_version.outputs.VERSION }}-darwin-arm64` |
-          | Windows (AMD64) | `frost-${{ steps.get_version.outputs.VERSION }}-windows-amd64.exe` |
-          | Windows (ARM64) | `frost-${{ steps.get_version.outputs.VERSION }}-windows-arm64.exe` |
+          | Platform | Standard | FIPS 140 |
+          |----------|----------|----------|
+          | Linux (AMD64) | `frost-${{ steps.get_version.outputs.VERSION }}-linux-amd64` | `frost-fips-${{ steps.get_version.outputs.VERSION }}-linux-amd64` |
+          | Linux (ARM64) | `frost-${{ steps.get_version.outputs.VERSION }}-linux-arm64` | `frost-fips-${{ steps.get_version.outputs.VERSION }}-linux-arm64` |
+          | macOS (Intel) | `frost-${{ steps.get_version.outputs.VERSION }}-darwin-amd64` | - |
+          | macOS (Apple Silicon) | `frost-${{ steps.get_version.outputs.VERSION }}-darwin-arm64` | - |
+          | Windows (AMD64) | `frost-${{ steps.get_version.outputs.VERSION }}-windows-amd64.exe` | - |
+          | Windows (ARM64) | `frost-${{ steps.get_version.outputs.VERSION }}-windows-arm64.exe` | - |
 
           #### Libraries (Linux AMD64)
           | Type | Standard | FIPS 140 |
