@@ -342,15 +342,14 @@ func (t *InMemoryReputationTracker) ExcludeParticipant(participantID frost.Ident
 	defer t.mu.Unlock()
 
 	// Get or create reputation record
-	rep, exists := t.reputations[participantID]
+	_, exists := t.reputations[participantID]
 	if !exists {
 		now := time.Now()
-		rep = &ParticipantReputation{
+		t.reputations[participantID] = &ParticipantReputation{
 			ParticipantID: participantID,
 			FirstSeen:     now,
 			LastSeen:      now,
 		}
-		t.reputations[participantID] = rep
 	}
 
 	t.excludeParticipantLocked(participantID, reason)

@@ -110,6 +110,20 @@ func (cs *Ristretto255SHA512) H5(data []byte) []byte {
 	return cs.Hash(input)
 }
 
+// HDKG is a domain-separated hash-to-scalar function for DKG operations.
+// Used for computing challenges in the Schnorr proof of knowledge during DKG.
+// Implements: H(contextString || "dkg" || data) -> Scalar
+func (cs *Ristretto255SHA512) HDKG(data []byte) group.Scalar {
+	return cs.hashToScalar("dkg", data)
+}
+
+// HID is a domain-separated hash-to-scalar function for identifier derivation.
+// Used to derive participant identifiers from arbitrary byte strings.
+// Implements: H(contextString || "id" || data) -> Scalar
+func (cs *Ristretto255SHA512) HID(data []byte) group.Scalar {
+	return cs.hashToScalar("id", data)
+}
+
 // HashToCurve maps arbitrary byte strings to group elements.
 // This uses the hash-to-ristretto255 construction via SetUniformBytes.
 func (cs *Ristretto255SHA512) HashToCurve(data []byte) (group.Element, error) {
@@ -121,7 +135,7 @@ func (cs *Ristretto255SHA512) HashToCurve(data []byte) (group.Element, error) {
 
 	// Use SetUniformBytes to map the hash to a group element
 	// This method requires exactly 64 bytes and performs the proper mapping
-	elem := ristretto.NewElement()
+	elem := ristretto.NewIdentityElement()
 	if _, err := elem.SetUniformBytes(hash); err != nil {
 		return nil, frost.NewParameterError("data", "failed to map hash to curve point", err)
 	}
@@ -201,10 +215,17 @@ func (cs *Ristretto255SHA512) hashToScalar(domain string, data []byte) group.Sca
 	// Hash with SHA-512 (64 bytes output)
 	hash := cs.Hash(input)
 
-	// Use FromUniformBytes for proper wide reduction
-	// This is the ristretto255 way of doing hash-to-scalar
+	// Use SetUniformBytes for proper wide reduction.
+	// SECURITY NOTE: SetUniformBytes requires exactly 64 bytes. SHA-512 always
+	// produces 64 bytes, so this should never fail. A failure here indicates
+	// a bug in the cryptographic library implementation.
+	if len(hash) != 64 {
+		panic("FROST library bug: SHA-512 produced unexpected output length")
+	}
 	scalar := ristretto.NewScalar()
-	scalar.FromUniformBytes(hash)
+	if _, err := scalar.SetUniformBytes(hash); err != nil {
+		panic("FROST library bug: SetUniformBytes failed with valid 64-byte input: " + err.Error())
+	}
 
 	// Wrap in our Scalar type using the constructor
 	return ristretto255.NewScalar(scalar)

@@ -23,6 +23,10 @@ func (m *mockParticipant) Identifier() frost.Identifier {
 	return m.id
 }
 
+func (m *mockParticipant) MinSigners() uint32 {
+	return 2 // Default for tests
+}
+
 func (m *mockParticipant) RoundOne() (frost.SigningNonces, frost.SigningCommitments, error) {
 	if m.shouldFail {
 		return frost.SigningNonces{}, frost.SigningCommitments{}, frost.ErrInvalidNonce

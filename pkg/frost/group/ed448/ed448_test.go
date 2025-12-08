@@ -2,6 +2,7 @@ package ed448
 
 import (
 	"bytes"
+	"math/big"
 	"testing"
 
 	"github.com/jeremyhahn/go-frost/pkg/frost"
@@ -912,6 +913,32 @@ func BenchmarkScalarInv(b *testing.B) {
 	}
 }
 
+// TestCofactor tests that Cofactor returns the correct value for ed448.
+func TestCofactor(t *testing.T) {
+	g := NewGroup()
+	cofactor := g.Cofactor()
+	if cofactor == nil {
+		t.Fatal("Cofactor returned nil")
+	}
+	if cofactor.IsZero() {
+		t.Error("Cofactor should not be zero")
+	}
+	// Ed448 has cofactor 4
+	bytes := cofactor.Bytes()
+	if bytes[0] != 4 {
+		t.Errorf("Cofactor first byte should be 4, got %d", bytes[0])
+	}
+}
+
+// TestByteOrder tests that ByteOrder returns LittleEndian for ed448.
+func TestByteOrder(t *testing.T) {
+	g := NewGroup()
+	order := g.ByteOrder()
+	if order != group.LittleEndian {
+		t.Errorf("Expected LittleEndian, got %v", order)
+	}
+}
+
 // BenchmarkSerializeElement benchmarks element serialization.
 func BenchmarkSerializeElement(b *testing.B) {
 	g := NewGroup()
@@ -955,5 +982,84 @@ func BenchmarkDeserializeScalar(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_, _ = g.DeserializeScalar(bytes)
+	}
+}
+
+// TestNewElementWrapper tests the NewElement helper function that wraps underlying crypto types.
+func TestNewElementWrapper(t *testing.T) {
+	g := NewGroup()
+
+	// Get an element and extract its underlying point
+	gen := g.Generator()
+	genElement, ok := gen.(*Element)
+	if !ok {
+		t.Fatal("Generator did not return *Element type")
+	}
+
+	// Create a new Element using the NewElement wrapper
+	wrapped := NewElement(genElement.point)
+	if wrapped == nil {
+		t.Fatal("NewElement returned nil")
+	}
+
+	// The wrapped element should be equal to the original
+	if !wrapped.Equal(gen) {
+		t.Error("NewElement wrapper should produce equal element")
+	}
+}
+
+// TestNewScalarWrapper tests the NewScalar helper function that wraps big.Int values.
+func TestNewScalarWrapper(t *testing.T) {
+	// Create a scalar using a known big.Int value
+	testValue := big.NewInt(42)
+	wrapped := NewScalar(testValue)
+	if wrapped == nil {
+		t.Fatal("NewScalar returned nil")
+	}
+
+	// The scalar should not be zero
+	if wrapped.IsZero() {
+		t.Error("NewScalar(42) should not be zero")
+	}
+
+	// Create another with same value - should be equal
+	wrapped2 := NewScalar(big.NewInt(42))
+	if !wrapped.Equal(wrapped2) {
+		t.Error("NewScalar with same value should produce equal scalars")
+	}
+
+	// Test with large value that needs reduction
+	largeValue := new(big.Int).Add(groupOrder, big.NewInt(1))
+	reduced := NewScalar(largeValue)
+	one := NewScalar(big.NewInt(1))
+	if !reduced.Equal(one) {
+		t.Error("NewScalar should reduce values modulo group order")
+	}
+}
+
+// TestNewScalarFromBytes tests the NewScalarFromBytes helper function.
+func TestNewScalarFromBytes(t *testing.T) {
+	// Test with known byte values
+	data := make([]byte, 57)
+	data[0] = 42 // Little-endian: this is the value 42
+
+	scalar := NewScalarFromBytes(data)
+	if scalar == nil {
+		t.Fatal("NewScalarFromBytes returned nil")
+	}
+
+	// Should not be zero
+	if scalar.IsZero() {
+		t.Error("NewScalarFromBytes with non-zero data should not be zero")
+	}
+
+	// Test with zero bytes
+	zeroData := make([]byte, 57)
+	zeroScalar := NewScalarFromBytes(zeroData)
+	if zeroScalar == nil {
+		t.Fatal("NewScalarFromBytes returned nil for zero bytes")
+	}
+	if !zeroScalar.IsZero() {
+		t.Error("NewScalarFromBytes with zero data should be zero")
 	}
 }

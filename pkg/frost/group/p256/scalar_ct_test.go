@@ -583,3 +583,124 @@ func BenchmarkCTScalarAdd(b *testing.B) {
 		_ = sx.Add(sy)
 	}
 }
+
+// TestCTScalarSetOne tests the SetOne method
+func TestCTScalarSetOne(t *testing.T) {
+	s := newCTScalar()
+	if s.IsZero() != 1 {
+		t.Fatal("new scalar should be zero")
+	}
+
+	s.SetOne()
+
+	// Verify scalar is now 1
+	got := ctScalarToBigInt(s)
+	if got.Cmp(big.NewInt(1)) != 0 {
+		t.Errorf("SetOne: got %v, want 1", got)
+	}
+
+	// Verify by multiplication: 1 * x = x
+	x := randomBigInt()
+	sx := bigIntToCtScalar(x)
+	result := s.Mul(sx)
+	if result.Equal(sx) != 1 {
+		t.Error("1 * x should equal x")
+	}
+}
+
+// TestCTScalarSetZero tests the SetZero method
+func TestCTScalarSetZero(t *testing.T) {
+	// Start with non-zero scalar
+	s := bigIntToCtScalar(big.NewInt(42))
+	if s.IsZero() != 0 {
+		t.Fatal("scalar 42 should not be zero")
+	}
+
+	s.SetZero()
+
+	// Verify scalar is now 0
+	if s.IsZero() != 1 {
+		t.Error("SetZero: scalar should be zero after SetZero")
+	}
+
+	got := ctScalarToBigInt(s)
+	if got.Cmp(big.NewInt(0)) != 0 {
+		t.Errorf("SetZero: got %v, want 0", got)
+	}
+}
+
+// TestCTScalarSelectConditional tests the selectConditional method
+func TestCTScalarSelectConditional(t *testing.T) {
+	a := bigIntToCtScalar(big.NewInt(42))
+	b := bigIntToCtScalar(big.NewInt(100))
+
+	// Test with cond = 0 (should leave a unchanged)
+	aCopy := a.copy()
+	aCopy.selectConditional(b, 0)
+	if aCopy.Equal(a) != 1 {
+		t.Error("selectConditional with cond=0 should leave scalar unchanged")
+	}
+
+	// Test with cond = 1 (should set to b)
+	aCopy2 := a.copy()
+	aCopy2.selectConditional(b, 1)
+	if aCopy2.Equal(b) != 1 {
+		t.Error("selectConditional with cond=1 should set scalar to new value")
+	}
+}
+
+// TestCTScalarIsLessThanOrder tests the isLessThanOrder method
+func TestCTScalarIsLessThanOrder(t *testing.T) {
+	// All valid scalars are < order (they're always reduced)
+	for i := 0; i < 10; i++ {
+		x := randomBigInt()
+		sx := bigIntToCtScalar(x)
+		if !sx.isLessThanOrder() {
+			t.Errorf("scalar %v should be less than order", x)
+		}
+	}
+
+	// Zero is < order
+	zero := newCTScalar()
+	if !zero.isLessThanOrder() {
+		t.Error("zero should be less than order")
+	}
+
+	// n-1 is < order
+	nMinus1 := new(big.Int).Sub(p256N, big.NewInt(1))
+	snMinus1 := bigIntToCtScalar(nMinus1)
+	if !snMinus1.isLessThanOrder() {
+		t.Error("n-1 should be less than order")
+	}
+}
+
+// TestCTScalarFromBytesWide tests newCTScalarFromBytesWide
+func TestCTScalarFromBytesWide(t *testing.T) {
+	// Test with value that's exactly n (should reduce to 0)
+	nBytes := p256N.FillBytes(make([]byte, 32))
+	s := newCTScalarFromBytesWide(nBytes)
+	if s == nil {
+		t.Fatal("newCTScalarFromBytesWide returned nil")
+	}
+	if s.IsZero() != 1 {
+		t.Error("n mod n should be 0")
+	}
+
+	// Test with value > n (should reduce)
+	nPlus1 := new(big.Int).Add(p256N, big.NewInt(1))
+	nPlus1Bytes := nPlus1.FillBytes(make([]byte, 32))
+	s = newCTScalarFromBytesWide(nPlus1Bytes)
+	if s == nil {
+		t.Fatal("newCTScalarFromBytesWide returned nil")
+	}
+	got := ctScalarToBigInt(s)
+	if got.Cmp(big.NewInt(1)) != 0 {
+		t.Errorf("(n+1) mod n = %v, want 1", got)
+	}
+
+	// Test with wrong length
+	s = newCTScalarFromBytesWide(make([]byte, 16))
+	if s != nil {
+		t.Error("newCTScalarFromBytesWide with wrong length should return nil")
+	}
+}

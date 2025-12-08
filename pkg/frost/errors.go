@@ -8,6 +8,15 @@ import (
 // Error types for FROST protocol operations.
 // All errors are typed to enable proper error handling and testing.
 
+// CulpritError is an interface for errors that can identify malicious participants.
+// This enables cheater detection and blame attribution in the FROST protocol.
+type CulpritError interface {
+	error
+	// Culprits returns the identifiers of participants who caused the error.
+	// An empty slice means no specific participant could be identified.
+	Culprits() []Identifier
+}
+
 var (
 	// ErrInvalidParameters is returned when function parameters are invalid.
 	ErrInvalidParameters = errors.New("invalid parameters")
@@ -101,6 +110,7 @@ func NewParameterError(parameter, reason string, err error) *ParameterError {
 }
 
 // ParticipantError wraps an error with additional context about a participant.
+// It implements CulpritError for single-participant blame attribution.
 type ParticipantError struct {
 	Identifier Identifier
 	Reason     string
@@ -116,6 +126,11 @@ func (e *ParticipantError) Error() string {
 
 func (e *ParticipantError) Unwrap() error {
 	return e.Err
+}
+
+// Culprits returns the single participant who caused this error.
+func (e *ParticipantError) Culprits() []Identifier {
+	return []Identifier{e.Identifier}
 }
 
 // NewParticipantError creates a new ParticipantError.
@@ -152,4 +167,135 @@ func NewVerificationError(operation, reason string, err error) *VerificationErro
 		Reason:    reason,
 		Err:       err,
 	}
+}
+
+// SignatureShareError represents an error with one or more invalid signature shares.
+// It implements CulpritError to identify which participants submitted invalid shares.
+type SignatureShareError struct {
+	culprits []Identifier
+	Reason   string
+	Err      error
+}
+
+func (e *SignatureShareError) Error() string {
+	if len(e.culprits) == 0 {
+		if e.Err != nil {
+			return fmt.Sprintf("invalid signature share: %s: %v", e.Reason, e.Err)
+		}
+		return fmt.Sprintf("invalid signature share: %s", e.Reason)
+	}
+	if len(e.culprits) == 1 {
+		if e.Err != nil {
+			return fmt.Sprintf("invalid signature share from participant %d: %s: %v", e.culprits[0], e.Reason, e.Err)
+		}
+		return fmt.Sprintf("invalid signature share from participant %d: %s", e.culprits[0], e.Reason)
+	}
+	if e.Err != nil {
+		return fmt.Sprintf("invalid signature shares from %d participants: %s: %v", len(e.culprits), e.Reason, e.Err)
+	}
+	return fmt.Sprintf("invalid signature shares from %d participants: %s", len(e.culprits), e.Reason)
+}
+
+func (e *SignatureShareError) Unwrap() error {
+	return e.Err
+}
+
+// Culprits returns the identifiers of participants who submitted invalid shares.
+func (e *SignatureShareError) Culprits() []Identifier {
+	result := make([]Identifier, len(e.culprits))
+	copy(result, e.culprits)
+	return result
+}
+
+// NewSignatureShareError creates a new SignatureShareError with the given culprits.
+func NewSignatureShareError(culprits []Identifier, reason string, err error) *SignatureShareError {
+	c := make([]Identifier, len(culprits))
+	copy(c, culprits)
+	return &SignatureShareError{
+		culprits: c,
+		Reason:   reason,
+		Err:      err,
+	}
+}
+
+// AddCulprit adds a culprit to the error and returns the updated error.
+func (e *SignatureShareError) AddCulprit(id Identifier) *SignatureShareError {
+	e.culprits = append(e.culprits, id)
+	return e
+}
+
+// ProofOfKnowledgeError represents an error with a proof of knowledge.
+// It implements CulpritError to identify which participant submitted an invalid proof.
+type ProofOfKnowledgeError struct {
+	Identifier Identifier
+	Reason     string
+	Err        error
+}
+
+func (e *ProofOfKnowledgeError) Error() string {
+	if e.Err != nil {
+		return fmt.Sprintf("invalid proof of knowledge from participant %d: %s: %v", e.Identifier, e.Reason, e.Err)
+	}
+	return fmt.Sprintf("invalid proof of knowledge from participant %d: %s", e.Identifier, e.Reason)
+}
+
+func (e *ProofOfKnowledgeError) Unwrap() error {
+	return e.Err
+}
+
+// Culprits returns the identifier of the participant who submitted an invalid proof.
+func (e *ProofOfKnowledgeError) Culprits() []Identifier {
+	return []Identifier{e.Identifier}
+}
+
+// NewProofOfKnowledgeError creates a new ProofOfKnowledgeError.
+func NewProofOfKnowledgeError(identifier Identifier, reason string, err error) *ProofOfKnowledgeError {
+	return &ProofOfKnowledgeError{
+		Identifier: identifier,
+		Reason:     reason,
+		Err:        err,
+	}
+}
+
+// SecretShareError represents an error with a secret share.
+// It implements CulpritError to identify which participant sent an invalid share.
+type SecretShareError struct {
+	Identifier Identifier
+	Reason     string
+	Err        error
+}
+
+func (e *SecretShareError) Error() string {
+	if e.Err != nil {
+		return fmt.Sprintf("invalid secret share from participant %d: %s: %v", e.Identifier, e.Reason, e.Err)
+	}
+	return fmt.Sprintf("invalid secret share from participant %d: %s", e.Identifier, e.Reason)
+}
+
+func (e *SecretShareError) Unwrap() error {
+	return e.Err
+}
+
+// Culprits returns the identifier of the participant who sent an invalid share.
+func (e *SecretShareError) Culprits() []Identifier {
+	return []Identifier{e.Identifier}
+}
+
+// NewSecretShareError creates a new SecretShareError.
+func NewSecretShareError(identifier Identifier, reason string, err error) *SecretShareError {
+	return &SecretShareError{
+		Identifier: identifier,
+		Reason:     reason,
+		Err:        err,
+	}
+}
+
+// GetCulprits extracts culprits from an error if it implements CulpritError.
+// Returns nil if the error does not implement CulpritError.
+func GetCulprits(err error) []Identifier {
+	var culpritErr CulpritError
+	if errors.As(err, &culpritErr) {
+		return culpritErr.Culprits()
+	}
+	return nil
 }

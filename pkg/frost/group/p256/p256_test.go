@@ -880,6 +880,33 @@ func BenchmarkScalarMult(b *testing.B) {
 	}
 }
 
+// TestCofactor tests that Cofactor returns the correct value for P-256.
+func TestCofactor(t *testing.T) {
+	g := NewGroup()
+	cofactor := g.Cofactor()
+	if cofactor == nil {
+		t.Fatal("Cofactor returned nil")
+	}
+	if cofactor.IsZero() {
+		t.Error("Cofactor should not be zero")
+	}
+	// P-256 has cofactor 1 (prime order curve)
+	bytes := cofactor.Bytes()
+	// The scalar should represent 1, check last byte in big-endian
+	if bytes[len(bytes)-1] != 1 {
+		t.Errorf("Cofactor should be 1, last byte is %d", bytes[len(bytes)-1])
+	}
+}
+
+// TestByteOrder tests that ByteOrder returns BigEndian for P-256.
+func TestByteOrder(t *testing.T) {
+	g := NewGroup()
+	order := g.ByteOrder()
+	if order != group.BigEndian {
+		t.Errorf("Expected BigEndian, got %v", order)
+	}
+}
+
 // BenchmarkSerializeElement benchmarks element serialization.
 func BenchmarkSerializeElement(b *testing.B) {
 	g := NewGroup()
@@ -1132,5 +1159,32 @@ func TestDeserializeElementOnCurveValidation(t *testing.T) {
 
 	if !elem.Equal(gen) {
 		t.Error("deserialized element should equal generator")
+	}
+}
+
+// TestNewScalarFromNat tests the NewScalarFromNat helper function.
+func TestNewScalarFromNat(t *testing.T) {
+	g := NewGroup()
+
+	// Get a scalar and extract its underlying nat
+	scalar, err := g.RandomScalar()
+	if err != nil {
+		t.Fatalf("RandomScalar failed: %v", err)
+	}
+
+	scalarTyped, ok := scalar.(*Scalar)
+	if !ok {
+		t.Fatal("RandomScalar did not return *Scalar type")
+	}
+
+	// Create a new Scalar using the NewScalarFromNat wrapper
+	wrapped := NewScalarFromNat(scalarTyped.nat)
+	if wrapped == nil {
+		t.Fatal("NewScalarFromNat returned nil")
+	}
+
+	// The wrapped scalar should be equal to the original
+	if !wrapped.Equal(scalar) {
+		t.Error("NewScalarFromNat wrapper should produce equal scalar")
 	}
 }

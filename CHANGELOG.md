@@ -5,7 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.1.3-alpha] - 2025-12-08
+
+### Added
+- **Hooks interface** for ciphersuite customization (PreSign, PreAggregate, PreVerify, PostDKG, PostGenerate)
+- **ByteOrder support** in group interface for cross-platform compatibility
+- **Enhanced error types** with culprit identification for malicious participant detection
+- **Comprehensive test coverage** improvements across all packages (~90% coverage)
+
+### Changed
+- **Constant-time operations** enforced across all ciphersuites
+- **CI/CD pipeline** expanded with FIPS-compliant builds and multi-platform support
+- **Code quality** improvements via staticcheck and goimports compliance
+
+### Fixed
+- Staticcheck warnings for unused values and nil checks
+- Goimports formatting across test files
+
+## [0.1.2-alpha] - 2025-01-20
 
 ### Added
 

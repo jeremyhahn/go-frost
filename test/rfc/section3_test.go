@@ -17,7 +17,7 @@ func TestSection3_1_PrimeOrderGroup(t *testing.T) {
 	t.Run("Order", func(t *testing.T) {
 		// RFC 9591 Section 3.1: Order() outputs the order of G (i.e., p)
 		orderBytes := grp.Order()
-		if orderBytes == nil || len(orderBytes) == 0 {
+		if len(orderBytes) == 0 {
 			t.Fatal("Order() returned nil or empty")
 		}
 		// Ristretto255 group order should be non-zero

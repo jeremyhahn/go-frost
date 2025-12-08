@@ -910,6 +910,38 @@ func BenchmarkScalarInv(b *testing.B) {
 	}
 }
 
+// TestCofactor tests the Cofactor method returns the correct value
+func TestCofactor(t *testing.T) {
+	g := NewGroup()
+	cofactor := g.Cofactor()
+
+	if cofactor == nil {
+		t.Fatal("Cofactor returned nil")
+	}
+
+	// Ed25519 has cofactor 8
+	if cofactor.IsZero() {
+		t.Error("Cofactor should not be zero")
+	}
+
+	// Verify cofactor bytes representation
+	bytes := cofactor.Bytes()
+	if bytes[0] != 8 {
+		t.Errorf("Cofactor first byte should be 8, got %d", bytes[0])
+	}
+}
+
+// TestByteOrder tests the ByteOrder method
+func TestByteOrder(t *testing.T) {
+	g := NewGroup()
+	order := g.ByteOrder()
+
+	// Ed25519 uses little-endian byte order
+	if order != group.LittleEndian {
+		t.Errorf("Expected LittleEndian, got %v", order)
+	}
+}
+
 // BenchmarkSerializeElement benchmarks element serialization.
 func BenchmarkSerializeElement(b *testing.B) {
 	g := NewGroup()
@@ -953,5 +985,55 @@ func BenchmarkDeserializeScalar(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_, _ = g.DeserializeScalar(bytes)
+	}
+}
+
+// TestNewElementWrapper tests the NewElement helper function that wraps underlying crypto types.
+func TestNewElementWrapper(t *testing.T) {
+	g := NewGroup()
+
+	// Get an element and extract its underlying point
+	gen := g.Generator()
+	genElement, ok := gen.(*Element)
+	if !ok {
+		t.Fatal("Generator did not return *Element type")
+	}
+
+	// Create a new Element using the NewElement wrapper
+	wrapped := NewElement(genElement.point)
+	if wrapped == nil {
+		t.Fatal("NewElement returned nil")
+	}
+
+	// The wrapped element should be equal to the original
+	if !wrapped.Equal(gen) {
+		t.Error("NewElement wrapper should produce equal element")
+	}
+}
+
+// TestNewScalarWrapper tests the NewScalar helper function that wraps underlying crypto types.
+func TestNewScalarWrapper(t *testing.T) {
+	g := NewGroup()
+
+	// Get a scalar and extract its underlying value
+	scalar, err := g.RandomScalar()
+	if err != nil {
+		t.Fatalf("RandomScalar failed: %v", err)
+	}
+
+	scalarTyped, ok := scalar.(*Scalar)
+	if !ok {
+		t.Fatal("RandomScalar did not return *Scalar type")
+	}
+
+	// Create a new Scalar using the NewScalar wrapper
+	wrapped := NewScalar(scalarTyped.scalar)
+	if wrapped == nil {
+		t.Fatal("NewScalar returned nil")
+	}
+
+	// The wrapped scalar should be equal to the original
+	if !wrapped.Equal(scalar) {
+		t.Error("NewScalar wrapper should produce equal scalar")
 	}
 }

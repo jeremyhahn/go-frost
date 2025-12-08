@@ -129,6 +129,13 @@ func (a *aggregator) Aggregate(groupPublicKey group.Element, commitmentList fros
 		return frost.Signature{}, err
 	}
 
+	// Security check: Group commitment must not be identity
+	// This could happen if commitments cancel out, indicating a potential attack
+	if groupCommitment.IsIdentity() {
+		return frost.Signature{}, frost.NewVerificationError("groupCommitment",
+			"group commitment is identity element", frost.ErrIdentityElement)
+	}
+
 	// 5. Initialize z = 0
 	z := a.suite.Group().NewScalar()
 
@@ -196,6 +203,12 @@ func (a *aggregator) AggregateWithVerification(groupPublicKey group.Element, com
 	groupCommitment, err := commitmentComputer.Compute(commitmentList, bindingFactors)
 	if err != nil {
 		return frost.Signature{}, err
+	}
+
+	// Security check: Group commitment must not be identity
+	if groupCommitment.IsIdentity() {
+		return frost.Signature{}, frost.NewVerificationError("groupCommitment",
+			"group commitment is identity element", frost.ErrIdentityElement)
 	}
 
 	// Compute challenge (needed for share verification)
@@ -289,8 +302,9 @@ func (a *aggregator) AggregateWithVerification(groupPublicKey group.Element, com
 
 		// Verify equation
 		if !left.Equal(right) {
-			return frost.Signature{}, frost.NewParticipantError(share.Identifier,
-				"signature share verification failed - malicious participant detected",
+			return frost.Signature{}, frost.NewSignatureShareError(
+				[]frost.Identifier{share.Identifier},
+				"signature share verification failed: sig_share*G != commitment + lambda*pk*challenge",
 				frost.ErrInvalidSignatureShare)
 		}
 	}
@@ -330,6 +344,17 @@ func (a *aggregator) Verify(msg []byte, signature frost.Signature, publicKey gro
 	}
 	if publicKey == nil {
 		return frost.NewParameterError("publicKey", "cannot be nil", frost.ErrInvalidParameters)
+	}
+
+	// Security check: R must not be the identity element
+	// An identity R would indicate a malformed or malicious signature
+	if signature.R.IsIdentity() {
+		return frost.NewVerificationError("signature", "R is identity element", frost.ErrIdentityElement)
+	}
+
+	// Security check: Public key must not be the identity element
+	if publicKey.IsIdentity() {
+		return frost.NewParameterError("publicKey", "public key is identity element", frost.ErrIdentityElement)
 	}
 
 	// 2. Compute challenge = H2(R || publicKey || msg)

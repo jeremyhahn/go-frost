@@ -544,14 +544,12 @@ func TestVerifySignature(t *testing.T) {
 		rBytes := R.Bytes()
 
 		// Create valid z (scalar = 1)
-		z := suite.Group().NewScalar()
-		one, _ := suite.Group().DeserializeScalar([]byte{
+		z, _ := suite.Group().DeserializeScalar([]byte{
 			1, 0, 0, 0, 0, 0, 0, 0,
 			0, 0, 0, 0, 0, 0, 0, 0,
 			0, 0, 0, 0, 0, 0, 0, 0,
 			0, 0, 0, 0, 0, 0, 0, 0,
 		})
-		z = one
 		zBytes := z.Bytes()
 
 		// Combine to create signature
@@ -735,5 +733,61 @@ func BenchmarkVerifySignature(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_ = suite.VerifySignature(message, signature, publicKey)
+	}
+}
+
+// TestHDKG tests the HDKG hash function for DKG operations
+func TestHDKG(t *testing.T) {
+	suite := New()
+
+	input := []byte("test DKG context")
+	result := suite.HDKG(input)
+
+	if result == nil {
+		t.Fatal("HDKG returned nil")
+	}
+
+	if result.IsZero() {
+		t.Error("HDKG result should not be zero for non-empty input")
+	}
+
+	// Same input should produce same output (deterministic)
+	result2 := suite.HDKG(input)
+	if !result.Equal(result2) {
+		t.Error("HDKG should be deterministic")
+	}
+
+	// Different input should produce different output
+	result3 := suite.HDKG([]byte("different context"))
+	if result.Equal(result3) {
+		t.Error("HDKG should produce different outputs for different inputs")
+	}
+}
+
+// TestHID tests the HID hash function for identifier derivation
+func TestHID(t *testing.T) {
+	suite := New()
+
+	input := []byte("test identifier data")
+	result := suite.HID(input)
+
+	if result == nil {
+		t.Fatal("HID returned nil")
+	}
+
+	if result.IsZero() {
+		t.Error("HID result should not be zero for non-empty input")
+	}
+
+	// Same input should produce same output (deterministic)
+	result2 := suite.HID(input)
+	if !result.Equal(result2) {
+		t.Error("HID should be deterministic")
+	}
+
+	// Different input should produce different output
+	result3 := suite.HID([]byte("different data"))
+	if result.Equal(result3) {
+		t.Error("HID should produce different outputs for different inputs")
 	}
 }

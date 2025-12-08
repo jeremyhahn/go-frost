@@ -143,6 +143,20 @@ func (cs *Ed448SHAKE256) H5(data []byte) []byte {
 	return cs.Hash(input)
 }
 
+// HDKG is a domain-separated hash-to-scalar function for DKG operations.
+// Used for computing challenges in the Schnorr proof of knowledge during DKG.
+// Implements: SHAKE256(contextString || "dkg" || data) -> Scalar
+func (cs *Ed448SHAKE256) HDKG(data []byte) group.Scalar {
+	return cs.hashToScalar("dkg", data)
+}
+
+// HID is a domain-separated hash-to-scalar function for identifier derivation.
+// Used to derive participant identifiers from arbitrary byte strings.
+// Implements: SHAKE256(contextString || "id" || data) -> Scalar
+func (cs *Ed448SHAKE256) HID(data []byte) group.Scalar {
+	return cs.hashToScalar("id", data)
+}
+
 // HashToCurve maps arbitrary byte strings to group elements.
 // This uses a hash-and-increment approach for edwards448.
 // We hash the input and attempt to decode it as a point. If that fails,

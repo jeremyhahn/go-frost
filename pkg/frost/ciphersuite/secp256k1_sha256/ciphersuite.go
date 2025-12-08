@@ -132,6 +132,20 @@ func (cs *Secp256k1SHA256) H5(data []byte) []byte {
 	return cs.Hash(input)
 }
 
+// HDKG is a domain-separated hash-to-scalar function for DKG operations.
+// Used for computing challenges in the Schnorr proof of knowledge during DKG.
+// Implements: H(contextString || "dkg" || data) -> Scalar
+func (cs *Secp256k1SHA256) HDKG(data []byte) group.Scalar {
+	return cs.hashToScalar("dkg", data)
+}
+
+// HID is a domain-separated hash-to-scalar function for identifier derivation.
+// Used to derive participant identifiers from arbitrary byte strings.
+// Implements: H(contextString || "id" || data) -> Scalar
+func (cs *Secp256k1SHA256) HID(data []byte) group.Scalar {
+	return cs.hashToScalar("id", data)
+}
+
 // HashToCurve maps arbitrary byte strings to group elements.
 // This uses a hash-and-increment approach for secp256k1.
 // We hash the input and attempt to decode it as a point. If that fails,
@@ -291,8 +305,10 @@ func expandMessageXMD(msg, dst []byte, lenInBytes int) []byte {
 	ell := (lenInBytes + bInBytes - 1) / bInBytes
 
 	// Step 2: Abort checks (len(DST) <= 255, ell <= 255, len_in_bytes <= 65535)
+	// SECURITY NOTE: These conditions should never fail with internal calls.
+	// A failure here indicates a bug in the FROST library implementation.
 	if ell > 255 || len(dst) > 255 || lenInBytes > 65535 {
-		panic("expandMessageXMD: invalid parameters")
+		panic("FROST library bug: expandMessageXMD called with invalid parameters")
 	}
 
 	// Step 3: DST_prime = DST || I2OSP(len(DST), 1)

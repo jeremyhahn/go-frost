@@ -22,16 +22,26 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.25.4'
+        go-version-file: 'go.mod'
         cache: true
+
+    - name: Tidy dependencies
+      run: |
+        go mod tidy
+        git diff --exit-code go.mod go.sum || (echo "go.mod or go.sum not tidy" && exit 1)
+
+    - name: Run go vet
+      run: go vet ./...
 
     - name: Install and run golangci-lint
       run: |
         go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
         golangci-lint run --timeout=5m
 
-    - name: Run go vet
-      run: go vet ./...
+    - name: Install and run staticcheck
+      run: |
+        go install honnef.co/go/tools/cmd/staticcheck@latest
+        staticcheck ./...
 
   security:
     name: Security Scan
@@ -44,7 +54,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.25.4'
+        go-version-file: 'go.mod'
         cache: true
 
     - name: Install and run gosec
@@ -58,7 +68,7 @@ jobs:
         govulncheck ./...
 
   test:
-    name: Test
+    name: Unit Tests
     runs-on: ubuntu-latest
 
     steps:
@@ -68,7 +78,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.25.4'
+        go-version-file: 'go.mod'
         cache: true
 
     - name: Download dependencies
@@ -88,3 +98,53 @@ jobs:
         file: ./coverage.out
         flags: unittests
         fail_ci_if_error: false
+
+  integration-test:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: [test]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: 'go.mod'
+        cache: true
+
+    - name: Run integration tests
+      run: go test -v -race -timeout 300s -tags=integration ./test/integration/...
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: [lint, security, test]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: 'go.mod'
+        cache: true
+
+    - name: Build CLI binary
+      run: go build -o frost ./cmd/frost
+
+    - name: Build shared library
+      run: CGO_ENABLED=1 go build -buildmode=c-shared -o dist/libfrost.so ./cmd/libfrost
+
+    - name: Build static library
+      run: CGO_ENABLED=1 go build -buildmode=c-archive -o dist/libfrost.a ./cmd/libfrost
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-artifacts
+        path: |
+          frost
+          dist/

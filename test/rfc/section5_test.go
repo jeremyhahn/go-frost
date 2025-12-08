@@ -260,11 +260,19 @@ func TestSection5_2_RoundTwoSignatureShareGeneration(t *testing.T) {
 			t.Fatalf("RoundTwo failed: %v", err)
 		}
 
-		// Generate new nonces for second signing
-		nonces2, comm2, _ := participants[1].RoundOne()
-		commitments2 := frost.CommitmentList{comm2}
+		// Generate new nonces for second signing (both participants)
+		noncesMap2 := make(map[frost.Identifier]frost.SigningNonces)
+		commitments2 := make(frost.CommitmentList, 0, 2)
+		for _, id := range []frost.Identifier{1, 2} {
+			nonces, comm, _ := participants[id].RoundOne()
+			noncesMap2[id] = nonces
+			commitments2 = append(commitments2, comm)
+		}
+		sort.Slice(commitments2, func(i, j int) bool {
+			return commitments2[i].Identifier < commitments2[j].Identifier
+		})
 
-		share2, err := participants[1].RoundTwo(nonces2, message2, commitments2)
+		share2, err := participants[1].RoundTwo(noncesMap2[1], message2, commitments2)
 		if err != nil {
 			t.Fatalf("RoundTwo failed: %v", err)
 		}
@@ -324,21 +332,37 @@ func TestSection5_2_RoundTwoSignatureShareGeneration(t *testing.T) {
 		// group_commitment, group_public_key, msg)"
 
 		// Different messages should produce different challenges, leading to different shares
-		nonces, comm, _ := participants[1].RoundOne()
-		commitments := frost.CommitmentList{comm}
+		noncesMap := make(map[frost.Identifier]frost.SigningNonces)
+		commitments := make(frost.CommitmentList, 0, 2)
+		for _, id := range []frost.Identifier{1, 2} {
+			nonces, comm, _ := participants[id].RoundOne()
+			noncesMap[id] = nonces
+			commitments = append(commitments, comm)
+		}
+		sort.Slice(commitments, func(i, j int) bool {
+			return commitments[i].Identifier < commitments[j].Identifier
+		})
 
 		msg1 := []byte("First message")
-		share1, err := participants[1].RoundTwo(nonces, msg1, commitments)
+		share1, err := participants[1].RoundTwo(noncesMap[1], msg1, commitments)
 		if err != nil {
 			t.Fatalf("RoundTwo failed: %v", err)
 		}
 
-		// Generate new nonces for second message
-		nonces2, comm2, _ := participants[1].RoundOne()
-		commitments2 := frost.CommitmentList{comm2}
+		// Generate new nonces for second message (both participants)
+		noncesMap2 := make(map[frost.Identifier]frost.SigningNonces)
+		commitments2 := make(frost.CommitmentList, 0, 2)
+		for _, id := range []frost.Identifier{1, 2} {
+			nonces, comm, _ := participants[id].RoundOne()
+			noncesMap2[id] = nonces
+			commitments2 = append(commitments2, comm)
+		}
+		sort.Slice(commitments2, func(i, j int) bool {
+			return commitments2[i].Identifier < commitments2[j].Identifier
+		})
 
 		msg2 := []byte("Second message")
-		share2, err := participants[1].RoundTwo(nonces2, msg2, commitments2)
+		share2, err := participants[1].RoundTwo(noncesMap2[1], msg2, commitments2)
 		if err != nil {
 			t.Fatalf("RoundTwo failed: %v", err)
 		}
@@ -352,10 +376,18 @@ func TestSection5_2_RoundTwoSignatureShareGeneration(t *testing.T) {
 		// RFC 9591 Section 5.2: "sig_share = hiding_nonce + (binding_nonce * binding_factor)
 		// + (lambda_i * sk_i * challenge)"
 
-		nonces, comm, _ := participants[1].RoundOne()
-		commitments := frost.CommitmentList{comm}
+		noncesMap := make(map[frost.Identifier]frost.SigningNonces)
+		commitments := make(frost.CommitmentList, 0, 2)
+		for _, id := range []frost.Identifier{1, 2} {
+			nonces, comm, _ := participants[id].RoundOne()
+			noncesMap[id] = nonces
+			commitments = append(commitments, comm)
+		}
+		sort.Slice(commitments, func(i, j int) bool {
+			return commitments[i].Identifier < commitments[j].Identifier
+		})
 
-		share, err := participants[1].RoundTwo(nonces, message, commitments)
+		share, err := participants[1].RoundTwo(noncesMap[1], message, commitments)
 		if err != nil {
 			t.Fatalf("RoundTwo failed: %v", err)
 		}

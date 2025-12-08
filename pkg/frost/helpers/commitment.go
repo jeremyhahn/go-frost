@@ -58,6 +58,18 @@ func (g *groupCommitmentComputer) Compute(commitmentList frost.CommitmentList, b
 
 	// 2. For each participant in commitment_list
 	for _, commitment := range commitmentList {
+		// Security check: Verify commitments are not the identity element
+		// RFC 9591 requires that nonce commitments are not the identity,
+		// as this would leak information about the secret shares.
+		if commitment.HidingNonceCommitment == nil || commitment.HidingNonceCommitment.IsIdentity() {
+			return nil, frost.NewParticipantError(commitment.Identifier,
+				"hiding nonce commitment is identity element", frost.ErrIdentityElement)
+		}
+		if commitment.BindingNonceCommitment == nil || commitment.BindingNonceCommitment.IsIdentity() {
+			return nil, frost.NewParticipantError(commitment.Identifier,
+				"binding nonce commitment is identity element", frost.ErrIdentityElement)
+		}
+
 		// a. Get binding_factor for participant
 		var bindingFactor group.Scalar
 		found := false

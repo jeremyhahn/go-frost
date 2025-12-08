@@ -51,6 +51,16 @@ func (m *MockCiphersuite) H5(data []byte) []byte {
 	return m.domainSeparatedHash("FROST-MOCK-SHA512-v1-H5", data)
 }
 
+// HDKG implements domain-separated hash to scalar for DKG operations
+func (m *MockCiphersuite) HDKG(data []byte) group.Scalar {
+	return m.hashToScalar("FROST-MOCK-SHA512-v1-HDKG", data)
+}
+
+// HID implements domain-separated hash to scalar for identifier derivation
+func (m *MockCiphersuite) HID(data []byte) group.Scalar {
+	return m.hashToScalar("FROST-MOCK-SHA512-v1-HID", data)
+}
+
 // HashToCurve maps arbitrary bytes to a group element
 func (m *MockCiphersuite) HashToCurve(data []byte) (group.Element, error) {
 	// Simple implementation: hash to scalar then multiply by generator

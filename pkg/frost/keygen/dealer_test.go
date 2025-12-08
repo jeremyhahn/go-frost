@@ -59,6 +59,14 @@ func (m *mockCiphersuite) VerifySignature(message []byte, signature []byte, publ
 	return nil
 }
 
+func (m *mockCiphersuite) HDKG(data []byte) group.Scalar {
+	return m.group.NewScalar()
+}
+
+func (m *mockCiphersuite) HID(data []byte) group.Scalar {
+	return m.group.NewScalar()
+}
+
 func (m *mockCiphersuite) ContextString() string {
 	return "MOCK"
 }

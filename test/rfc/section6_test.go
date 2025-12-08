@@ -18,7 +18,7 @@ func TestSection6_Ciphersuites(t *testing.T) {
 
 		// RFC 9591 Section 6.2: Group order for ristretto255
 		order := grp.Order()
-		if order == nil || len(order) == 0 {
+		if len(order) == 0 {
 			t.Fatal("Group order should be non-zero")
 		}
 
@@ -135,12 +135,12 @@ func TestSection6_Ciphersuites(t *testing.T) {
 
 		// H4, H5 should produce byte strings
 		h4Result := suite.H4(testInput)
-		if h4Result == nil || len(h4Result) == 0 {
+		if len(h4Result) == 0 {
 			t.Error("H4 should produce non-empty byte string")
 		}
 
 		h5Result := suite.H5(testInput)
-		if h5Result == nil || len(h5Result) == 0 {
+		if len(h5Result) == 0 {
 			t.Error("H5 should produce non-empty byte string")
 		}
 	})

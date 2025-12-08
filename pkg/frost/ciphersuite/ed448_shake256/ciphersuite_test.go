@@ -557,3 +557,59 @@ func BenchmarkVerifySignature(b *testing.B) {
 		_ = suite.VerifySignature(message, signature, publicKey)
 	}
 }
+
+// TestHDKG tests the HDKG hash function for DKG operations
+func TestHDKG(t *testing.T) {
+	suite := New()
+
+	input := []byte("test DKG context")
+	result := suite.HDKG(input)
+
+	if result == nil {
+		t.Fatal("HDKG returned nil")
+	}
+
+	if result.IsZero() {
+		t.Error("HDKG result should not be zero for non-empty input")
+	}
+
+	// Same input should produce same output (deterministic)
+	result2 := suite.HDKG(input)
+	if !result.Equal(result2) {
+		t.Error("HDKG should be deterministic")
+	}
+
+	// Different input should produce different output
+	result3 := suite.HDKG([]byte("different context"))
+	if result.Equal(result3) {
+		t.Error("HDKG should produce different outputs for different inputs")
+	}
+}
+
+// TestHID tests the HID hash function for identifier derivation
+func TestHID(t *testing.T) {
+	suite := New()
+
+	input := []byte("test identifier data")
+	result := suite.HID(input)
+
+	if result == nil {
+		t.Fatal("HID returned nil")
+	}
+
+	if result.IsZero() {
+		t.Error("HID result should not be zero for non-empty input")
+	}
+
+	// Same input should produce same output (deterministic)
+	result2 := suite.HID(input)
+	if !result.Equal(result2) {
+		t.Error("HID should be deterministic")
+	}
+
+	// Different input should produce different output
+	result3 := suite.HID([]byte("different data"))
+	if result.Equal(result3) {
+		t.Error("HID should produce different outputs for different inputs")
+	}
+}

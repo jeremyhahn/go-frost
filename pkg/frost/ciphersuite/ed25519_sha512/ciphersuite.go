@@ -97,11 +97,16 @@ func (cs *Ed25519SHA512) H2(data []byte) group.Scalar {
 	// Hash the data directly
 	hash := cs.Hash(data)
 
-	// Use SetUniformBytes for proper wide reduction
+	// Use SetUniformBytes for proper wide reduction.
+	// SECURITY NOTE: SetUniformBytes requires exactly 64 bytes. SHA-512 always
+	// produces 64 bytes, so this should never fail. A failure here indicates
+	// a bug in the cryptographic library implementation.
+	if len(hash) != 64 {
+		panic("FROST library bug: SHA-512 produced unexpected output length")
+	}
 	scalar, err := edwards25519.NewScalar().SetUniformBytes(hash)
 	if err != nil {
-		// This should never happen with valid hash output
-		panic("failed to reduce hash to scalar: " + err.Error())
+		panic("FROST library bug: SetUniformBytes failed with valid 64-byte input: " + err.Error())
 	}
 
 	// Wrap in our Scalar type using the constructor
@@ -126,6 +131,20 @@ func (cs *Ed25519SHA512) H4(msg []byte) []byte {
 func (cs *Ed25519SHA512) H5(data []byte) []byte {
 	input := cs.domainSeparate(domainH5, data)
 	return cs.Hash(input)
+}
+
+// HDKG is a domain-separated hash-to-scalar function for DKG operations.
+// Used for computing challenges in the Schnorr proof of knowledge during DKG.
+// Implements: H(contextString || "dkg" || data) -> Scalar
+func (cs *Ed25519SHA512) HDKG(data []byte) group.Scalar {
+	return cs.hashToScalar("dkg", data)
+}
+
+// HID is a domain-separated hash-to-scalar function for identifier derivation.
+// Used to derive participant identifiers from arbitrary byte strings.
+// Implements: H(contextString || "id" || data) -> Scalar
+func (cs *Ed25519SHA512) HID(data []byte) group.Scalar {
+	return cs.hashToScalar("id", data)
 }
 
 // HashToCurve maps arbitrary byte strings to group elements.
@@ -227,12 +246,16 @@ func (cs *Ed25519SHA512) hashToScalar(domain string, data []byte) group.Scalar {
 	// Hash with SHA-512 (64 bytes output)
 	hash := cs.Hash(input)
 
-	// Use SetUniformBytes for proper wide reduction
-	// This is the Ed25519 way of doing hash-to-scalar
+	// Use SetUniformBytes for proper wide reduction.
+	// SECURITY NOTE: SetUniformBytes requires exactly 64 bytes. SHA-512 always
+	// produces 64 bytes, so this should never fail. A failure here indicates
+	// a bug in the cryptographic library implementation.
+	if len(hash) != 64 {
+		panic("FROST library bug: SHA-512 produced unexpected output length")
+	}
 	scalar, err := edwards25519.NewScalar().SetUniformBytes(hash)
 	if err != nil {
-		// This should never happen with valid hash output
-		panic("failed to reduce hash to scalar: " + err.Error())
+		panic("FROST library bug: SetUniformBytes failed with valid 64-byte input: " + err.Error())
 	}
 
 	// Wrap in our Scalar type using the constructor

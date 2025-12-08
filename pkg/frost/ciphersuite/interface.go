@@ -42,6 +42,16 @@ type Ciphersuite interface {
 	// Used for commitment list hashing in binding factor computation.
 	H5(data []byte) []byte
 
+	// HDKG is a domain-separated hash-to-scalar function for DKG operations.
+	// Used for computing challenges in the Schnorr proof of knowledge during DKG.
+	// Implements: H(contextString || "dkg" || data) -> Scalar
+	HDKG(data []byte) group.Scalar
+
+	// HID is a domain-separated hash-to-scalar function for identifier derivation.
+	// Used to derive participant identifiers from arbitrary byte strings.
+	// Implements: H(contextString || "id" || data) -> Scalar
+	HID(data []byte) group.Scalar
+
 	// HashToCurve maps arbitrary byte strings to group elements (H2C).
 	// This is used for deriving public keys and other operations.
 	// Returns an error if hashing to curve fails.
@@ -95,4 +105,83 @@ type Registry interface {
 
 	// List returns all registered ciphersuite IDs.
 	List() []CiphersuiteID
+}
+
+// Hooks defines optional customization points for FROST operations.
+// Ciphersuites can implement this interface to modify behavior at key points
+// in the signing and verification process.
+//
+// This is useful for:
+// - Message pre-hashing (e.g., Ed448 pre-hashes with SHAKE256)
+// - Custom signature transformations
+// - Protocol-specific modifications
+type Hooks interface {
+	// PreSign is called before signing begins.
+	// It receives the message and can return a modified message.
+	// This is useful for message pre-hashing.
+	// Return the original message unchanged for default behavior.
+	PreSign(msg []byte) ([]byte, error)
+
+	// PreAggregate is called before signature aggregation.
+	// It receives the message and group commitment and can return modified values.
+	// This is useful for custom binding or format transformations.
+	// Return the original values unchanged for default behavior.
+	PreAggregate(msg []byte, groupCommitment group.Element) ([]byte, group.Element, error)
+
+	// PreVerify is called before signature verification.
+	// It receives the message, signature R and z components, and public key.
+	// This is useful for signature format conversions or custom validation.
+	// Return the original values unchanged for default behavior.
+	PreVerify(msg []byte, r group.Element, z group.Scalar, publicKey group.Element) ([]byte, group.Element, group.Scalar, group.Element, error)
+
+	// PostDKG is called after DKG completes successfully.
+	// It receives the participant's secret share and the group public key.
+	// This is useful for share validation or format conversion.
+	// Return the original values unchanged for default behavior.
+	PostDKG(secretShare group.Scalar, groupPublicKey group.Element) (group.Scalar, group.Element, error)
+
+	// PostGenerate is called after trusted dealer key generation.
+	// It receives the participant's secret share and the group public key.
+	// This is useful for share validation or format conversion.
+	// Return the original values unchanged for default behavior.
+	PostGenerate(secretShare group.Scalar, groupPublicKey group.Element) (group.Scalar, group.Element, error)
+}
+
+// DefaultHooks provides pass-through implementations for all hooks.
+// Ciphersuites that don't need customization can embed this.
+type DefaultHooks struct{}
+
+// PreSign returns the message unchanged.
+func (DefaultHooks) PreSign(msg []byte) ([]byte, error) {
+	return msg, nil
+}
+
+// PreAggregate returns the values unchanged.
+func (DefaultHooks) PreAggregate(msg []byte, groupCommitment group.Element) ([]byte, group.Element, error) {
+	return msg, groupCommitment, nil
+}
+
+// PreVerify returns the values unchanged.
+func (DefaultHooks) PreVerify(msg []byte, r group.Element, z group.Scalar, publicKey group.Element) ([]byte, group.Element, group.Scalar, group.Element, error) {
+	return msg, r, z, publicKey, nil
+}
+
+// PostDKG returns the values unchanged.
+func (DefaultHooks) PostDKG(secretShare group.Scalar, groupPublicKey group.Element) (group.Scalar, group.Element, error) {
+	return secretShare, groupPublicKey, nil
+}
+
+// PostGenerate returns the values unchanged.
+func (DefaultHooks) PostGenerate(secretShare group.Scalar, groupPublicKey group.Element) (group.Scalar, group.Element, error) {
+	return secretShare, groupPublicKey, nil
+}
+
+// GetHooks returns the hooks for a ciphersuite.
+// If the ciphersuite implements Hooks, it returns those hooks.
+// Otherwise, it returns DefaultHooks.
+func GetHooks(suite Ciphersuite) Hooks {
+	if h, ok := suite.(Hooks); ok {
+		return h
+	}
+	return DefaultHooks{}
 }

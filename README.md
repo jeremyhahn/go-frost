@@ -8,7 +8,7 @@ A production-ready Go implementation of the FROST (Flexible Round-Optimized Schn
 
 ## Overview
 
-FROST is a threshold signature scheme that enables a threshold number of participants to cooperatively generate a signature, providing improved distribution of trust and redundancy with respect to secret keys. This implementation follows RFC 9591 and achieves 100% compliance.
+FROST is a threshold signature scheme that enables a threshold number of participants to cooperatively generate a signature, providing improved distribution of trust and redundancy with respect to secret keys. This library follows RFC 9591 and the [ZcashFoundation/frost](https://github.com/ZcashFoundation/frost) implementation.
 
 ### Key Features
 
@@ -122,7 +122,7 @@ go get github.com/jeremyhahn/go-frost
 
 ### Requirements
 
-- Go 1.21 or higher
+- Go 1.25.5 or higher
 - No external dependencies for core library
 - Optional: go-keychain or go-objstore for advanced storage backends
 - Optional: HSM/TPM libraries if using hardware-backed keys

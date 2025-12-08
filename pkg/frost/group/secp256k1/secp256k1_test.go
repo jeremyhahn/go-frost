@@ -94,6 +94,27 @@ func TestIdentity(t *testing.T) {
 	}
 }
 
+// TestIdentityBytes tests that Bytes() returns correct representation for identity.
+func TestIdentityBytes(t *testing.T) {
+	g := NewGroup()
+	identity := g.Identity()
+
+	// Get bytes representation
+	identityBytes := identity.Bytes()
+
+	// Should be ElementSize (33 bytes for compressed format)
+	if len(identityBytes) != ElementSize {
+		t.Errorf("Identity bytes length = %d, want %d", len(identityBytes), ElementSize)
+	}
+
+	// Should be all zeros for identity
+	for i, b := range identityBytes {
+		if b != 0 {
+			t.Errorf("Identity byte at position %d = %x, want 0", i, b)
+		}
+	}
+}
+
 // TestGenerator tests the Generator method.
 func TestGenerator(t *testing.T) {
 	g := NewGroup()
@@ -927,6 +948,33 @@ func BenchmarkRandomScalar(b *testing.B) {
 	}
 }
 
+// TestCofactor tests that Cofactor returns the correct value for secp256k1.
+func TestCofactor(t *testing.T) {
+	g := NewGroup()
+	cofactor := g.Cofactor()
+	if cofactor == nil {
+		t.Fatal("Cofactor returned nil")
+	}
+	if cofactor.IsZero() {
+		t.Error("Cofactor should not be zero")
+	}
+	// secp256k1 has cofactor 1 (prime order curve)
+	bytes := cofactor.Bytes()
+	// The scalar should represent 1, check last byte in big-endian
+	if bytes[len(bytes)-1] != 1 {
+		t.Errorf("Cofactor should be 1, last byte is %d", bytes[len(bytes)-1])
+	}
+}
+
+// TestByteOrder tests that ByteOrder returns BigEndian for secp256k1.
+func TestByteOrder(t *testing.T) {
+	g := NewGroup()
+	order := g.ByteOrder()
+	if order != group.BigEndian {
+		t.Errorf("Expected BigEndian, got %v", order)
+	}
+}
+
 // BenchmarkSerializeElement benchmarks element serialization.
 func BenchmarkSerializeElement(b *testing.B) {
 	g := NewGroup()
@@ -970,5 +1018,55 @@ func BenchmarkDeserializeScalar(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_, _ = g.DeserializeScalar(bytes)
+	}
+}
+
+// TestNewElementWrapper tests the NewElement helper function that wraps underlying crypto types.
+func TestNewElementWrapper(t *testing.T) {
+	g := NewGroup()
+
+	// Get an element and extract its underlying point
+	gen := g.Generator()
+	genElement, ok := gen.(*Element)
+	if !ok {
+		t.Fatal("Generator did not return *Element type")
+	}
+
+	// Create a new Element using the NewElement wrapper
+	wrapped := NewElement(genElement.point)
+	if wrapped == nil {
+		t.Fatal("NewElement returned nil")
+	}
+
+	// The wrapped element should be equal to the original
+	if !wrapped.Equal(gen) {
+		t.Error("NewElement wrapper should produce equal element")
+	}
+}
+
+// TestNewScalarWrapper tests the NewScalar helper function that wraps underlying crypto types.
+func TestNewScalarWrapper(t *testing.T) {
+	g := NewGroup()
+
+	// Get a scalar and extract its underlying value
+	scalar, err := g.RandomScalar()
+	if err != nil {
+		t.Fatalf("RandomScalar failed: %v", err)
+	}
+
+	scalarTyped, ok := scalar.(*Scalar)
+	if !ok {
+		t.Fatal("RandomScalar did not return *Scalar type")
+	}
+
+	// Create a new Scalar using the NewScalar wrapper
+	wrapped := NewScalar(scalarTyped.value)
+	if wrapped == nil {
+		t.Fatal("NewScalar returned nil")
+	}
+
+	// The wrapped scalar should be equal to the original
+	if !wrapped.Equal(scalar) {
+		t.Error("NewScalar wrapper should produce equal scalar")
 	}
 }

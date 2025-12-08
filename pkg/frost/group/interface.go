@@ -85,6 +85,13 @@ type Group interface {
 	// Order returns the order of the group (i.e., p).
 	Order() []byte
 
+	// Cofactor returns the cofactor of the group.
+	// For prime-order groups (ristretto255, P-256, secp256k1), this returns 1.
+	// For groups with cofactors (Ed25519 cofactor=8, Ed448 cofactor=4),
+	// this returns the appropriate scalar value.
+	// This is used in signature verification to ensure RFC 9591 compliance.
+	Cofactor() Scalar
+
 	// Identity returns the identity element of the group (i.e., I).
 	Identity() Element
 

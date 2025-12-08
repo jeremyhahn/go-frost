@@ -1054,4 +1054,205 @@ func TestNewAggregator(t *testing.T) {
 	}
 }
 
-// TestAggregator_Verify_NilSignatureR tests verification fails with nil R
+// TestAggregator_Verify_IdentityR tests verification fails with identity R
+func TestAggregator_Verify_IdentityR(t *testing.T) {
+	suite := testutil.NewMockCiphersuite()
+	grp := suite.Group()
+	minSigners := uint32(2)
+
+	agg := NewAggregator(suite, minSigners)
+
+	secretKey, _ := grp.RandomScalar()
+	publicKey := grp.ScalarBaseMult(secretKey)
+
+	z, _ := grp.RandomScalar()
+	msg := []byte("test message")
+
+	signature := frost.Signature{
+		R: grp.Identity(), // Identity element
+		Z: z,
+	}
+
+	// Verify should fail
+	err := agg.Verify(msg, signature, publicKey)
+	if err == nil {
+		t.Error("Expected error for identity R")
+	}
+}
+
+// TestAggregator_Verify_IdentityPublicKey tests verification fails with identity public key
+func TestAggregator_Verify_IdentityPublicKey(t *testing.T) {
+	suite := testutil.NewMockCiphersuite()
+	grp := suite.Group()
+	minSigners := uint32(2)
+
+	agg := NewAggregator(suite, minSigners)
+
+	r, _ := grp.RandomScalar()
+	R := grp.ScalarBaseMult(r)
+	z, _ := grp.RandomScalar()
+	msg := []byte("test message")
+
+	signature := frost.Signature{
+		R: R,
+		Z: z,
+	}
+
+	// Verify should fail with identity public key
+	err := agg.Verify(msg, signature, grp.Identity())
+	if err == nil {
+		t.Error("Expected error for identity public key")
+	}
+}
+
+// TestAggregator_Aggregate_NilGroupPublicKey2 tests error handling for nil group public key in Aggregate
+func TestAggregator_Aggregate_NilGroupPublicKey2(t *testing.T) {
+	suite := testutil.NewMockCiphersuite()
+	grp := suite.Group()
+	minSigners := uint32(2)
+
+	agg := NewAggregator(suite, minSigners)
+
+	nonce1, _ := grp.RandomScalar()
+	nonce2, _ := grp.RandomScalar()
+	bindingNonce1, _ := grp.RandomScalar()
+	bindingNonce2, _ := grp.RandomScalar()
+
+	commitmentList := frost.CommitmentList{
+		{
+			Identifier:             frost.Identifier(1),
+			HidingNonceCommitment:  grp.ScalarBaseMult(nonce1),
+			BindingNonceCommitment: grp.ScalarBaseMult(bindingNonce1),
+		},
+		{
+			Identifier:             frost.Identifier(2),
+			HidingNonceCommitment:  grp.ScalarBaseMult(nonce2),
+			BindingNonceCommitment: grp.ScalarBaseMult(bindingNonce2),
+		},
+	}
+
+	msg := []byte("test message")
+
+	share1, _ := grp.RandomScalar()
+	share2, _ := grp.RandomScalar()
+
+	signatureShares := []frost.SignatureShare{
+		{Identifier: frost.Identifier(1), SignatureShare: share1},
+		{Identifier: frost.Identifier(2), SignatureShare: share2},
+	}
+
+	// Nil group public key should fail
+	_, err := agg.Aggregate(nil, commitmentList, msg, signatureShares)
+	if err == nil {
+		t.Fatal("Expected error for nil group public key")
+	}
+}
+
+// TestAggregatorWithVerification_MissingBindingFactor tests error handling when
+// a signature share has an identifier that isn't in the commitment list
+func TestAggregatorWithVerification_MissingBindingFactor(t *testing.T) {
+	suite := testutil.NewMockCiphersuite()
+	grp := suite.Group()
+	minSigners := uint32(2)
+
+	agg := NewAggregator(suite, minSigners)
+
+	groupSecretKey, _ := grp.RandomScalar()
+	groupPublicKey := grp.ScalarBaseMult(groupSecretKey)
+
+	// Create commitments for identifiers 1 and 2
+	nonce1, _ := grp.RandomScalar()
+	nonce2, _ := grp.RandomScalar()
+	bindingNonce1, _ := grp.RandomScalar()
+	bindingNonce2, _ := grp.RandomScalar()
+
+	commitmentList := frost.CommitmentList{
+		{
+			Identifier:             frost.Identifier(1),
+			HidingNonceCommitment:  grp.ScalarBaseMult(nonce1),
+			BindingNonceCommitment: grp.ScalarBaseMult(bindingNonce1),
+		},
+		{
+			Identifier:             frost.Identifier(2),
+			HidingNonceCommitment:  grp.ScalarBaseMult(nonce2),
+			BindingNonceCommitment: grp.ScalarBaseMult(bindingNonce2),
+		},
+	}
+
+	msg := []byte("test message")
+
+	share1, _ := grp.RandomScalar()
+	share2, _ := grp.RandomScalar()
+
+	// Signature share with identifier 999 not in commitment list
+	signatureShares := []frost.SignatureShare{
+		{Identifier: frost.Identifier(1), SignatureShare: share1},
+		{Identifier: frost.Identifier(999), SignatureShare: share2}, // Not in commitments
+	}
+
+	verificationShares := []frost.VerificationShare{
+		{Identifier: frost.Identifier(1), VerificationKey: grp.Generator()},
+		{Identifier: frost.Identifier(999), VerificationKey: grp.Generator()},
+	}
+
+	// Should fail when looking up binding factor for identifier 999
+	_, err := agg.AggregateWithVerification(groupPublicKey, commitmentList, msg, signatureShares, verificationShares)
+	if err == nil {
+		t.Fatal("Expected error for missing binding factor")
+	}
+}
+
+// TestAggregatorWithVerification_MissingCommitment tests error handling when
+// a signature share identifier has no corresponding commitment in the list
+func TestAggregatorWithVerification_MissingCommitment(t *testing.T) {
+	suite := testutil.NewMockCiphersuite()
+	grp := suite.Group()
+	minSigners := uint32(2)
+
+	agg := NewAggregator(suite, minSigners)
+
+	groupSecretKey, _ := grp.RandomScalar()
+	groupPublicKey := grp.ScalarBaseMult(groupSecretKey)
+
+	// Create commitments for identifiers 1 and 2
+	nonce1, _ := grp.RandomScalar()
+	nonce2, _ := grp.RandomScalar()
+	bindingNonce1, _ := grp.RandomScalar()
+	bindingNonce2, _ := grp.RandomScalar()
+
+	commitmentList := frost.CommitmentList{
+		{
+			Identifier:             frost.Identifier(1),
+			HidingNonceCommitment:  grp.ScalarBaseMult(nonce1),
+			BindingNonceCommitment: grp.ScalarBaseMult(bindingNonce1),
+		},
+		{
+			Identifier:             frost.Identifier(2),
+			HidingNonceCommitment:  grp.ScalarBaseMult(nonce2),
+			BindingNonceCommitment: grp.ScalarBaseMult(bindingNonce2),
+		},
+	}
+
+	msg := []byte("test message")
+
+	share1, _ := grp.RandomScalar()
+	share3, _ := grp.RandomScalar()
+
+	// Signature share for identifier 3, but commitmentList only has 1 and 2
+	signatureShares := []frost.SignatureShare{
+		{Identifier: frost.Identifier(1), SignatureShare: share1},
+		{Identifier: frost.Identifier(3), SignatureShare: share3}, // No commitment for 3
+	}
+
+	// Verification shares include identifier 3
+	verificationShares := []frost.VerificationShare{
+		{Identifier: frost.Identifier(1), VerificationKey: grp.Generator()},
+		{Identifier: frost.Identifier(3), VerificationKey: grp.Generator()},
+	}
+
+	// Should fail when looking for commitment for identifier 3
+	_, err := agg.AggregateWithVerification(groupPublicKey, commitmentList, msg, signatureShares, verificationShares)
+	if err == nil {
+		t.Fatal("Expected error for missing commitment")
+	}
+}

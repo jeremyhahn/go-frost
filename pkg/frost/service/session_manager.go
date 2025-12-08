@@ -16,7 +16,6 @@ type signingSession struct {
 	message         []byte
 	commitments     map[frost.Identifier]frost.SigningCommitments
 	signatureShares map[frost.Identifier]frost.SignatureShare
-	commitmentList  frost.CommitmentList
 	finalSignature  frost.Signature
 	isComplete      bool
 	isCanceled      bool
@@ -157,23 +156,6 @@ func (s *signingSession) GetSignature() (frost.Signature, error) {
 
 	if len(s.signatureShares) < s.minParticipants {
 		return frost.Signature{}, frost.NewParameterError("signatureShares", "insufficient signature shares", frost.ErrInsufficientParticipants)
-	}
-
-	// Build commitment list
-	commitmentList := make(frost.CommitmentList, 0, len(s.commitments))
-	for _, commitment := range s.commitments {
-		commitmentList = append(commitmentList, commitment)
-	}
-
-	// Sort by identifier
-	sort.Slice(commitmentList, func(i, j int) bool {
-		return commitmentList[i].Identifier < commitmentList[j].Identifier
-	})
-
-	// Build signature share list
-	signatureShares := make([]frost.SignatureShare, 0, len(s.signatureShares))
-	for _, share := range s.signatureShares {
-		signatureShares = append(signatureShares, share)
 	}
 
 	// For a complete session-based signing implementation, we would need to:

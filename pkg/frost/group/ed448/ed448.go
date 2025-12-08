@@ -282,6 +282,17 @@ func (g *Group) Order() []byte {
 	return order
 }
 
+// Cofactor returns the cofactor of the Ed448 group.
+// Ed448 has a cofactor of 4 (the curve order is 4 * prime_order).
+// This is used in signature verification to ensure RFC 9591 compliance.
+func (g *Group) Cofactor() group.Scalar {
+	// Create scalar with value 4
+	var four goldilocks.Scalar
+	// 4 in little-endian bytes (56 bytes for goldilocks internal representation)
+	four[0] = 4
+	return &Scalar{value: four}
+}
+
 // Identity returns the identity element of the group.
 func (g *Group) Identity() group.Element {
 	return g.identity.Copy()
