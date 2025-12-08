@@ -198,6 +198,18 @@ func (g *Group) Order() []byte {
 	return order
 }
 
+// Cofactor returns the cofactor of the Ed25519 group.
+// Ed25519 has a cofactor of 8 (the curve order is 8 * prime_order).
+// This is used in signature verification to ensure RFC 9591 compliance.
+func (g *Group) Cofactor() group.Scalar {
+	// Create scalar with value 8
+	eight := edwards25519.NewScalar()
+	// 8 in little-endian bytes
+	eightBytes := []byte{8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+	eight.SetCanonicalBytes(eightBytes)
+	return &Scalar{scalar: eight}
+}
+
 // Identity returns the identity element of the group.
 func (g *Group) Identity() group.Element {
 	return g.identity.Copy()

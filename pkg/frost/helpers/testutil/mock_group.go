@@ -37,6 +37,11 @@ func (m *MockGroup) Order() []byte {
 	return m.order.Bytes()
 }
 
+// Cofactor returns the cofactor of the mock group (always 1 for testing).
+func (m *MockGroup) Cofactor() group.Scalar {
+	return &MockScalar{value: big.NewInt(1), order: m.order, groupName: m.name}
+}
+
 func (m *MockGroup) Identity() group.Element {
 	return &MockElement{value: big.NewInt(0), group: m}
 }

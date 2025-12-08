@@ -1,7 +1,7 @@
 # Makefile for go-frost
 # FROST threshold signature scheme implementation
 
-.PHONY: all build build-fips build-lib build-lib-shared build-lib-static build-lib-fips build-all-fips build-release test test-unit test-integration test-transport integration-test-transport test-coverage clean lint fmt vet docker-build docker-test bench help ci gosec govulncheck staticcheck test-ristretto255-sha512 coverage-ristretto255-sha512 bench-ristretto255-sha512 test-keystore coverage-keystore bench-keystore test-ed25519 coverage-ed25519 bench-ed25519 test-ed25519-sha512 coverage-ed25519-sha512 bench-ed25519-sha512 test-ed448 coverage-ed448 bench-ed448 test-ed448-shake256 coverage-ed448-shake256 bench-ed448-shake256 test-p256 coverage-p256 bench-p256 test-p256-sha256 coverage-p256-sha256 bench-p256-sha256 test-secp256k1 coverage-secp256k1 bench-secp256k1 test-secp256k1-sha256 coverage-secp256k1-sha256 bench-secp256k1-sha256
+.PHONY: all build build-fips build-lib build-lib-shared build-lib-static build-lib-fips build-all-fips build-release test test-unit test-integration test-transport integration-test-transport test-coverage coverage coverage-unit coverage-frost coverage-group coverage-ciphersuite coverage-helpers coverage-signing coverage-keygen coverage-service coverage-rfc clean lint fmt vet docker-build docker-test bench help ci gosec govulncheck staticcheck test-ristretto255-sha512 coverage-ristretto255-sha512 bench-ristretto255-sha512 test-keystore coverage-keystore bench-keystore test-ed25519 coverage-ed25519 bench-ed25519 test-ed25519-sha512 coverage-ed25519-sha512 bench-ed25519-sha512 test-ed448 coverage-ed448 bench-ed448 test-ed448-shake256 coverage-ed448-shake256 bench-ed448-shake256 test-p256 coverage-p256 bench-p256 test-p256-sha256 coverage-p256-sha256 bench-p256-sha256 test-secp256k1 coverage-secp256k1 bench-secp256k1 test-secp256k1-sha256 coverage-secp256k1-sha256 bench-secp256k1-sha256
 
 # Go parameters
 GOCMD=go
@@ -98,7 +98,7 @@ build-all-fips: build-fips build-lib-fips
 build-all: build build-lib build-fips build-lib-fips
 	@echo "All builds complete"
 
-## test: Run all tests
+## test: Run all unit tests (alias for test-unit)
 test: test-unit
 
 ## test-unit: Run unit tests for all packages
@@ -111,6 +111,9 @@ test-unit:
 	else \
 		echo "Skipping internal/ (no Go packages found)"; \
 	fi
+
+## test-all: Run all tests (unit + integration)
+test-all: test-unit test-integration
 
 ## test-integration: Run integration tests in Docker
 test-integration:
@@ -136,13 +139,35 @@ test-transport:
 ## integration-test-transport: Alias for test-transport (matches CLAUDE.md requirements)
 integration-test-transport: test-transport
 
-## coverage: Generate code coverage report
+## coverage: Generate complete coverage report (unit + integration tests)
 coverage:
-	@echo "Generating coverage report..."
+	@echo "Generating complete coverage report (unit + integration tests)..."
 	@mkdir -p $(COVERAGE_DIR)
-	$(GOTEST) -v -race -coverprofile=$(COVERAGE_PROFILE) -covermode=atomic $(PKG_DIR)
+	@echo "Running unit tests with coverage..."
+	$(GOTEST) -race -coverprofile=$(COVERAGE_DIR)/unit.out -covermode=atomic $(PKG_DIR)
+	@echo "Running integration tests with coverage..."
+	$(GOTEST) -race -coverprofile=$(COVERAGE_DIR)/integration.out -covermode=atomic -tags=integration ./test/integration/...
+	@echo "Merging coverage profiles..."
+	@echo "mode: atomic" > $(COVERAGE_PROFILE)
+	@grep -h -v "mode: atomic" $(COVERAGE_DIR)/unit.out $(COVERAGE_DIR)/integration.out >> $(COVERAGE_PROFILE) 2>/dev/null || true
 	$(GOCMD) tool cover -html=$(COVERAGE_PROFILE) -o $(COVERAGE_HTML)
+	$(GOCMD) tool cover -func=$(COVERAGE_PROFILE)
+	@echo ""
+	@echo "========================================"
 	@echo "Coverage report generated at $(COVERAGE_HTML)"
+	@echo ""
+	@TOTAL=$$($(GOCMD) tool cover -func=$(COVERAGE_PROFILE) | grep total | awk '{print $$3}'); \
+	echo "TOTAL PROJECT COVERAGE: $$TOTAL"; \
+	echo "========================================"
+
+## coverage-unit: Generate coverage report for unit tests only
+coverage-unit:
+	@echo "Generating unit test coverage report..."
+	@mkdir -p $(COVERAGE_DIR)
+	$(GOTEST) -v -race -coverprofile=$(COVERAGE_DIR)/unit.out -covermode=atomic $(PKG_DIR)
+	$(GOCMD) tool cover -html=$(COVERAGE_DIR)/unit.out -o $(COVERAGE_DIR)/unit.html
+	$(GOCMD) tool cover -func=$(COVERAGE_DIR)/unit.out
+	@echo "Unit coverage report generated at $(COVERAGE_DIR)/unit.html"
 
 ## coverage-frost: Generate coverage for frost core package
 coverage-frost:
@@ -429,9 +454,8 @@ staticcheck:
 	@which staticcheck > /dev/null 2>&1 || go install honnef.co/go/tools/cmd/staticcheck@latest
 	@which staticcheck > /dev/null 2>&1 && staticcheck ./... || $$(go env GOPATH)/bin/staticcheck ./...
 
-## ci: Run all CI checks (lint, security, tests, build)
-## Note: staticcheck is included in golangci-lint, so we skip the standalone version
-ci: tidy vet lint gosec govulncheck test build build-lib
+## ci: Run all CI checks (lint, security, static analysis, tests, build)
+ci: tidy vet lint staticcheck gosec govulncheck test build build-lib
 	@echo ""
 	@echo "========================================"
 	@echo "CI pipeline completed successfully!"

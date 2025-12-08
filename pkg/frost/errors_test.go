@@ -450,3 +450,281 @@ func TestErrorTypes_AsConversion(t *testing.T) {
 		}
 	})
 }
+
+// TestParticipantError_Culprits tests the Culprits() method of ParticipantError.
+func TestParticipantError_Culprits(t *testing.T) {
+	err := NewParticipantError(Identifier(5), "test", nil)
+	culprits := err.Culprits()
+
+	if len(culprits) != 1 {
+		t.Fatalf("expected 1 culprit, got %d", len(culprits))
+	}
+	if culprits[0] != Identifier(5) {
+		t.Errorf("culprit = %d, want %d", culprits[0], 5)
+	}
+}
+
+// TestSignatureShareError_Error tests the Error() method of SignatureShareError.
+func TestSignatureShareError_Error(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      *SignatureShareError
+		contains string
+	}{
+		{
+			name:     "no culprits, no wrapped error",
+			err:      NewSignatureShareError(nil, "verification failed", nil),
+			contains: "invalid signature share: verification failed",
+		},
+		{
+			name:     "no culprits, with wrapped error",
+			err:      NewSignatureShareError(nil, "verification failed", ErrInvalidSignatureShare),
+			contains: "invalid signature share: verification failed: invalid signature share",
+		},
+		{
+			name:     "single culprit, no wrapped error",
+			err:      NewSignatureShareError([]Identifier{5}, "bad proof", nil),
+			contains: "invalid signature share from participant 5: bad proof",
+		},
+		{
+			name:     "single culprit, with wrapped error",
+			err:      NewSignatureShareError([]Identifier{5}, "bad proof", ErrInvalidSignatureShare),
+			contains: "invalid signature share from participant 5: bad proof: invalid signature share",
+		},
+		{
+			name:     "multiple culprits, no wrapped error",
+			err:      NewSignatureShareError([]Identifier{1, 2, 3}, "verification failed", nil),
+			contains: "invalid signature shares from 3 participants: verification failed",
+		},
+		{
+			name:     "multiple culprits, with wrapped error",
+			err:      NewSignatureShareError([]Identifier{1, 2}, "verification failed", ErrInvalidSignatureShare),
+			contains: "invalid signature shares from 2 participants: verification failed: invalid signature share",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.err.Error()
+			if result != tt.contains {
+				t.Errorf("Error() = %q, want %q", result, tt.contains)
+			}
+		})
+	}
+}
+
+// TestSignatureShareError_Unwrap tests the Unwrap() method of SignatureShareError.
+func TestSignatureShareError_Unwrap(t *testing.T) {
+	err := NewSignatureShareError([]Identifier{1}, "test", ErrInvalidSignatureShare)
+	if err.Unwrap() != ErrInvalidSignatureShare {
+		t.Error("Unwrap() should return wrapped error")
+	}
+
+	errNoWrap := NewSignatureShareError([]Identifier{1}, "test", nil)
+	if errNoWrap.Unwrap() != nil {
+		t.Error("Unwrap() should return nil when no wrapped error")
+	}
+}
+
+// TestSignatureShareError_Culprits tests the Culprits() method of SignatureShareError.
+func TestSignatureShareError_Culprits(t *testing.T) {
+	culprits := []Identifier{1, 5, 10}
+	err := NewSignatureShareError(culprits, "test", nil)
+
+	result := err.Culprits()
+	if len(result) != len(culprits) {
+		t.Fatalf("expected %d culprits, got %d", len(culprits), len(result))
+	}
+
+	for i, c := range culprits {
+		if result[i] != c {
+			t.Errorf("culprit[%d] = %d, want %d", i, result[i], c)
+		}
+	}
+
+	// Verify it returns a copy
+	result[0] = 999
+	originalCulprits := err.Culprits()
+	if originalCulprits[0] == 999 {
+		t.Error("Culprits() should return a copy, not the original slice")
+	}
+}
+
+// TestSignatureShareError_AddCulprit tests the AddCulprit() method of SignatureShareError.
+func TestSignatureShareError_AddCulprit(t *testing.T) {
+	err := NewSignatureShareError([]Identifier{1}, "test", nil)
+
+	// Add a culprit
+	result := err.AddCulprit(Identifier(5))
+	if result != err {
+		t.Error("AddCulprit should return the same error")
+	}
+
+	culprits := err.Culprits()
+	if len(culprits) != 2 {
+		t.Fatalf("expected 2 culprits, got %d", len(culprits))
+	}
+	if culprits[1] != Identifier(5) {
+		t.Errorf("added culprit = %d, want %d", culprits[1], 5)
+	}
+}
+
+// TestProofOfKnowledgeError_Error tests the Error() method of ProofOfKnowledgeError.
+func TestProofOfKnowledgeError_Error(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      *ProofOfKnowledgeError
+		expected string
+	}{
+		{
+			name:     "with wrapped error",
+			err:      NewProofOfKnowledgeError(Identifier(3), "commitment mismatch", ErrInvalidCommitment),
+			expected: "invalid proof of knowledge from participant 3: commitment mismatch: invalid commitment",
+		},
+		{
+			name:     "without wrapped error",
+			err:      NewProofOfKnowledgeError(Identifier(7), "verification failed", nil),
+			expected: "invalid proof of knowledge from participant 7: verification failed",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.err.Error()
+			if result != tt.expected {
+				t.Errorf("Error() = %q, want %q", result, tt.expected)
+			}
+		})
+	}
+}
+
+// TestProofOfKnowledgeError_Unwrap tests the Unwrap() method of ProofOfKnowledgeError.
+func TestProofOfKnowledgeError_Unwrap(t *testing.T) {
+	err := NewProofOfKnowledgeError(Identifier(1), "test", ErrInvalidCommitment)
+	if err.Unwrap() != ErrInvalidCommitment {
+		t.Error("Unwrap() should return wrapped error")
+	}
+
+	errNoWrap := NewProofOfKnowledgeError(Identifier(1), "test", nil)
+	if errNoWrap.Unwrap() != nil {
+		t.Error("Unwrap() should return nil when no wrapped error")
+	}
+}
+
+// TestProofOfKnowledgeError_Culprits tests the Culprits() method of ProofOfKnowledgeError.
+func TestProofOfKnowledgeError_Culprits(t *testing.T) {
+	err := NewProofOfKnowledgeError(Identifier(42), "test", nil)
+	culprits := err.Culprits()
+
+	if len(culprits) != 1 {
+		t.Fatalf("expected 1 culprit, got %d", len(culprits))
+	}
+	if culprits[0] != Identifier(42) {
+		t.Errorf("culprit = %d, want %d", culprits[0], 42)
+	}
+}
+
+// TestSecretShareError_Error tests the Error() method of SecretShareError.
+func TestSecretShareError_Error(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      *SecretShareError
+		expected string
+	}{
+		{
+			name:     "with wrapped error",
+			err:      NewSecretShareError(Identifier(4), "polynomial mismatch", ErrInvalidKeyShare),
+			expected: "invalid secret share from participant 4: polynomial mismatch: invalid key share",
+		},
+		{
+			name:     "without wrapped error",
+			err:      NewSecretShareError(Identifier(8), "verification failed", nil),
+			expected: "invalid secret share from participant 8: verification failed",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.err.Error()
+			if result != tt.expected {
+				t.Errorf("Error() = %q, want %q", result, tt.expected)
+			}
+		})
+	}
+}
+
+// TestSecretShareError_Unwrap tests the Unwrap() method of SecretShareError.
+func TestSecretShareError_Unwrap(t *testing.T) {
+	err := NewSecretShareError(Identifier(1), "test", ErrInvalidKeyShare)
+	if err.Unwrap() != ErrInvalidKeyShare {
+		t.Error("Unwrap() should return wrapped error")
+	}
+
+	errNoWrap := NewSecretShareError(Identifier(1), "test", nil)
+	if errNoWrap.Unwrap() != nil {
+		t.Error("Unwrap() should return nil when no wrapped error")
+	}
+}
+
+// TestSecretShareError_Culprits tests the Culprits() method of SecretShareError.
+func TestSecretShareError_Culprits(t *testing.T) {
+	err := NewSecretShareError(Identifier(99), "test", nil)
+	culprits := err.Culprits()
+
+	if len(culprits) != 1 {
+		t.Fatalf("expected 1 culprit, got %d", len(culprits))
+	}
+	if culprits[0] != Identifier(99) {
+		t.Errorf("culprit = %d, want %d", culprits[0], 99)
+	}
+}
+
+// TestGetCulprits tests the GetCulprits helper function.
+func TestGetCulprits(t *testing.T) {
+	t.Run("ParticipantError", func(t *testing.T) {
+		err := NewParticipantError(Identifier(5), "test", nil)
+		culprits := GetCulprits(err)
+		if len(culprits) != 1 || culprits[0] != Identifier(5) {
+			t.Errorf("GetCulprits failed for ParticipantError: got %v", culprits)
+		}
+	})
+
+	t.Run("SignatureShareError", func(t *testing.T) {
+		err := NewSignatureShareError([]Identifier{1, 2, 3}, "test", nil)
+		culprits := GetCulprits(err)
+		if len(culprits) != 3 {
+			t.Errorf("GetCulprits failed for SignatureShareError: got %v", culprits)
+		}
+	})
+
+	t.Run("ProofOfKnowledgeError", func(t *testing.T) {
+		err := NewProofOfKnowledgeError(Identifier(7), "test", nil)
+		culprits := GetCulprits(err)
+		if len(culprits) != 1 || culprits[0] != Identifier(7) {
+			t.Errorf("GetCulprits failed for ProofOfKnowledgeError: got %v", culprits)
+		}
+	})
+
+	t.Run("SecretShareError", func(t *testing.T) {
+		err := NewSecretShareError(Identifier(9), "test", nil)
+		culprits := GetCulprits(err)
+		if len(culprits) != 1 || culprits[0] != Identifier(9) {
+			t.Errorf("GetCulprits failed for SecretShareError: got %v", culprits)
+		}
+	})
+
+	t.Run("NonCulpritError", func(t *testing.T) {
+		err := errors.New("regular error")
+		culprits := GetCulprits(err)
+		if culprits != nil {
+			t.Errorf("GetCulprits should return nil for non-CulpritError: got %v", culprits)
+		}
+	})
+
+	t.Run("NilError", func(t *testing.T) {
+		culprits := GetCulprits(nil)
+		if culprits != nil {
+			t.Errorf("GetCulprits should return nil for nil error: got %v", culprits)
+		}
+	})
+}

@@ -28,7 +28,9 @@ func init() {
 	var err error
 	p256Modulus, err = bigmod.NewModulus(p256OrderBytes)
 	if err != nil {
-		panic("failed to create P-256 modulus: " + err.Error())
+		// This panic is acceptable at init time - p256OrderBytes is a hardcoded constant.
+		// A failure here indicates a bug in the FROST library or Go's bigmod package.
+		panic("FROST library bug: failed to create P-256 modulus: " + err.Error())
 	}
 }
 

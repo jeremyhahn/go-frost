@@ -179,6 +179,10 @@ func (g *mockGroup) Order() []byte {
 	return g.order.Bytes()
 }
 
+func (g *mockGroup) Cofactor() group.Scalar {
+	return newMockScalar(1, g.order)
+}
+
 func (g *mockGroup) Identity() group.Element {
 	return newMockElement(0, 0, g.order)
 }

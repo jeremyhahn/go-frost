@@ -231,7 +231,7 @@ func TestSection4_3_ListOperations(t *testing.T) {
 			t.Fatalf("Encode failed: %v", err)
 		}
 
-		if encoded == nil || len(encoded) == 0 {
+		if len(encoded) == 0 {
 			t.Fatal("Encoded commitment list should not be empty")
 		}
 

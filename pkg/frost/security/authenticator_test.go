@@ -6,9 +6,11 @@
 package security
 
 import (
+	"crypto"
 	"crypto/ed25519"
 	"crypto/rand"
 	"errors"
+	"io"
 	"testing"
 
 	"github.com/jeremyhahn/go-frost/pkg/frost"
@@ -76,7 +78,7 @@ func TestNoOpAuthenticator_SignatureShareAlwaysSucceeds(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			if tc.proof != nil && len(tc.proof) > 0 {
+			if len(tc.proof) > 0 {
 				rand.Read(tc.proof)
 			}
 			err := auth.AuthenticateSignatureShare(frost.Identifier(1), share, tc.proof)
@@ -509,4 +511,151 @@ func ed25519PublicKeysEqual(a, b ed25519.PublicKey) bool {
 		}
 	}
 	return true
+}
+
+// mockCryptoSigner implements crypto.Signer for testing
+type mockCryptoSigner struct {
+	pubKey  ed25519.PublicKey
+	privKey ed25519.PrivateKey
+}
+
+func (m *mockCryptoSigner) Public() crypto.PublicKey {
+	return m.pubKey
+}
+
+func (m *mockCryptoSigner) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
+	return ed25519.Sign(m.privKey, digest), nil
+}
+
+// TestSignCommitmentWithSigner tests signing commitments using a crypto.Signer
+func TestSignCommitmentWithSigner(t *testing.T) {
+	// Generate Ed25519 keypair
+	pubKey, privKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("Failed to generate Ed25519 key: %v", err)
+	}
+
+	// Create mock signer
+	signer := &mockCryptoSigner{pubKey: pubKey, privKey: privKey}
+
+	// Create authenticator
+	publicKeys := map[frost.Identifier]ed25519.PublicKey{
+		frost.Identifier(1): pubKey,
+	}
+	auth := NewEd25519Authenticator(publicKeys)
+
+	// Create test commitment
+	suite := testutil.NewMockCiphersuite()
+	grp := suite.Group()
+	hiding, _ := grp.RandomScalar()
+	binding, _ := grp.RandomScalar()
+	commitment := frost.SigningCommitments{
+		Identifier:             frost.Identifier(1),
+		HidingNonceCommitment:  grp.ScalarBaseMult(hiding),
+		BindingNonceCommitment: grp.ScalarBaseMult(binding),
+	}
+
+	// Sign commitment using the signer
+	signature, err := SignCommitmentWithSigner(frost.Identifier(1), commitment, signer)
+	if err != nil {
+		t.Fatalf("SignCommitmentWithSigner failed: %v", err)
+	}
+
+	// Verify the signature with the authenticator
+	err = auth.AuthenticateCommitment(frost.Identifier(1), commitment, signature)
+	if err != nil {
+		t.Errorf("Authentication failed: %v", err)
+	}
+}
+
+// TestSignSignatureShareWithSigner tests signing signature shares using a crypto.Signer
+func TestSignSignatureShareWithSigner(t *testing.T) {
+	// Generate Ed25519 keypair
+	pubKey, privKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("Failed to generate Ed25519 key: %v", err)
+	}
+
+	// Create mock signer
+	signer := &mockCryptoSigner{pubKey: pubKey, privKey: privKey}
+
+	// Create authenticator
+	publicKeys := map[frost.Identifier]ed25519.PublicKey{
+		frost.Identifier(1): pubKey,
+	}
+	auth := NewEd25519Authenticator(publicKeys)
+
+	// Create test signature share
+	suite := testutil.NewMockCiphersuite()
+	grp := suite.Group()
+	sig, _ := grp.RandomScalar()
+	share := frost.SignatureShare{
+		Identifier:     frost.Identifier(1),
+		SignatureShare: sig,
+	}
+
+	// Sign signature share using the signer
+	signature, err := SignSignatureShareWithSigner(frost.Identifier(1), share, signer)
+	if err != nil {
+		t.Fatalf("SignSignatureShareWithSigner failed: %v", err)
+	}
+
+	// Verify the signature with the authenticator
+	err = auth.AuthenticateSignatureShare(frost.Identifier(1), share, signature)
+	if err != nil {
+		t.Errorf("Authentication failed: %v", err)
+	}
+}
+
+// failingSigner is a crypto.Signer that always fails
+type failingSigner struct {
+	pubKey ed25519.PublicKey
+}
+
+func (f *failingSigner) Public() crypto.PublicKey {
+	return f.pubKey
+}
+
+func (f *failingSigner) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
+	return nil, errors.New("signing failed")
+}
+
+// TestSignCommitmentWithSigner_Error tests error handling for signing failures
+func TestSignCommitmentWithSigner_Error(t *testing.T) {
+	pubKey, _, _ := ed25519.GenerateKey(rand.Reader)
+	signer := &failingSigner{pubKey: pubKey}
+
+	suite := testutil.NewMockCiphersuite()
+	grp := suite.Group()
+	hiding, _ := grp.RandomScalar()
+	binding, _ := grp.RandomScalar()
+	commitment := frost.SigningCommitments{
+		Identifier:             frost.Identifier(1),
+		HidingNonceCommitment:  grp.ScalarBaseMult(hiding),
+		BindingNonceCommitment: grp.ScalarBaseMult(binding),
+	}
+
+	_, err := SignCommitmentWithSigner(frost.Identifier(1), commitment, signer)
+	if err == nil {
+		t.Error("Expected error for failing signer")
+	}
+}
+
+// TestSignSignatureShareWithSigner_Error tests error handling for signing failures
+func TestSignSignatureShareWithSigner_Error(t *testing.T) {
+	pubKey, _, _ := ed25519.GenerateKey(rand.Reader)
+	signer := &failingSigner{pubKey: pubKey}
+
+	suite := testutil.NewMockCiphersuite()
+	grp := suite.Group()
+	sig, _ := grp.RandomScalar()
+	share := frost.SignatureShare{
+		Identifier:     frost.Identifier(1),
+		SignatureShare: sig,
+	}
+
+	_, err := SignSignatureShareWithSigner(frost.Identifier(1), share, signer)
+	if err == nil {
+		t.Error("Expected error for failing signer")
+	}
 }

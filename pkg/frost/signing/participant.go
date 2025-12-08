@@ -7,6 +7,8 @@
 package signing
 
 import (
+	"crypto/rand"
+
 	"github.com/jeremyhahn/go-frost/pkg/frost"
 	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite"
 	"github.com/jeremyhahn/go-frost/pkg/frost/group"
@@ -17,6 +19,10 @@ import (
 type Participant interface {
 	// Identifier returns the participant's unique identifier.
 	Identifier() frost.Identifier
+
+	// MinSigners returns the minimum number of signers required for threshold signing.
+	// Returns 0 if the KeyPackage doesn't have MinSigners set.
+	MinSigners() uint32
 
 	// RoundOne generates signing nonces and commitments for round one.
 	//
@@ -75,6 +81,11 @@ func (p *participant) Identifier() frost.Identifier {
 	return p.keyPackage.Identifier
 }
 
+// MinSigners implements Participant.MinSigners
+func (p *participant) MinSigners() uint32 {
+	return p.keyPackage.MinSigners
+}
+
 // RoundOne implements Participant.RoundOne
 //
 // Generates signing nonces and commitments for round one.
@@ -91,22 +102,24 @@ func (p *participant) RoundOne() (frost.SigningNonces, frost.SigningCommitments,
 	grp := p.suite.Group()
 
 	// 1. Generate hiding_nonce using nonce_generate(secret_share)
-	randomScalar, err := grp.RandomScalar()
-	if err != nil {
-		return frost.SigningNonces{}, frost.SigningCommitments{}, frost.NewParameterError("randomScalar", "failed to generate", err)
+	// RFC 9591 Section 4.1: nonce_generate uses exactly 32 bytes of randomness
+	hidingRandomBytes := make([]byte, 32)
+	if _, err := rand.Read(hidingRandomBytes); err != nil {
+		return frost.SigningNonces{}, frost.SigningCommitments{}, frost.NewParameterError("randomBytes", "failed to generate", err)
 	}
 
-	// Use H3 to generate hiding nonce from secret + randomness
-	hidingInput := append(randomScalar.Bytes(), p.keyPackage.SecretShare.Bytes()...)
+	// Use H3 to generate hiding nonce: H3(random_bytes || secret)
+	hidingInput := append(hidingRandomBytes, p.keyPackage.SecretShare.Bytes()...)
 	hidingNonce := p.suite.H3(hidingInput)
 
 	// 2. Generate binding_nonce using nonce_generate(secret_share)
-	randomScalar2, err := grp.RandomScalar()
-	if err != nil {
-		return frost.SigningNonces{}, frost.SigningCommitments{}, frost.NewParameterError("randomScalar", "failed to generate", err)
+	bindingRandomBytes := make([]byte, 32)
+	if _, err := rand.Read(bindingRandomBytes); err != nil {
+		return frost.SigningNonces{}, frost.SigningCommitments{}, frost.NewParameterError("randomBytes", "failed to generate", err)
 	}
 
-	bindingInput := append(randomScalar2.Bytes(), p.keyPackage.SecretShare.Bytes()...)
+	// Use H3 to generate binding nonce: H3(random_bytes || secret)
+	bindingInput := append(bindingRandomBytes, p.keyPackage.SecretShare.Bytes()...)
 	bindingNonce := p.suite.H3(bindingInput)
 
 	// Verify nonces are not zero
@@ -122,6 +135,18 @@ func (p *participant) RoundOne() (frost.SigningNonces, frost.SigningCommitments,
 
 	// 4. Compute binding_nonce_commitment = ScalarBaseMult(binding_nonce)
 	bindingNonceCommitment := grp.ScalarBaseMult(bindingNonce)
+
+	// Security check: Verify commitments are not the identity element
+	// This should never happen with properly generated non-zero nonces,
+	// but we check defensively as identity commitments would leak secret information.
+	if hidingNonceCommitment.IsIdentity() {
+		return frost.SigningNonces{}, frost.SigningCommitments{}, frost.NewParameterError(
+			"hidingNonceCommitment", "commitment is identity element", frost.ErrIdentityElement)
+	}
+	if bindingNonceCommitment.IsIdentity() {
+		return frost.SigningNonces{}, frost.SigningCommitments{}, frost.NewParameterError(
+			"bindingNonceCommitment", "commitment is identity element", frost.ErrIdentityElement)
+	}
 
 	// 5. Create commitments structure
 	commitments := frost.SigningCommitments{
@@ -168,6 +193,12 @@ func (p *participant) RoundTwo(nonces frost.SigningNonces, msg []byte, commitmen
 	// 1. Validate commitment list
 	if err := encoder.ValidateCommitmentList(commitmentList); err != nil {
 		return frost.SignatureShare{}, err
+	}
+
+	// 1b. Validate minimum signers requirement
+	if p.keyPackage.MinSigners > 0 && uint32(len(commitmentList)) < p.keyPackage.MinSigners {
+		return frost.SignatureShare{}, frost.NewParameterError("commitmentList",
+			"insufficient participants for threshold signing", frost.ErrInsufficientParticipants)
 	}
 
 	// 2. Compute binding factors

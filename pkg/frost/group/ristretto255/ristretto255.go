@@ -60,21 +60,21 @@ type Element struct {
 // Add returns the sum of this element and another element.
 func (e *Element) Add(other group.Element) group.Element {
 	otherElem := other.(*Element)
-	result := ristretto255.NewElement()
+	result := ristretto255.NewIdentityElement()
 	result.Add(e.elem, otherElem.elem)
 	return &Element{elem: result}
 }
 
 // Negate returns the additive inverse of this element.
 func (e *Element) Negate() group.Element {
-	result := ristretto255.NewElement()
+	result := ristretto255.NewIdentityElement()
 	result.Negate(e.elem)
 	return &Element{elem: result}
 }
 
 // IsIdentity returns true if this element is the identity element.
 func (e *Element) IsIdentity() bool {
-	identity := ristretto255.NewElement()
+	identity := ristretto255.NewIdentityElement()
 	return e.elem.Equal(identity) == 1
 }
 
@@ -86,12 +86,12 @@ func (e *Element) Equal(other group.Element) bool {
 
 // Bytes returns the canonical byte representation of this element.
 func (e *Element) Bytes() []byte {
-	return e.elem.Encode(nil)
+	return e.elem.Bytes()
 }
 
 // Copy returns a deep copy of this element.
 func (e *Element) Copy() group.Element {
-	result := ristretto255.NewElement()
+	result := ristretto255.NewIdentityElement()
 	result.Set(e.elem)
 	return &Element{elem: result}
 }
@@ -158,7 +158,7 @@ func (s *Scalar) Equal(other group.Scalar) bool {
 // Note: Returns little-endian bytes per RFC 9591 Section 6.2 (FROST(ristretto255, SHA-512)).
 // ristretto255 uses little-endian encoding, unlike P-256/secp256k1 which use big-endian.
 func (s *Scalar) Bytes() []byte {
-	return s.scalar.Encode(nil)
+	return s.scalar.Bytes()
 }
 
 // Copy returns a deep copy of this scalar.
@@ -202,8 +202,8 @@ type Group struct {
 // NewGroup creates a new ristretto255 group.
 func NewGroup() *Group {
 	return &Group{
-		generator: &Element{elem: ristretto255.NewElement().Base()},
-		identity:  &Element{elem: ristretto255.NewElement()},
+		generator: &Element{elem: ristretto255.NewGeneratorElement()},
+		identity:  &Element{elem: ristretto255.NewIdentityElement()},
 	}
 }
 
@@ -213,6 +213,22 @@ func (g *Group) Order() []byte {
 	order := make([]byte, len(groupOrderBytes))
 	copy(order, groupOrderBytes)
 	return order
+}
+
+// Cofactor returns the cofactor of the ristretto255 group.
+// Ristretto255 is a prime-order group with cofactor 1.
+// This means no cofactor multiplication is needed in verification.
+func (g *Group) Cofactor() group.Scalar {
+	// Create scalar with value 1
+	one := ristretto255.NewScalar()
+	// 1 in little-endian bytes (hardcoded constant, should never fail)
+	oneBytes := []byte{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+	if _, err := one.SetCanonicalBytes(oneBytes); err != nil {
+		// This panic should never occur - the bytes are a valid hardcoded constant.
+		// A failure here indicates a bug in the ristretto255 library.
+		panic("FROST library bug: failed to create cofactor scalar: " + err.Error())
+	}
+	return &Scalar{scalar: one}
 }
 
 // Identity returns the identity element of the group.
@@ -232,7 +248,7 @@ func (g *Group) NewScalar() group.Scalar {
 
 // NewElement creates a new element initialized to the identity.
 func (g *Group) NewElement() group.Element {
-	return &Element{elem: ristretto255.NewElement()}
+	return &Element{elem: ristretto255.NewIdentityElement()}
 }
 
 // RandomScalar generates a random scalar in the field.
@@ -244,9 +260,11 @@ func (g *Group) RandomScalar() (group.Scalar, error) {
 		return nil, frost.NewParameterError("random", "failed to generate random bytes", err)
 	}
 
-	// Use FromUniformBytes for uniform reduction modulo the group order
+	// Use SetUniformBytes for uniform reduction modulo the group order
 	scalar := ristretto255.NewScalar()
-	scalar.FromUniformBytes(randomBytes)
+	if _, err := scalar.SetUniformBytes(randomBytes); err != nil {
+		return nil, frost.NewParameterError("random", "failed to create scalar from uniform bytes", err)
+	}
 
 	return &Scalar{scalar: scalar}, nil
 }
@@ -256,7 +274,7 @@ func (g *Group) ScalarMult(element group.Element, scalar group.Scalar) group.Ele
 	elem := element.(*Element)
 	scal := scalar.(*Scalar)
 
-	result := ristretto255.NewElement()
+	result := ristretto255.NewIdentityElement()
 	result.ScalarMult(scal.scalar, elem.elem)
 
 	return &Element{elem: result}
@@ -266,7 +284,7 @@ func (g *Group) ScalarMult(element group.Element, scalar group.Scalar) group.Ele
 func (g *Group) ScalarBaseMult(scalar group.Scalar) group.Element {
 	scal := scalar.(*Scalar)
 
-	result := ristretto255.NewElement()
+	result := ristretto255.NewIdentityElement()
 	result.ScalarBaseMult(scal.scalar)
 
 	return &Element{elem: result}
@@ -290,8 +308,8 @@ func (g *Group) DeserializeElement(data []byte) (group.Element, error) {
 		return nil, frost.NewParameterError("data", "invalid element encoding length", frost.ErrDeserializationFailed)
 	}
 
-	elem := ristretto255.NewElement()
-	if err := elem.Decode(data); err != nil {
+	elem := ristretto255.NewIdentityElement()
+	if _, err := elem.SetCanonicalBytes(data); err != nil {
 		return nil, frost.NewParameterError("data", "invalid element encoding", frost.ErrDeserializationFailed)
 	}
 
@@ -321,7 +339,7 @@ func (g *Group) DeserializeScalar(data []byte) (group.Scalar, error) {
 	}
 
 	scalar := ristretto255.NewScalar()
-	if err := scalar.Decode(data); err != nil {
+	if _, err := scalar.SetCanonicalBytes(data); err != nil {
 		return nil, frost.NewParameterError("data", "invalid scalar encoding", frost.ErrDeserializationFailed)
 	}
 

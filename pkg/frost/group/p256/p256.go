@@ -281,6 +281,17 @@ func (g *Group) Order() []byte {
 	return orderBytes
 }
 
+// Cofactor returns the cofactor of the P-256 group.
+// P-256 is a prime-order group with cofactor 1.
+// This means no cofactor multiplication is needed in verification.
+func (g *Group) Cofactor() group.Scalar {
+	// Create scalar with value 1 (big-endian for P-256)
+	oneBytes := make([]byte, ScalarSize)
+	oneBytes[ScalarSize-1] = 1
+	nat, _ := bigmod.NewNat().SetBytes(oneBytes, p256Modulus)
+	return &Scalar{nat: nat}
+}
+
 // Identity returns the identity element of the group (point at infinity).
 func (g *Group) Identity() group.Element {
 	return g.identity.Copy()

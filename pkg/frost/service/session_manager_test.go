@@ -292,19 +292,16 @@ func TestSigningSession_Complete(t *testing.T) {
 
 	// Generate commitments from participants
 	var commitments []frost.SigningCommitments
-	var nonces []frost.SigningNonces
-
 	// Import signing package to create participants
 	// Note: In real implementation, participants would be created separately
 	// For testing, we simulate round one
 	for _, pkg := range keyPackages[:2] {
-		// Create mock commitment and nonce
-		nonce, commitment, err := generateMockCommitment(suite, pkg.Identifier)
+		// Create mock commitment (nonces would be used in actual signing)
+		_, commitment, err := generateMockCommitment(suite, pkg.Identifier)
 		if err != nil {
 			t.Fatalf("failed to generate commitment: %v", err)
 		}
 		commitments = append(commitments, commitment)
-		nonces = append(nonces, nonce)
 	}
 
 	// Add commitments to session

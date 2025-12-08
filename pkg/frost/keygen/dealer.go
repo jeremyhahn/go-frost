@@ -151,6 +151,8 @@ func (d *dealer) GenerateShares(secret group.Scalar, minSigners, maxSigners uint
 			SecretShare:        secretShare,
 			GroupPublicKey:     groupPublicKey,
 			VerificationShares: verificationShares,
+			MinSigners:         minSigners,
+			MaxSigners:         maxSigners,
 		}
 	}
 

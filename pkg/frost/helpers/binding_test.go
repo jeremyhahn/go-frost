@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/jeremyhahn/go-frost/pkg/frost"
+	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite/p256_sha256"
 	"github.com/jeremyhahn/go-frost/pkg/frost/helpers/testutil"
 )
 
@@ -164,6 +165,95 @@ func TestBindingFactorComputer_GetBindingFactor_NotFound(t *testing.T) {
 	_, err := computer.GetBindingFactor(bindingFactors, 999)
 	if err == nil {
 		t.Error("GetBindingFactor() expected error for non-existent participant")
+	}
+}
+
+func TestBindingFactorComputer_Compute_NilGroupPublicKey(t *testing.T) {
+	suite := testutil.NewMockCiphersuite()
+	computer := NewBindingFactorComputer(suite)
+
+	hiding, _ := suite.Group().RandomScalar()
+	binding, _ := suite.Group().RandomScalar()
+	commitmentList := frost.CommitmentList{
+		{
+			Identifier:             1,
+			HidingNonceCommitment:  suite.Group().ScalarBaseMult(hiding),
+			BindingNonceCommitment: suite.Group().ScalarBaseMult(binding),
+		},
+	}
+
+	msg := []byte("test message")
+
+	// Compute with nil group public key
+	_, err := computer.Compute(nil, commitmentList, msg)
+	if err == nil {
+		t.Error("Compute() expected error for nil groupPublicKey")
+	}
+}
+
+func TestBindingFactorComputer_Compute_EmptyCommitmentList(t *testing.T) {
+	suite := testutil.NewMockCiphersuite()
+	computer := NewBindingFactorComputer(suite)
+
+	secret, _ := suite.Group().RandomScalar()
+	groupPublicKey := suite.Group().ScalarBaseMult(secret)
+
+	msg := []byte("test message")
+
+	// Compute with empty commitment list
+	_, err := computer.Compute(groupPublicKey, frost.CommitmentList{}, msg)
+	if err == nil {
+		t.Error("Compute() expected error for empty commitmentList")
+	}
+}
+
+func TestBindingFactorComputer_Compute_BigEndian(t *testing.T) {
+	// P256 uses BigEndian byte order
+	suite := p256_sha256.New()
+	computer := NewBindingFactorComputer(suite)
+
+	secret, err := suite.Group().RandomScalar()
+	if err != nil {
+		t.Fatalf("RandomScalar() error = %v", err)
+	}
+	groupPublicKey := suite.Group().ScalarBaseMult(secret)
+
+	hiding, _ := suite.Group().RandomScalar()
+	binding, _ := suite.Group().RandomScalar()
+	commitmentList := frost.CommitmentList{
+		{
+			Identifier:             1,
+			HidingNonceCommitment:  suite.Group().ScalarBaseMult(hiding),
+			BindingNonceCommitment: suite.Group().ScalarBaseMult(binding),
+		},
+		{
+			Identifier:             2,
+			HidingNonceCommitment:  suite.Group().ScalarBaseMult(hiding),
+			BindingNonceCommitment: suite.Group().ScalarBaseMult(binding),
+		},
+	}
+
+	msg := []byte("test message for big endian")
+
+	// Compute binding factors with BigEndian ciphersuite
+	bindingFactors, err := computer.Compute(groupPublicKey, commitmentList, msg)
+	if err != nil {
+		t.Fatalf("Compute() error = %v", err)
+	}
+
+	// Verify we got binding factors for all participants
+	if len(bindingFactors) != len(commitmentList) {
+		t.Errorf("Compute() returned %d binding factors, want %d", len(bindingFactors), len(commitmentList))
+	}
+
+	// Verify binding factors are not nil or zero
+	for i, bf := range bindingFactors {
+		if bf.BindingFactor == nil {
+			t.Errorf("binding factor[%d] is nil", i)
+		}
+		if bf.BindingFactor.IsZero() {
+			t.Errorf("binding factor[%d] is zero", i)
+		}
 	}
 }
 

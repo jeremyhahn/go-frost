@@ -679,14 +679,14 @@ func BenchmarkParticipant_RoundTwo(b *testing.B) {
 	}
 
 	participant := NewParticipant(keyPackage, suite)
-	nonces, commitments, _ := participant.RoundOne()
+	_, commitments, _ := participant.RoundOne()
 	commitmentList := frost.CommitmentList{commitments}
 	message := []byte("benchmark message")
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		// Generate fresh nonces for each iteration
-		nonces, _, _ = participant.RoundOne()
+		nonces, _, _ := participant.RoundOne()
 
 		_, err := participant.RoundTwo(nonces, message, commitmentList)
 		if err != nil {
@@ -935,64 +935,6 @@ func (s *failingSuite) Group() group.Group {
 	return s.failingGrp
 }
 
-// TestParticipant_RoundOne_RandomScalarError tests RoundOne when first RandomScalar fails
-func TestParticipant_RoundOne_RandomScalarError(t *testing.T) {
-	suite := testutil.NewMockCiphersuite()
-	grp := suite.Group()
-
-	secretShare, _ := grp.RandomScalar()
-	keyPackage := frost.KeyPackage{
-		Identifier:  frost.Identifier(1),
-		SecretShare: secretShare,
-	}
-
-	// Create a failing group that fails on first RandomScalar call
-	failGrp := &failingGroup{
-		Group:                 grp,
-		failRandomScalarCount: 1,
-	}
-	failSuite := &failingSuite{
-		Ciphersuite: suite,
-		failingGrp:  failGrp,
-	}
-
-	participant := NewParticipant(keyPackage, failSuite)
-
-	_, _, err := participant.RoundOne()
-	if err == nil {
-		t.Fatal("Expected RoundOne to fail when first RandomScalar fails")
-	}
-}
-
-// TestParticipant_RoundOne_SecondRandomScalarError tests RoundOne when second RandomScalar fails
-func TestParticipant_RoundOne_SecondRandomScalarError(t *testing.T) {
-	suite := testutil.NewMockCiphersuite()
-	grp := suite.Group()
-
-	secretShare, _ := grp.RandomScalar()
-	keyPackage := frost.KeyPackage{
-		Identifier:  frost.Identifier(1),
-		SecretShare: secretShare,
-	}
-
-	// Create a failing group that fails on second RandomScalar call
-	failGrp := &failingGroup{
-		Group:                 grp,
-		failRandomScalarCount: 2,
-	}
-	failSuite := &failingSuite{
-		Ciphersuite: suite,
-		failingGrp:  failGrp,
-	}
-
-	participant := NewParticipant(keyPackage, failSuite)
-
-	_, _, err := participant.RoundOne()
-	if err == nil {
-		t.Fatal("Expected RoundOne to fail when second RandomScalar fails")
-	}
-}
-
 // TestParticipant_RoundTwo_DeserializeScalarError tests RoundTwo when DeserializeScalar fails
 func TestParticipant_RoundTwo_DeserializeScalarError(t *testing.T) {
 	suite := testutil.NewMockCiphersuite()
@@ -1083,5 +1025,75 @@ func TestParticipant_RoundTwo_MyIDDeserializeError(t *testing.T) {
 	_, err = failingParticipant.RoundTwo(nonces1, message, commitmentList)
 	if err == nil {
 		t.Fatal("Expected RoundTwo to fail when myIDScalar DeserializeScalar fails")
+	}
+}
+
+// TestParticipant_MinSigners tests the MinSigners method.
+func TestParticipant_MinSigners(t *testing.T) {
+	suite := testutil.NewMockCiphersuite()
+	grp := suite.Group()
+
+	secretShare, _ := grp.RandomScalar()
+	groupPubKey := grp.ScalarBaseMult(secretShare)
+
+	keyPackage := frost.KeyPackage{
+		Identifier:     frost.Identifier(1),
+		SecretShare:    secretShare,
+		GroupPublicKey: groupPubKey,
+		MinSigners:     3,
+	}
+
+	participant := NewParticipant(keyPackage, suite)
+
+	if participant.MinSigners() != 3 {
+		t.Errorf("Expected MinSigners() = 3, got %d", participant.MinSigners())
+	}
+}
+
+// TestVerifySignature tests the standalone VerifySignature function.
+func TestVerifySignature(t *testing.T) {
+	suite := testutil.NewMockCiphersuite()
+	grp := suite.Group()
+
+	// Create a valid signature
+	secretKey, _ := grp.RandomScalar()
+	publicKey := grp.ScalarBaseMult(secretKey)
+	message := []byte("test message")
+
+	// Create a simple Schnorr signature
+	k, _ := grp.RandomScalar()
+	r := grp.ScalarBaseMult(k)
+
+	// Compute challenge
+	rBytes, _ := grp.SerializeElement(r)
+	pkBytes, _ := grp.SerializeElement(publicKey)
+	challengeInput := append(rBytes, pkBytes...)
+	challengeInput = append(challengeInput, message...)
+	challenge := suite.H2(challengeInput)
+
+	// Compute response: z = k + challenge * secretKey
+	z := k.Add(challenge.Mul(secretKey))
+
+	sig := frost.Signature{
+		R: r,
+		Z: z,
+	}
+
+	// Verify signature
+	err := VerifySignature(message, sig, publicKey, suite)
+	if err != nil {
+		t.Errorf("VerifySignature failed for valid signature: %v", err)
+	}
+
+	// Test with invalid signature
+	badZ, _ := grp.RandomScalar()
+	badSig := frost.Signature{
+		R: r,
+		Z: badZ,
+	}
+
+	err = VerifySignature(message, badSig, publicKey, suite)
+	if err == nil {
+		t.Error("VerifySignature should fail for invalid signature")
 	}
 }
