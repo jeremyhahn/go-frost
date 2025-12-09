@@ -152,8 +152,7 @@ make build
 # Run unit tests
 make test
 
-# Run integration tests (Docker required)
-make integration-test
+make test
 
 # Generate coverage report
 make coverage
@@ -271,7 +270,7 @@ The project follows Test-Driven Development (TDD) with comprehensive coverage:
 ```bash
 # Run specific test suites
 make test-unit
-make test-integration
+make test
 make test-rfc
 
 # Run benchmarks

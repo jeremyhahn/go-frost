@@ -516,6 +516,148 @@ func TestSigningSession_InsufficientCommitments(t *testing.T) {
 	}
 }
 
+// TestSigningSession_GetSignature_CanceledSession tests GetSignature on canceled session
+func TestSigningSession_GetSignature_CanceledSession(t *testing.T) {
+	suite := ristretto255_sha512.New()
+	service := NewFrostService(suite)
+	manager := NewSessionManager(service)
+
+	participantIDs := []frost.Identifier{1, 2}
+	message := []byte("test message")
+
+	session, err := manager.CreateSession(participantIDs, message)
+	if err != nil {
+		t.Fatalf("failed to create session: %v", err)
+	}
+
+	// Cancel the session
+	err = session.Cancel()
+	if err != nil {
+		t.Fatalf("failed to cancel session: %v", err)
+	}
+
+	// Try to get signature from canceled session
+	_, err = session.GetSignature()
+	if err == nil {
+		t.Error("GetSignature on canceled session should fail")
+	}
+}
+
+// TestSigningSession_AddSignatureShare_CanceledSession tests adding share to canceled session
+func TestSigningSession_AddSignatureShare_CanceledSession(t *testing.T) {
+	suite := ristretto255_sha512.New()
+	service := NewFrostService(suite)
+	manager := NewSessionManager(service)
+
+	participantIDs := []frost.Identifier{1, 2}
+	message := []byte("test message")
+
+	session, err := manager.CreateSession(participantIDs, message)
+	if err != nil {
+		t.Fatalf("failed to create session: %v", err)
+	}
+
+	// Cancel the session
+	err = session.Cancel()
+	if err != nil {
+		t.Fatalf("failed to cancel session: %v", err)
+	}
+
+	// Try to add signature share to canceled session
+	share := frost.SignatureShare{
+		Identifier:     1,
+		SignatureShare: suite.Group().NewScalar(),
+	}
+	err = session.AddSignatureShare(share)
+	if err == nil {
+		t.Error("AddSignatureShare on canceled session should fail")
+	}
+}
+
+// TestSigningSession_AddSignatureShare_UnknownParticipant tests adding share from unknown participant
+func TestSigningSession_AddSignatureShare_UnknownParticipant(t *testing.T) {
+	suite := ristretto255_sha512.New()
+	service := NewFrostService(suite)
+	manager := NewSessionManager(service)
+
+	participantIDs := []frost.Identifier{1, 2}
+	message := []byte("test message")
+
+	session, err := manager.CreateSession(participantIDs, message)
+	if err != nil {
+		t.Fatalf("failed to create session: %v", err)
+	}
+
+	// Try to add signature share from unknown participant (ID 3)
+	share := frost.SignatureShare{
+		Identifier:     3, // Not in participant list
+		SignatureShare: suite.Group().NewScalar(),
+	}
+	err = session.AddSignatureShare(share)
+	if err == nil {
+		t.Error("AddSignatureShare from unknown participant should fail")
+	}
+}
+
+// TestSigningSession_AddSignatureShare_Duplicate tests adding duplicate signature share
+func TestSigningSession_AddSignatureShare_Duplicate(t *testing.T) {
+	suite := ristretto255_sha512.New()
+	service := NewFrostService(suite)
+	manager := NewSessionManager(service)
+
+	participantIDs := []frost.Identifier{1, 2}
+	message := []byte("test message")
+
+	session, err := manager.CreateSession(participantIDs, message)
+	if err != nil {
+		t.Fatalf("failed to create session: %v", err)
+	}
+
+	share := frost.SignatureShare{
+		Identifier:     1,
+		SignatureShare: suite.Group().NewScalar(),
+	}
+
+	// Add first time
+	err = session.AddSignatureShare(share)
+	if err != nil {
+		t.Fatalf("failed to add signature share: %v", err)
+	}
+
+	// Add again - should fail
+	err = session.AddSignatureShare(share)
+	if err == nil {
+		t.Error("adding duplicate signature share should fail")
+	}
+}
+
+// TestSigningSession_GetCommitmentList_CanceledSession tests getting commitment list from canceled session
+func TestSigningSession_GetCommitmentList_CanceledSession(t *testing.T) {
+	suite := ristretto255_sha512.New()
+	service := NewFrostService(suite)
+	manager := NewSessionManager(service)
+
+	participantIDs := []frost.Identifier{1, 2}
+	message := []byte("test message")
+
+	session, err := manager.CreateSession(participantIDs, message)
+	if err != nil {
+		t.Fatalf("failed to create session: %v", err)
+	}
+
+	// Cancel the session
+	err = session.Cancel()
+	if err != nil {
+		t.Fatalf("failed to cancel session: %v", err)
+	}
+
+	// Try to get commitment list from canceled session
+	_, err = session.GetCommitmentList()
+	if err == nil {
+		t.Error("GetCommitmentList on canceled session should fail")
+	}
+}
+
 // Helper function to generate mock commitment for testing
 func generateMockCommitment(suite interface{ Group() group.Group }, id frost.Identifier) (frost.SigningNonces, frost.SigningCommitments, error) {
 	grp := suite.Group()

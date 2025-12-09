@@ -252,3 +252,30 @@ func TestVerifyReconstruction_WrongSecret(t *testing.T) {
 		t.Error("expected verification to fail with wrong secret")
 	}
 }
+
+func TestVerifyReconstruction_NilSecret(t *testing.T) {
+	suite := ed25519_sha512.New()
+	grp := suite.Group()
+
+	// Create a valid public key
+	scalar, _ := grp.RandomScalar()
+	publicKey := grp.ScalarBaseMult(scalar)
+
+	err := VerifyReconstruction(nil, publicKey, grp)
+	if err == nil {
+		t.Error("expected error for nil secret")
+	}
+}
+
+func TestVerifyReconstruction_NilPublicKey(t *testing.T) {
+	suite := ed25519_sha512.New()
+	grp := suite.Group()
+
+	// Create a valid secret
+	secret, _ := grp.RandomScalar()
+
+	err := VerifyReconstruction(secret, nil, grp)
+	if err == nil {
+		t.Error("expected error for nil public key")
+	}
+}

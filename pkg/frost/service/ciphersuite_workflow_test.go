@@ -1,8 +1,6 @@
-//go:build integration
-
 // Package integration provides comprehensive multi-ciphersuite integration tests
 // that verify all 5 RFC 9591 ciphersuites work identically.
-package integration
+package service
 
 import (
 	"bytes"
@@ -12,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/jeremyhahn/go-frost/pkg/frost"
+
 	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite"
 	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite/ed25519_sha512"
 	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite/ed448_shake256"
@@ -28,9 +27,9 @@ import (
 // This ensures all ciphersuites work identically through:
 // 1. Dealer-based key generation
 // 2. Round 1: Nonce generation and commitments
-// 3. Round 2: Signature share generation
-// 4. Signature aggregation
-// 5. Signature verification
+// 3. Round 2: frost.Signature share generation
+// 4. frost.Signature aggregation
+// 5. frost.Signature verification
 func TestMultiCiphersuite_BasicWorkflow(t *testing.T) {
 	testCases := []struct {
 		name        string
@@ -112,7 +111,7 @@ func TestMultiCiphersuite_BasicWorkflow(t *testing.T) {
 			sigBytes := append(signature.R.Bytes(), signature.Z.Bytes()...)
 			err = suite.VerifySignature(message, sigBytes, groupPublicKey)
 			if err != nil {
-				t.Fatalf("Signature verification failed: %v", err)
+				t.Fatalf("frost.Signature verification failed: %v", err)
 			}
 
 			t.Logf("✓ Complete workflow verified successfully")
@@ -211,7 +210,7 @@ func TestMultiCiphersuite_DifferentParticipants(t *testing.T) {
 					sigBytes := append(signature.R.Bytes(), signature.Z.Bytes()...)
 					err = suite.VerifySignature(message, sigBytes, groupPublicKey)
 					if err != nil {
-						t.Fatalf("Signature verification failed: %v", err)
+						t.Fatalf("frost.Signature verification failed: %v", err)
 					}
 
 					t.Logf("✓ Combination P%d,P%d verified", combo[0]+1, combo[1]+1)
@@ -415,7 +414,7 @@ func TestMultiCiphersuite_MessageIntegrity(t *testing.T) {
 				sigBytes := append(signature.R.Bytes(), signature.Z.Bytes()...)
 				err = suite.VerifySignature(message, sigBytes, groupPublicKey)
 				if err != nil {
-					t.Fatalf("Signature verification failed: %v", err)
+					t.Fatalf("frost.Signature verification failed: %v", err)
 				}
 			}
 
@@ -615,7 +614,7 @@ func TestMultiCiphersuite_RandomMessages(t *testing.T) {
 					sigBytes := append(signature.R.Bytes(), signature.Z.Bytes()...)
 					err = suite.VerifySignature(message, sigBytes, groupPublicKey)
 					if err != nil {
-						t.Fatalf("Signature verification failed: %v", err)
+						t.Fatalf("frost.Signature verification failed: %v", err)
 					}
 
 					t.Logf("✓ Random message of size %d verified", size)
@@ -719,7 +718,7 @@ func TestMultiCiphersuite_3of5Threshold(t *testing.T) {
 					sigBytes := append(signature.R.Bytes(), signature.Z.Bytes()...)
 					err = suite.VerifySignature(message, sigBytes, groupPublicKey)
 					if err != nil {
-						t.Fatalf("Signature verification failed: %v", err)
+						t.Fatalf("frost.Signature verification failed: %v", err)
 					}
 
 					t.Logf("✓ Combination P%d,P%d,P%d verified", combo[0]+1, combo[1]+1, combo[2]+1)
@@ -813,7 +812,7 @@ func TestMultiCiphersuite_SignatureUniqueness(t *testing.T) {
 				sigBytes := append(signature.R.Bytes(), signature.Z.Bytes()...)
 				err = suite.VerifySignature(message, sigBytes, groupPublicKey)
 				if err != nil {
-					t.Fatalf("Signature %d verification failed: %v", i, err)
+					t.Fatalf("frost.Signature %d verification failed: %v", i, err)
 				}
 			}
 

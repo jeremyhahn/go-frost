@@ -117,7 +117,7 @@ make build
 make test
 
 # Run integration tests (Docker required)
-make integration-test
+make test
 
 # Coverage report
 make coverage

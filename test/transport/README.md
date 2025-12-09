@@ -59,9 +59,6 @@ The transport tests prove that FROST works in production-like distributed scenar
 ```bash
 # Run transport tests in Docker
 make test-transport
-
-# Or use the integration test alias
-make integration-test-transport
 ```
 
 ### Manual Docker Build and Run
@@ -77,7 +74,7 @@ docker run --rm go-frost-transport:latest
 ## Requirements
 
 - Docker (for containerized test execution)
-- Go 1.25.4 or later
+- Go 1.25.5 or later
 - CGO enabled (for race detector)
 
 ## Test Output

@@ -221,7 +221,7 @@ make test-ristretto255-sha512
 
 ```bash
 # Run integration tests (requires Docker)
-make integration-test
+make test
 
 # This builds a Docker image and runs tests inside
 ```
