@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.4-alpha] - 2025-12-08
+
+### Changed
+- **Consolidated test infrastructure** - Integration tests moved to `pkg/frost/service/` as unit tests
+- **Simplified Makefile** - Per-target `.PHONY` declarations, single `make test` command for all tests
+- **Removed Docker integration tests** - DKG/multi-participant tests run in-memory without Docker
+- **Go 1.25.5** - Updated Dockerfiles for crypto security fixes
+
+### Fixed
+- Test coverage improved to 90% with additional error path tests
+
 ## [0.1.3-alpha] - 2025-12-08
 
 ### Added
