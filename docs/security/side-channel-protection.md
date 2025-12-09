@@ -1010,7 +1010,7 @@ func TestConstantTimeScalarMult(t *testing.T) {
 **Example**:
 ```bash
 # Run integration tests with timing analysis
-make integration-test
+make test
 
 # Analyze timing logs
 python3 scripts/analyze_timing.py test/integration/timing.log

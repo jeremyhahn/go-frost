@@ -1,11 +1,7 @@
-//go:build integration
-
-// Package integration provides end-to-end integration tests for the FROST protocol.
 // These tests verify the complete workflow from key generation through signing and
-// verification, using real implementations of all components.
 //
 // These tests MUST run in a Docker container and NEVER on the host OS.
-package integration
+package service
 
 import (
 	"bytes"
@@ -15,8 +11,8 @@ import (
 	"testing"
 
 	"github.com/jeremyhahn/go-frost/pkg/frost"
+
 	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite/ristretto255_sha512"
-	"github.com/jeremyhahn/go-frost/pkg/frost/service"
 )
 
 // TestCompleteKeyGenerationWorkflow tests the complete key generation workflow
@@ -60,7 +56,7 @@ func TestCompleteKeyGenerationWorkflow(t *testing.T) {
 			suite := ristretto255_sha512.New()
 
 			// Create real service
-			frostService := service.NewFrostService(suite)
+			frostService := NewFrostService(suite)
 
 			// Configure FROST
 			config := frost.Configuration{
@@ -143,7 +139,7 @@ func TestCompleteSigningWorkflow(t *testing.T) {
 			suite := ristretto255_sha512.New()
 
 			// Create real service
-			frostService := service.NewFrostService(suite)
+			frostService := NewFrostService(suite)
 
 			// Configure FROST
 			config := frost.Configuration{
@@ -175,7 +171,7 @@ func TestCompleteSigningWorkflow(t *testing.T) {
 
 			// Verify signature is not empty
 			if signature.R == nil || signature.Z == nil {
-				t.Fatal("Signature has nil components")
+				t.Fatal("frost.Signature has nil components")
 			}
 
 			// Verify the signature
@@ -200,7 +196,7 @@ func TestMultipleSigningSessions(t *testing.T) {
 	suite := ristretto255_sha512.New()
 
 	// Create real service
-	frostService := service.NewFrostService(suite)
+	frostService := NewFrostService(suite)
 
 	// Configure 2-of-3 threshold
 	config := frost.Configuration{
@@ -257,12 +253,12 @@ func TestMultipleSigningSessions(t *testing.T) {
 			if i == j {
 				// Should verify for correct message
 				if err != nil {
-					t.Errorf("Signature %d should verify for message %d", i, j)
+					t.Errorf("frost.Signature %d should verify for message %d", i, j)
 				}
 			} else {
 				// Should not verify for wrong message
 				if err == nil {
-					t.Errorf("Signature %d should not verify for message %d", i, j)
+					t.Errorf("frost.Signature %d should not verify for message %d", i, j)
 				}
 			}
 		}
@@ -276,7 +272,7 @@ func TestDifferentParticipantCombinations(t *testing.T) {
 	suite := ristretto255_sha512.New()
 
 	// Create real service
-	frostService := service.NewFrostService(suite)
+	frostService := NewFrostService(suite)
 
 	// Configure 2-of-4 threshold
 	config := frost.Configuration{
@@ -327,7 +323,7 @@ func TestThresholdEnforcement(t *testing.T) {
 	suite := ristretto255_sha512.New()
 
 	// Create real service
-	frostService := service.NewFrostService(suite)
+	frostService := NewFrostService(suite)
 
 	// Configure 3-of-5 threshold
 	config := frost.Configuration{
@@ -366,7 +362,7 @@ func TestConcurrentSigningSessions(t *testing.T) {
 	suite := ristretto255_sha512.New()
 
 	// Create real service
-	frostService := service.NewFrostService(suite)
+	frostService := NewFrostService(suite)
 
 	// Configure 2-of-3 threshold
 	config := frost.Configuration{
@@ -421,7 +417,7 @@ func TestConcurrentSigningSessions(t *testing.T) {
 // TestErrorScenarios tests various error conditions.
 func TestErrorScenarios(t *testing.T) {
 	suite := ristretto255_sha512.New()
-	frostService := service.NewFrostService(suite)
+	frostService := NewFrostService(suite)
 
 	t.Run("Invalid configuration - minSigners too low", func(t *testing.T) {
 		config := frost.Configuration{
@@ -574,8 +570,8 @@ func TestErrorScenarios(t *testing.T) {
 // TestSessionManager tests the session manager for asynchronous signing.
 func TestSessionManager(t *testing.T) {
 	suite := ristretto255_sha512.New()
-	frostService := service.NewFrostService(suite)
-	sessionManager := service.NewSessionManager(frostService)
+	frostService := NewFrostService(suite)
+	sessionManager := NewSessionManager(frostService)
 
 	t.Run("Create and list sessions", func(t *testing.T) {
 		participants := []frost.Identifier{1, 2}
@@ -651,7 +647,7 @@ func TestSessionManager(t *testing.T) {
 // TestLargeScaleDeployment tests a larger deployment scenario.
 func TestLargeScaleDeployment(t *testing.T) {
 	suite := ristretto255_sha512.New()
-	frostService := service.NewFrostService(suite)
+	frostService := NewFrostService(suite)
 
 	// Configure 7-of-10 threshold
 	config := frost.Configuration{
@@ -701,7 +697,7 @@ func TestLargeScaleDeployment(t *testing.T) {
 // TestRandomizedMessages tests signing with random messages.
 func TestRandomizedMessages(t *testing.T) {
 	suite := ristretto255_sha512.New()
-	frostService := service.NewFrostService(suite)
+	frostService := NewFrostService(suite)
 
 	config := frost.Configuration{
 		MinSigners: 2,
@@ -742,7 +738,7 @@ func TestRandomizedMessages(t *testing.T) {
 // for each signing session (nonces are properly randomized).
 func TestSignatureNonMalleability(t *testing.T) {
 	suite := ristretto255_sha512.New()
-	frostService := service.NewFrostService(suite)
+	frostService := NewFrostService(suite)
 
 	config := frost.Configuration{
 		MinSigners: 2,
@@ -783,7 +779,7 @@ func TestSignatureNonMalleability(t *testing.T) {
 // independently and don't interfere with each other.
 func TestKeyPackageIndependence(t *testing.T) {
 	suite := ristretto255_sha512.New()
-	frostService := service.NewFrostService(suite)
+	frostService := NewFrostService(suite)
 
 	config := frost.Configuration{
 		MinSigners: 2,
@@ -842,7 +838,7 @@ func TestKeyPackageIndependence(t *testing.T) {
 // causes verification to fail.
 func TestMessageIntegrity(t *testing.T) {
 	suite := ristretto255_sha512.New()
-	frostService := service.NewFrostService(suite)
+	frostService := NewFrostService(suite)
 
 	config := frost.Configuration{
 		MinSigners: 2,

@@ -147,7 +147,7 @@ A complete, production-ready skeleton architecture for implementing RFC 9591 FRO
 
 **Targets**:
 - `make test`: Run all unit tests
-- `make test-integration`: Run integration tests in Docker
+- `make test`: Run integration tests
 - `make coverage`: Generate coverage reports
 - `make coverage-<package>`: Per-package coverage
 - `make bench`: Run benchmarks

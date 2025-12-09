@@ -1,7 +1,5 @@
-//go:build integration
-
 // Package integration provides end-to-end integration tests for the FROST protocol.
-package integration
+package service
 
 import (
 	"crypto/rand"
@@ -10,9 +8,9 @@ import (
 	"testing"
 
 	"github.com/jeremyhahn/go-frost/pkg/frost"
+
 	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite/ristretto255_sha512"
 	"github.com/jeremyhahn/go-frost/pkg/frost/keygen"
-	"github.com/jeremyhahn/go-frost/pkg/frost/service"
 	"github.com/jeremyhahn/go-frost/pkg/frost/signing"
 )
 
@@ -107,7 +105,7 @@ func TestKeygenSigningIntegration_2of3(t *testing.T) {
 					sigBytes := append(signature.R.Bytes(), signature.Z.Bytes()...)
 					err = suite.VerifySignature(message, sigBytes, groupPublicKey)
 					if err != nil {
-						t.Fatalf("Signature verification failed: %v", err)
+						t.Fatalf("frost.Signature verification failed: %v", err)
 					}
 
 					t.Logf("✓ Message %d, combination %d verified successfully", i, j)
@@ -205,7 +203,7 @@ func TestKeygenSigningIntegration_3of5(t *testing.T) {
 					sigBytes := append(signature.R.Bytes(), signature.Z.Bytes()...)
 					err = suite.VerifySignature(message, sigBytes, groupPublicKey)
 					if err != nil {
-						t.Fatalf("Signature verification failed: %v", err)
+						t.Fatalf("frost.Signature verification failed: %v", err)
 					}
 
 					t.Logf("✓ Verified: message %d with signers P%d,P%d,P%d",
@@ -309,7 +307,7 @@ func TestKeygenSigningIntegration_SameKeysMultipleMessages(t *testing.T) {
 // the FrostService wrapper.
 func TestKeygenSigningIntegration_WithService(t *testing.T) {
 	suite := ristretto255_sha512.New()
-	frostService := service.NewFrostService(suite)
+	frostService := NewFrostService(suite)
 
 	tests := []struct {
 		name       string
