@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.5-alpha] - 2025-12-27
+
+### Changed
+- **CI/CD pipeline** - Updated to golangci-lint v2 for improved linting
+- **Makefile** - Now installs and uses same tool versions as CI (golangci-lint v2, staticcheck, gosec, govulncheck)
+- **Test infrastructure** - Increased mock group order from 97 to 104729 to prevent probabilistic test failures
+
+### Fixed
+- **Linter compliance** - Fixed all revive warnings across codebase:
+  - Unused parameter warnings (renamed to `_` where appropriate)
+  - Package naming exclusions for RFC 9591 ciphersuite names (ed25519_sha512, ristretto255_sha512, etc.)
+  - Variable shadowing of builtins (`max` renamed to `maxVal`)
+- **Test coverage** - Added comprehensive tests for mock ciphersuite and mock group implementations
+- **VSS test** - Updated modular reduction test case for new mock group order
+
 ## [0.1.4-alpha] - 2025-12-08
 
 ### Changed
