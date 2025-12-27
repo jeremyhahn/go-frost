@@ -298,6 +298,15 @@ make bench
 
 This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
 
+## Related Projects
+
+- [go-frostdkg](https://github.com/jeremyhahn/go-frostdkg) - FROST Distributed Key Generation for trustless key setup
+- [go-keychain](https://github.com/jeremyhahn/go-keychain) - Key management and storage
+- [go-trusted-ca](https://github.com/jeremyhahn/go-trusted-ca) - Certificate Authority
+- [go-trusted-platform](https://github.com/jeremyhahn/go-trusted-platform) - Trusted Computing Platform
+
+**Note**: This library uses a trusted dealer for key generation. For distributed key generation where no single party sees the full secret, use [go-frostdkg](https://github.com/jeremyhahn/go-frostdkg).
+
 ## References
 
 - [RFC 9591: The FROST Protocol for Two-Round Schnorr Signatures](https://www.rfc-editor.org/rfc/rfc9591.html)
