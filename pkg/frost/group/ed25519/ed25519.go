@@ -206,7 +206,9 @@ func (g *Group) Cofactor() group.Scalar {
 	eight := edwards25519.NewScalar()
 	// 8 in little-endian bytes
 	eightBytes := []byte{8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
-	eight.SetCanonicalBytes(eightBytes)
+	if _, err := eight.SetCanonicalBytes(eightBytes); err != nil {
+		panic("ed25519: failed to set cofactor scalar: " + err.Error())
+	}
 	return &Scalar{scalar: eight}
 }
 

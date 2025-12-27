@@ -133,7 +133,7 @@ func (s *Ed25519Signer) Public() crypto.PublicKey {
 //
 // For Ed25519, the opts parameter is ignored and can be nil.
 // The rand parameter is also ignored as Ed25519 signing is deterministic.
-func (s *Ed25519Signer) Sign(rand io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
+func (s *Ed25519Signer) Sign(_ io.Reader, digest []byte, _ crypto.SignerOpts) ([]byte, error) {
 	// Ed25519 signing is deterministic and doesn't use the rand parameter
 	return ed25519.Sign(s.privateKey, digest), nil
 }

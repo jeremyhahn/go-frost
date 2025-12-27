@@ -179,24 +179,23 @@ func BenchmarkNonceGenerate(b *testing.B) {
 	}
 }
 
-// TestNonceGenerator_Generate_BadRandom tests behavior when random source is exhausted
-// This is difficult to test without mocking crypto/rand, so we document the expected behavior
+// TestNonceGenerator_Generate_NilSecret tests that nil secret returns an error
 func TestNonceGenerator_Generate_NilSecret(t *testing.T) {
 	suite := testutil.NewMockCiphersuite()
 	generator := NewNonceGenerator(suite)
 
-	// Attempting to generate with nil secret should handle gracefully
-	// The implementation should either handle nil or panic - we test for consistent behavior
-	defer func() {
-		if r := recover(); r != nil {
-			// Panic is acceptable for nil input
-			t.Logf("Generate() panicked with nil secret (expected): %v", r)
-		}
-	}()
-
-	// This may panic or return an error depending on implementation
+	// Attempting to generate with nil secret should return an error
 	_, err := generator.Generate(nil)
-	if err != nil {
-		t.Logf("Generate() returned error with nil secret (acceptable): %v", err)
+	if err == nil {
+		t.Error("Generate() should return error with nil secret")
+	}
+}
+
+// TestNewNonceGenerator tests the constructor
+func TestNewNonceGenerator(t *testing.T) {
+	suite := testutil.NewMockCiphersuite()
+	generator := NewNonceGenerator(suite)
+	if generator == nil {
+		t.Error("NewNonceGenerator should not return nil")
 	}
 }

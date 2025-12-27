@@ -113,7 +113,7 @@ func (a *aggregator) Aggregate(groupPublicKey group.Element, commitmentList fros
 	}
 
 	// 2. Check that len(signatureShares) >= minSigners
-	if uint32(len(signatureShares)) < a.minSigners {
+	if uint(len(signatureShares)) < uint(a.minSigners) {
 		return frost.Signature{}, frost.ErrInsufficientParticipants
 	}
 
@@ -184,7 +184,7 @@ func (a *aggregator) AggregateWithVerification(groupPublicKey group.Element, com
 	}
 
 	// 2. Check that len(signatureShares) >= minSigners
-	if uint32(len(signatureShares)) < a.minSigners {
+	if uint(len(signatureShares)) < uint(a.minSigners) {
 		return frost.Signature{}, frost.ErrInsufficientParticipants
 	}
 

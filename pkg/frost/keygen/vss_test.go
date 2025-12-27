@@ -275,10 +275,10 @@ func TestVSS_CombineShares(t *testing.T) {
 		{
 			name: "combine with modular reduction",
 			shares: []group.Scalar{
-				newMockScalar(90, grp.order),
-				newMockScalar(20, grp.order),
+				newMockScalar(100000, grp.order),
+				newMockScalar(10000, grp.order),
 			},
-			expected:    13, // (90 + 20) mod 97 = 13
+			expected:    5271, // (100000 + 10000) mod 104729 = 5271
 			expectError: false,
 			description: "sum with modular reduction",
 		},

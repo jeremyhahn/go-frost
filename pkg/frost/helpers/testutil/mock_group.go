@@ -8,6 +8,12 @@ import (
 	"github.com/jeremyhahn/go-frost/pkg/frost/group"
 )
 
+// Group name constants for mock groups
+const (
+	groupNameP256      = "p256"
+	groupNameSecp256k1 = "secp256k1"
+)
+
 // MockGroup is a simple mock implementation of group.Group for testing
 // It uses a small prime field for simplicity
 type MockGroup struct {
@@ -59,8 +65,8 @@ func (m *MockGroup) NewElement() group.Element {
 }
 
 func (m *MockGroup) RandomScalar() (group.Scalar, error) {
-	max := new(big.Int).Set(m.order)
-	val, err := rand.Int(rand.Reader, max)
+	maxVal := new(big.Int).Set(m.order)
+	val, err := rand.Int(rand.Reader, maxVal)
 	if err != nil {
 		return nil, err
 	}
@@ -105,7 +111,7 @@ func (m *MockGroup) DeserializeScalar(data []byte) (group.Scalar, error) {
 	var value *big.Int
 
 	// Use big-endian for p256/secp256k1, little-endian for others
-	if m.name == "p256" || m.name == "secp256k1" {
+	if m.name == groupNameP256 || m.name == groupNameSecp256k1 {
 		// Big-endian: bytes are already in the correct order for big.Int
 		value = new(big.Int).SetBytes(data)
 	} else {
@@ -135,7 +141,7 @@ func (m *MockGroup) Name() string {
 }
 
 func (m *MockGroup) ByteOrder() group.ByteOrder {
-	if m.name == "p256" || m.name == "secp256k1" {
+	if m.name == groupNameP256 || m.name == groupNameSecp256k1 {
 		return group.BigEndian
 	}
 	return group.LittleEndian
@@ -249,7 +255,7 @@ func (s *MockScalar) Bytes() []byte {
 	}
 
 	// Use big-endian for p256/secp256k1, little-endian for others
-	if s.groupName == "p256" || s.groupName == "secp256k1" {
+	if s.groupName == groupNameP256 || s.groupName == groupNameSecp256k1 {
 		// Big-endian: already in correct format from big.Int
 		return padded
 	}

@@ -12,6 +12,9 @@ import (
 	"strings"
 )
 
+// redactedPlaceholder is used to replace sensitive data in error messages.
+const redactedPlaceholder = "[REDACTED]"
+
 // Security-related errors for FROST protocol operations.
 
 var (
@@ -216,7 +219,7 @@ func (s *ErrorSanitizer) sanitizeDevelopment(msg string) string {
 		if len(parts) >= 2 {
 			return parts[1] + "=[REDACTED]"
 		}
-		return "[REDACTED]"
+		return redactedPlaceholder
 	})
 
 	msg = s.commitmentPattern.ReplaceAllStringFunc(msg, func(match string) string {
@@ -224,7 +227,7 @@ func (s *ErrorSanitizer) sanitizeDevelopment(msg string) string {
 		if len(parts) >= 2 {
 			return parts[1] + "=[REDACTED]"
 		}
-		return "[REDACTED]"
+		return redactedPlaceholder
 	})
 
 	msg = s.signaturePattern.ReplaceAllStringFunc(msg, func(match string) string {
@@ -232,7 +235,7 @@ func (s *ErrorSanitizer) sanitizeDevelopment(msg string) string {
 		if len(parts) >= 2 {
 			return parts[1] + "=[REDACTED]"
 		}
-		return "[REDACTED]"
+		return redactedPlaceholder
 	})
 
 	// Now redact remaining hex values (not part of field=value patterns) but show length

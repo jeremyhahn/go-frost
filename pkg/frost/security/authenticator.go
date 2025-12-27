@@ -66,13 +66,13 @@ func NewNoOpAuthenticator() *NoOpAuthenticator {
 
 // AuthenticateCommitment implements ParticipantAuthenticator.AuthenticateCommitment.
 // Always returns nil (no authentication performed).
-func (a *NoOpAuthenticator) AuthenticateCommitment(participantID frost.Identifier, commitment frost.SigningCommitments, proof []byte) error {
+func (a *NoOpAuthenticator) AuthenticateCommitment(_ frost.Identifier, _ frost.SigningCommitments, _ []byte) error {
 	return nil
 }
 
 // AuthenticateSignatureShare implements ParticipantAuthenticator.AuthenticateSignatureShare.
 // Always returns nil (no authentication performed).
-func (a *NoOpAuthenticator) AuthenticateSignatureShare(participantID frost.Identifier, share frost.SignatureShare, proof []byte) error {
+func (a *NoOpAuthenticator) AuthenticateSignatureShare(_ frost.Identifier, _ frost.SignatureShare, _ []byte) error {
 	return nil
 }
 

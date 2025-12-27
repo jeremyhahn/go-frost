@@ -142,7 +142,7 @@ type coordinator struct {
 // 4. Sort commitment list by identifier
 // 5. Validate commitment list
 // 6. Return sorted list
-func (c *coordinator) RequestCommitments(participantIDs []frost.Identifier, msg []byte) (frost.CommitmentList, error) {
+func (c *coordinator) RequestCommitments(participantIDs []frost.Identifier, _ []byte) (frost.CommitmentList, error) {
 	// 1. Validate participant IDs exist
 	if len(participantIDs) == 0 {
 		return nil, frost.ErrInsufficientParticipants
@@ -178,9 +178,9 @@ func (c *coordinator) RequestCommitments(participantIDs []frost.Identifier, msg 
 		// Request round one from participant
 		nonces, commitment, err := participant.RoundOne()
 		if err != nil {
-			// Track invalid commitment misbehavior
+			// Track invalid commitment misbehavior (best-effort, original error takes precedence)
 			if c.reputationTracker != nil {
-				c.reputationTracker.RecordMisbehavior(id, security.MisbehaviorInvalidCommitment, err.Error())
+				_ = c.reputationTracker.RecordMisbehavior(id, security.MisbehaviorInvalidCommitment, err.Error())
 			}
 			return nil, frost.NewParticipantError(id, "failed to generate commitment", err)
 		}
@@ -259,9 +259,9 @@ func (c *coordinator) RequestSignatureShares(commitmentList frost.CommitmentList
 		nonces.Zeroize()
 
 		if err != nil {
-			// Track invalid share misbehavior
+			// Track invalid share misbehavior (best-effort, original error takes precedence)
 			if c.reputationTracker != nil {
-				c.reputationTracker.RecordMisbehavior(commitment.Identifier, security.MisbehaviorInvalidShare, err.Error())
+				_ = c.reputationTracker.RecordMisbehavior(commitment.Identifier, security.MisbehaviorInvalidShare, err.Error())
 			}
 			return nil, frost.NewParticipantError(commitment.Identifier, "failed to generate signature share", err)
 		}
@@ -341,9 +341,9 @@ func (c *coordinator) AuthenticateCommitment(participantID frost.Identifier, com
 
 	err := c.authenticator.AuthenticateCommitment(participantID, commitment, proof)
 	if err != nil {
-		// Track authentication failure
+		// Track authentication failure (best-effort, original error takes precedence)
 		if c.reputationTracker != nil {
-			c.reputationTracker.RecordMisbehavior(participantID, security.MisbehaviorAuthenticationFailure, "commitment authentication failed")
+			_ = c.reputationTracker.RecordMisbehavior(participantID, security.MisbehaviorAuthenticationFailure, "commitment authentication failed")
 		}
 	}
 	return err
@@ -372,9 +372,9 @@ func (c *coordinator) AuthenticateSignatureShare(participantID frost.Identifier,
 
 	err := c.authenticator.AuthenticateSignatureShare(participantID, share, proof)
 	if err != nil {
-		// Track authentication failure
+		// Track authentication failure (best-effort, original error takes precedence)
 		if c.reputationTracker != nil {
-			c.reputationTracker.RecordMisbehavior(participantID, security.MisbehaviorAuthenticationFailure, "signature share authentication failed")
+			_ = c.reputationTracker.RecordMisbehavior(participantID, security.MisbehaviorAuthenticationFailure, "signature share authentication failed")
 		}
 	}
 	return err

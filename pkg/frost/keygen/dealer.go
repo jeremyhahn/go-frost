@@ -87,7 +87,8 @@ func (d *dealer) GenerateShares(secret group.Scalar, minSigners, maxSigners uint
 		return nil, nil, frost.NewParameterError("minSigners", "cannot exceed maxSigners", frost.ErrInvalidThreshold)
 	}
 
-	if uint32(len(participantIDs)) != maxSigners {
+	// Compare as uint to avoid int conversion issues on 32-bit systems
+	if uint(len(participantIDs)) != uint(maxSigners) {
 		return nil, nil, frost.NewParameterError("participantIDs", "length must equal maxSigners", frost.ErrInvalidParameters)
 	}
 

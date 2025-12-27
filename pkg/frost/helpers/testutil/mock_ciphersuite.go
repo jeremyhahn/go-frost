@@ -75,7 +75,7 @@ func (m *MockCiphersuite) Hash(data []byte) []byte {
 }
 
 // VerifySignature verifies a Schnorr signature
-func (m *MockCiphersuite) VerifySignature(message []byte, signature []byte, publicKey group.Element) error {
+func (m *MockCiphersuite) VerifySignature(_ []byte, signature []byte, _ group.Element) error {
 	// Simple mock verification - in production this would be full Schnorr verification
 	if len(signature) < 64 {
 		return &MockVerificationError{reason: "signature too short"}

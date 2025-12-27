@@ -196,7 +196,7 @@ func (p *participant) RoundTwo(nonces frost.SigningNonces, msg []byte, commitmen
 	}
 
 	// 1b. Validate minimum signers requirement
-	if p.keyPackage.MinSigners > 0 && uint32(len(commitmentList)) < p.keyPackage.MinSigners {
+	if p.keyPackage.MinSigners > 0 && uint(len(commitmentList)) < uint(p.keyPackage.MinSigners) {
 		return frost.SignatureShare{}, frost.NewParameterError("commitmentList",
 			"insufficient participants for threshold signing", frost.ErrInsufficientParticipants)
 	}

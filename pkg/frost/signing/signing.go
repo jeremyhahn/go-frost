@@ -132,6 +132,7 @@ func Aggregate(
 		verificationSlice = append(verificationSlice, vs)
 	}
 
+	//nolint:gosec // len() cannot exceed uint32 max for FROST participants
 	aggregator := NewAggregator(suite, uint32(len(signatureShares)))
 	return aggregator.AggregateWithVerification(
 		groupPublicKey,
@@ -170,6 +171,7 @@ func sortCommitmentList(list frost.CommitmentList) {
 	// Simple bubble sort (usually small lists)
 	for i := 0; i < len(list); i++ {
 		for j := i + 1; j < len(list); j++ {
+			//nolint:gosec // i and j are bounds-checked by loop conditions
 			if list[i].Identifier > list[j].Identifier {
 				list[i], list[j] = list[j], list[i]
 			}

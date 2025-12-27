@@ -167,8 +167,9 @@ type mockGroup struct {
 }
 
 func newMockGroup() *mockGroup {
-	// Use a small prime for testing
-	order := big.NewInt(97) // Small prime
+	// Use a larger prime to avoid probabilistic test failures
+	// when polynomial evaluations happen to equal zero modulo order
+	order := big.NewInt(104729) // Larger prime (10000th prime)
 	return &mockGroup{
 		order:     order,
 		generator: newMockElement(3, 5, order),
@@ -200,8 +201,8 @@ func (g *mockGroup) NewElement() group.Element {
 }
 
 func (g *mockGroup) RandomScalar() (group.Scalar, error) {
-	max := new(big.Int).Sub(g.order, big.NewInt(1))
-	n, err := rand.Int(rand.Reader, max)
+	maxVal := new(big.Int).Sub(g.order, big.NewInt(1))
+	n, err := rand.Int(rand.Reader, maxVal)
 	if err != nil {
 		return nil, err
 	}
@@ -294,6 +295,7 @@ func (g *mockGroup) ByteOrder() group.ByteOrder {
 func createParticipantIDs(count int) []frost.Identifier {
 	ids := make([]frost.Identifier, count)
 	for i := 0; i < count; i++ {
+		//nolint:gosec // i+1 bounded by count, safe for test use
 		ids[i] = frost.Identifier(i + 1)
 	}
 	return ids
