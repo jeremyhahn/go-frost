@@ -171,29 +171,29 @@ func computeChallenge(
 //   - error if proof is invalid
 func VerifyProofOfKnowledge(
 	identifier frost.Identifier,
-	package_ *Round1Package,
+	pkg *Round1Package,
 	suite ciphersuite.Ciphersuite,
 ) error {
-	if package_ == nil {
+	if pkg == nil {
 		return frost.NewParameterError("package", "cannot be nil", frost.ErrInvalidParameters)
 	}
 
-	if len(package_.Commitment) == 0 {
+	if len(pkg.Commitment) == 0 {
 		return frost.NewParameterError("commitment", "cannot be empty", frost.ErrInvalidCommitment)
 	}
 
 	grp := suite.Group()
 
 	// Extract proof components
-	R := package_.ProofOfKnowledge.R
-	z := package_.ProofOfKnowledge.Z
+	R := pkg.ProofOfKnowledge.R
+	z := pkg.ProofOfKnowledge.Z
 
 	if R == nil || z == nil {
 		return frost.NewVerificationError("proof", "missing R or z component", frost.ErrInvalidParameters)
 	}
 
 	// Get the commitment to a_0 (first coefficient)
-	commitment := package_.Commitment[0]
+	commitment := pkg.Commitment[0]
 
 	// Recompute challenge: c = HDKG(identifier || commitment || R)
 	challenge := computeChallenge(identifier, commitment, R, suite)

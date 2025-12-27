@@ -118,8 +118,10 @@ func (s *frostService) Sign(keyPackages []frost.KeyPackage, msg []byte) (frost.S
 	// Extract minimum signers from the verification shares
 	// The number of verification shares equals the polynomial degree + 1
 	// which equals minSigners
+	//nolint:gosec // len() cannot exceed uint32 max for FROST participants
 	minSigners := uint32(len(keyPackages))
 	if len(keyPackages[0].VerificationShares) > 0 {
+		//nolint:gosec // len() cannot exceed uint32 max for FROST participants
 		minSigners = uint32(len(keyPackages[0].VerificationShares))
 	}
 
@@ -299,7 +301,7 @@ func (s *frostService) validateParticipantIDs(participantIDs []frost.Identifier,
 		return frost.NewParameterError("participantIDs", "cannot be nil", frost.ErrInvalidParameters)
 	}
 
-	if uint32(len(participantIDs)) != maxSigners {
+	if uint(len(participantIDs)) != uint(maxSigners) {
 		return frost.NewParameterError("participantIDs", "length must equal maxSigners", frost.ErrInvalidParameters)
 	}
 

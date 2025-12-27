@@ -270,3 +270,136 @@ func TestSortCommitmentList_Single(t *testing.T) {
 		t.Errorf("Expected identifier 1, got %d", list[0].Identifier)
 	}
 }
+
+func TestSign_EmptyCommitments(t *testing.T) {
+	suite := ristretto255_sha512.New()
+
+	// Generate keys
+	identifiers := []frost.Identifier{1, 2, 3}
+	keyPackages, _, err := keygen.TrustedDealerKeygen(3, 2, identifiers, suite)
+	if err != nil {
+		t.Fatalf("TrustedDealerKeygen failed: %v", err)
+	}
+
+	// Generate nonces
+	noncePkg, err := GenerateNonces(keyPackages[0].Identifier, keyPackages[0].SecretShare, suite)
+	if err != nil {
+		t.Fatalf("GenerateNonces failed: %v", err)
+	}
+
+	msg := []byte("test message")
+
+	// Empty commitments map
+	emptyCommitments := make(map[frost.Identifier]*frost.SigningCommitments)
+
+	// Sign should fail with empty commitments
+	_, err = Sign(msg, keyPackages[0], noncePkg, emptyCommitments, suite)
+	if err == nil {
+		t.Error("Sign should fail with empty commitments")
+	}
+}
+
+func TestAggregate_EmptyInputs(t *testing.T) {
+	suite := ristretto255_sha512.New()
+	grp := suite.Group()
+
+	// Create a group public key
+	secret, _ := grp.RandomScalar()
+	groupPublicKey := grp.ScalarBaseMult(secret)
+
+	msg := []byte("test message")
+
+	// Empty commitments
+	emptyCommitments := make(map[frost.Identifier]*frost.SigningCommitments)
+	emptyShares := make(map[frost.Identifier]*SignatureShare)
+	emptyVerification := make(map[frost.Identifier]frost.VerificationShare)
+
+	// Aggregate should fail with empty inputs
+	_, err := Aggregate(msg, emptyCommitments, emptyShares, emptyVerification, groupPublicKey, suite)
+	if err == nil {
+		t.Error("Aggregate should fail with empty inputs")
+	}
+}
+
+func TestGenerateNonces_MultipleCallsProduceDifferentNonces(t *testing.T) {
+	suite := ristretto255_sha512.New()
+
+	// Generate keys
+	identifiers := []frost.Identifier{1, 2, 3}
+	keyPackages, _, err := keygen.TrustedDealerKeygen(3, 2, identifiers, suite)
+	if err != nil {
+		t.Fatalf("TrustedDealerKeygen failed: %v", err)
+	}
+
+	// Generate nonces multiple times
+	nonce1, err := GenerateNonces(keyPackages[0].Identifier, keyPackages[0].SecretShare, suite)
+	if err != nil {
+		t.Fatalf("First GenerateNonces failed: %v", err)
+	}
+
+	nonce2, err := GenerateNonces(keyPackages[0].Identifier, keyPackages[0].SecretShare, suite)
+	if err != nil {
+		t.Fatalf("Second GenerateNonces failed: %v", err)
+	}
+
+	// Nonces should be different
+	if nonce1.Nonces.HidingNonce.Equal(nonce2.Nonces.HidingNonce) {
+		t.Error("Multiple calls should produce different hiding nonces")
+	}
+
+	if nonce1.Nonces.BindingNonce.Equal(nonce2.Nonces.BindingNonce) {
+		t.Error("Multiple calls should produce different binding nonces")
+	}
+}
+
+func TestNoncePackageFields(t *testing.T) {
+	suite := ristretto255_sha512.New()
+
+	// Generate keys
+	identifiers := []frost.Identifier{1, 2, 3}
+	keyPackages, _, err := keygen.TrustedDealerKeygen(3, 2, identifiers, suite)
+	if err != nil {
+		t.Fatalf("TrustedDealerKeygen failed: %v", err)
+	}
+
+	// Generate nonces
+	noncePkg, err := GenerateNonces(keyPackages[0].Identifier, keyPackages[0].SecretShare, suite)
+	if err != nil {
+		t.Fatalf("GenerateNonces failed: %v", err)
+	}
+
+	// Verify all fields are populated
+	if noncePkg.Nonces.HidingNonce == nil {
+		t.Error("HidingNonce should not be nil")
+	}
+	if noncePkg.Nonces.BindingNonce == nil {
+		t.Error("BindingNonce should not be nil")
+	}
+	if noncePkg.Commitments == nil {
+		t.Error("Commitments should not be nil")
+	}
+	if noncePkg.Commitments.HidingNonceCommitment == nil {
+		t.Error("HidingNonceCommitment should not be nil")
+	}
+	if noncePkg.Commitments.BindingNonceCommitment == nil {
+		t.Error("BindingNonceCommitment should not be nil")
+	}
+	if noncePkg.Commitments.Identifier != keyPackages[0].Identifier {
+		t.Errorf("Commitment identifier should match key package identifier")
+	}
+}
+
+func TestSignatureShareStruct(t *testing.T) {
+	suite := ristretto255_sha512.New()
+	grp := suite.Group()
+
+	scalar, _ := grp.RandomScalar()
+	share := SignatureShare{
+		Identifier:     frost.Identifier(42),
+		SignatureShare: scalar,
+	}
+
+	if share.Identifier != 42 {
+		t.Errorf("Expected identifier 42, got %d", share.Identifier)
+	}
+}

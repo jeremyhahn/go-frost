@@ -101,7 +101,7 @@ func NewInMemoryCommitmentTracker() *InMemoryCommitmentTracker {
 }
 
 // RecordCommitment implements CommitmentTracker.RecordCommitment
-func (t *InMemoryCommitmentTracker) RecordCommitment(ctx context.Context, commitment CommitmentIdentifier) error {
+func (t *InMemoryCommitmentTracker) RecordCommitment(_ context.Context, commitment CommitmentIdentifier) error {
 	hash := commitment.Hash()
 
 	t.mu.Lock()
@@ -127,7 +127,7 @@ func (t *InMemoryCommitmentTracker) RecordCommitment(ctx context.Context, commit
 }
 
 // CheckCommitment implements CommitmentTracker.CheckCommitment
-func (t *InMemoryCommitmentTracker) CheckCommitment(ctx context.Context, commitment CommitmentIdentifier) error {
+func (t *InMemoryCommitmentTracker) CheckCommitment(_ context.Context, commitment CommitmentIdentifier) error {
 	hash := commitment.Hash()
 
 	t.mu.RLock()
@@ -143,7 +143,7 @@ func (t *InMemoryCommitmentTracker) CheckCommitment(ctx context.Context, commitm
 }
 
 // ClearSession implements CommitmentTracker.ClearSession
-func (t *InMemoryCommitmentTracker) ClearSession(ctx context.Context, sessionID string) error {
+func (t *InMemoryCommitmentTracker) ClearSession(_ context.Context, sessionID string) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -165,7 +165,7 @@ func (t *InMemoryCommitmentTracker) ClearSession(ctx context.Context, sessionID 
 }
 
 // ClearExpired implements CommitmentTracker.ClearExpired
-func (t *InMemoryCommitmentTracker) ClearExpired(ctx context.Context, ttl time.Duration) (int, error) {
+func (t *InMemoryCommitmentTracker) ClearExpired(_ context.Context, ttl time.Duration) (int, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -203,7 +203,7 @@ func (t *InMemoryCommitmentTracker) ClearExpired(ctx context.Context, ttl time.D
 }
 
 // Count implements CommitmentTracker.Count
-func (t *InMemoryCommitmentTracker) Count(ctx context.Context) (int, error) {
+func (t *InMemoryCommitmentTracker) Count(_ context.Context) (int, error) {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 
@@ -211,7 +211,7 @@ func (t *InMemoryCommitmentTracker) Count(ctx context.Context) (int, error) {
 }
 
 // CountSession implements CommitmentTracker.CountSession
-func (t *InMemoryCommitmentTracker) CountSession(ctx context.Context, sessionID string) (int, error) {
+func (t *InMemoryCommitmentTracker) CountSession(_ context.Context, sessionID string) (int, error) {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 

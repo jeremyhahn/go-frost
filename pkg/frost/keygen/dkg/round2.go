@@ -51,7 +51,7 @@ func Part2(
 	// Verify all proofs of knowledge
 	for senderID, pkg := range round1Packages {
 		// Validate commitment length
-		if uint32(len(pkg.Commitment)) != secretPackage.MinSigners {
+		if uint(len(pkg.Commitment)) != uint(secretPackage.MinSigners) {
 			return nil, nil, frost.NewParticipantError(senderID,
 				"invalid commitment length", frost.ErrInvalidCommitment)
 		}

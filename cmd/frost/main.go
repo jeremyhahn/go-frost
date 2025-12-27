@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -57,6 +58,42 @@ func getSupportedCiphersuites() string {
   p256         - FROST(P-256, SHA-256) [NIST]
   secp256k1    - FROST(secp256k1, SHA-256) [Bitcoin curve]
   ed448        - FROST(Ed448, SHAKE256) [highest security]`
+}
+
+// safeUintToUint32 converts uint to uint32 with bounds check.
+// Panics if the value exceeds uint32 max (should be validated before calling).
+func safeUintToUint32(v uint) uint32 {
+	if v > math.MaxUint32 {
+		panic("integer overflow: uint exceeds uint32 max")
+	}
+	return uint32(v)
+}
+
+// safeUintToUint16 converts uint to uint16 with bounds check.
+// Panics if the value exceeds uint16 max (should be validated before calling).
+func safeUintToUint16(v uint) uint16 {
+	if v > math.MaxUint16 {
+		panic("integer overflow: uint exceeds uint16 max")
+	}
+	return uint16(v)
+}
+
+// safeUint32ToUint16 converts uint32 to uint16 with bounds check.
+// Panics if the value exceeds uint16 max (should be validated before calling).
+func safeUint32ToUint16(v uint32) uint16 {
+	if v > math.MaxUint16 {
+		panic("integer overflow: uint32 exceeds uint16 max")
+	}
+	return uint16(v)
+}
+
+// safeIntToUint16 converts int to uint16 with bounds check.
+// Panics if the value is negative or exceeds uint16 max.
+func safeIntToUint16(v int) uint16 {
+	if v < 0 || v > math.MaxUint16 {
+		panic("integer overflow: int out of uint16 range")
+	}
+	return uint16(v)
 }
 
 func main() {
@@ -162,6 +199,12 @@ func keygenCommand() {
 		os.Exit(1)
 	}
 
+	// Validate bounds for uint32/uint16 conversion
+	if *maxSigners > math.MaxUint16 {
+		fmt.Fprintf(os.Stderr, "Error: max signers exceeds maximum value (%d)\n", math.MaxUint16)
+		os.Exit(1)
+	}
+
 	// Create ciphersuite
 	suite := getCiphersuite(*ciphersuiteFlag)
 	grp := suite.Group()
@@ -169,7 +212,7 @@ func keygenCommand() {
 	// Generate participant IDs
 	participantIDs := make([]frost.Identifier, *maxSigners)
 	for i := uint(0); i < *maxSigners; i++ {
-		participantIDs[i] = frost.Identifier(i + 1)
+		participantIDs[i] = frost.Identifier(safeUintToUint32(i + 1))
 	}
 
 	// Generate secret
@@ -181,7 +224,7 @@ func keygenCommand() {
 
 	// Generate shares
 	dealer := keygen.NewDealer(suite)
-	keyPackages, groupPublicKey, err := dealer.GenerateShares(secret, uint32(*minSigners), uint32(*maxSigners), participantIDs)
+	keyPackages, groupPublicKey, err := dealer.GenerateShares(secret, safeUintToUint32(*minSigners), safeUintToUint32(*maxSigners), participantIDs)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error generating shares: %v\n", err)
 		os.Exit(1)
@@ -194,15 +237,15 @@ func keygenCommand() {
 		GroupPublicKey string             `json:"group_public_key"`
 		KeyPackages    []KeyPackageExport `json:"key_packages"`
 	}{
-		MinSigners:     uint32(*minSigners),
-		MaxSigners:     uint32(*maxSigners),
+		MinSigners:     safeUintToUint32(*minSigners),
+		MaxSigners:     safeUintToUint32(*maxSigners),
 		GroupPublicKey: hex.EncodeToString(groupPublicKey.Bytes()),
 		KeyPackages:    make([]KeyPackageExport, len(keyPackages)),
 	}
 
 	for i, pkg := range keyPackages {
 		outputData.KeyPackages[i] = KeyPackageExport{
-			Identifier:  uint16(pkg.Identifier),
+			Identifier:  safeUint32ToUint16(uint32(pkg.Identifier)),
 			SecretShare: hex.EncodeToString(pkg.SecretShare.Bytes()),
 			PublicKey:   hex.EncodeToString(pkg.GroupPublicKey.Bytes()),
 		}
@@ -319,7 +362,7 @@ func signCommand() {
 	for _, signerID := range signerIDs {
 		found := false
 		for _, pkg := range keysInput.KeyPackages {
-			if pkg.Identifier == uint16(signerID) {
+			if pkg.Identifier == safeIntToUint16(signerID) {
 				secretBytes, err := hex.DecodeString(pkg.SecretShare)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "Error decoding secret share: %v\n", err)
@@ -410,7 +453,7 @@ func signCommand() {
 		os.Exit(1)
 	}
 
-	if err := os.WriteFile(*output, sigData, 0644); err != nil {
+	if err := os.WriteFile(*output, sigData, 0600); err != nil {
 		fmt.Fprintf(os.Stderr, "Error writing signature file: %v\n", err)
 		os.Exit(1)
 	}
@@ -489,7 +532,7 @@ func commitCommand() {
 	// Find the participant's key package
 	var keyPackage *frost.KeyPackage
 	for _, pkg := range keysInput.KeyPackages {
-		if pkg.Identifier == uint16(*participantID) {
+		if pkg.Identifier == safeUintToUint16(*participantID) {
 			secretBytes, err := hex.DecodeString(pkg.SecretShare)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Error decoding secret share: %v\n", err)
@@ -540,7 +583,7 @@ func commitCommand() {
 		HidingCommitment  string `json:"hiding_commitment"`
 		BindingCommitment string `json:"binding_commitment"`
 	}{
-		Identifier:        uint16(commitment.Identifier),
+		Identifier:        safeUint32ToUint16(uint32(commitment.Identifier)),
 		HidingCommitment:  hex.EncodeToString(commitment.HidingNonceCommitment.Bytes()),
 		BindingCommitment: hex.EncodeToString(commitment.BindingNonceCommitment.Bytes()),
 	}
@@ -551,7 +594,7 @@ func commitCommand() {
 		os.Exit(1)
 	}
 
-	if err := os.WriteFile(*outputCommitment, commitmentData, 0644); err != nil {
+	if err := os.WriteFile(*outputCommitment, commitmentData, 0600); err != nil {
 		fmt.Fprintf(os.Stderr, "Error writing commitment file: %v\n", err)
 		os.Exit(1)
 	}
@@ -562,7 +605,7 @@ func commitCommand() {
 		HidingNonce  string `json:"hiding_nonce"`
 		BindingNonce string `json:"binding_nonce"`
 	}{
-		Identifier:   uint16(*participantID),
+		Identifier:   safeUintToUint16(*participantID),
 		HidingNonce:  hex.EncodeToString(nonces.HidingNonce.Bytes()),
 		BindingNonce: hex.EncodeToString(nonces.BindingNonce.Bytes()),
 	}
@@ -659,7 +702,7 @@ func signShareCommand() {
 	// Find participant's key package
 	var keyPackage *frost.KeyPackage
 	for _, pkg := range keysInput.KeyPackages {
-		if pkg.Identifier == uint16(*participantID) {
+		if pkg.Identifier == safeUintToUint16(*participantID) {
 			secretBytes, err := hex.DecodeString(pkg.SecretShare)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Error decoding secret share: %v\n", err)
@@ -804,7 +847,7 @@ func signShareCommand() {
 		Identifier uint16 `json:"identifier"`
 		Share      string `json:"share"`
 	}{
-		Identifier: uint16(signatureShare.Identifier),
+		Identifier: safeUint32ToUint16(uint32(signatureShare.Identifier)),
 		Share:      hex.EncodeToString(signatureShare.SignatureShare.Bytes()),
 	}
 
@@ -814,7 +857,7 @@ func signShareCommand() {
 		os.Exit(1)
 	}
 
-	if err := os.WriteFile(*output, shareData, 0644); err != nil {
+	if err := os.WriteFile(*output, shareData, 0600); err != nil {
 		fmt.Fprintf(os.Stderr, "Error writing signature share file: %v\n", err)
 		os.Exit(1)
 	}
@@ -1004,7 +1047,7 @@ func aggregateCommand() {
 		os.Exit(1)
 	}
 
-	if err := os.WriteFile(*output, sigData, 0644); err != nil {
+	if err := os.WriteFile(*output, sigData, 0600); err != nil {
 		fmt.Fprintf(os.Stderr, "Error writing signature file: %v\n", err)
 		os.Exit(1)
 	}
@@ -1131,6 +1174,7 @@ func collectCommitmentsCommand() {
 	// Collect all commitments
 	var allCommitments []map[string]interface{}
 	for _, file := range matches {
+		//nolint:gosec // CLI intentionally reads user-specified files
 		data, err := os.ReadFile(file)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error reading %s: %v\n", file, err)
@@ -1153,7 +1197,7 @@ func collectCommitmentsCommand() {
 		os.Exit(1)
 	}
 
-	if err := os.WriteFile(*output, combinedData, 0644); err != nil {
+	if err := os.WriteFile(*output, combinedData, 0600); err != nil {
 		fmt.Fprintf(os.Stderr, "Error writing output file: %v\n", err)
 		os.Exit(1)
 	}
@@ -1202,6 +1246,7 @@ func collectSharesCommand() {
 	// Collect all shares
 	var allShares []map[string]interface{}
 	for _, file := range matches {
+		//nolint:gosec // CLI intentionally reads user-specified files
 		data, err := os.ReadFile(file)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error reading %s: %v\n", file, err)
@@ -1224,7 +1269,7 @@ func collectSharesCommand() {
 		os.Exit(1)
 	}
 
-	if err := os.WriteFile(*output, combinedData, 0644); err != nil {
+	if err := os.WriteFile(*output, combinedData, 0600); err != nil {
 		fmt.Fprintf(os.Stderr, "Error writing output file: %v\n", err)
 		os.Exit(1)
 	}

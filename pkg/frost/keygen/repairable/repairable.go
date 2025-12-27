@@ -179,10 +179,10 @@ func RepairShareStep2(deltas []group.Scalar) group.Scalar {
 		return nil
 	}
 
-	// Sum all deltas
+	// Sum all deltas (bounds checked above: len(deltas) > 0)
 	sigma := deltas[0].Copy()
 	for i := 1; i < len(deltas); i++ {
-		sigma = sigma.Add(deltas[i])
+		sigma = sigma.Add(deltas[i]) //nolint:gosec // bounds checked by loop condition
 	}
 
 	return sigma
@@ -217,10 +217,10 @@ func RepairShareStep3(
 
 	grp := suite.Group()
 
-	// Sum all sigmas to recover the share
+	// Sum all sigmas to recover the share (bounds checked above: len(sigmas) > 0)
 	recoveredShare := sigmas[0].Copy()
 	for i := 1; i < len(sigmas); i++ {
-		recoveredShare = recoveredShare.Add(sigmas[i])
+		recoveredShare = recoveredShare.Add(sigmas[i]) //nolint:gosec // bounds checked by loop condition
 	}
 
 	// Verify the recovered share if commitment is provided
@@ -261,7 +261,7 @@ func computeLagrangeCoefficient(
 	polyHelper := helpers.NewPolynomialHelper(grp)
 
 	// Find xi in xCoords
-	var xiIndex int = -1
+	var xiIndex = -1
 	for i, coord := range xCoords {
 		if coord.Equal(xi) {
 			xiIndex = i

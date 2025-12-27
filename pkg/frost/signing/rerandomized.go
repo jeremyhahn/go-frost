@@ -136,7 +136,7 @@ func ComputeRandomizer(
 func RandomizeKeyPackage(
 	keyPackage frost.KeyPackage,
 	params *RandomizedParams,
-	suite ciphersuite.Ciphersuite,
+	_ ciphersuite.Ciphersuite,
 ) frost.KeyPackage {
 	// Randomize secret share: s_i' = s_i + randomizer
 	randomizedSecretShare := keyPackage.SecretShare.Add(params.Randomizer)

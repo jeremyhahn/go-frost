@@ -50,22 +50,22 @@ func NewNoOpValidator() *NoOpValidator {
 }
 
 // ValidateStructure always returns nil (no validation).
-func (v *NoOpValidator) ValidateStructure(msg []byte) error {
+func (v *NoOpValidator) ValidateStructure(_ []byte) error {
 	return nil
 }
 
 // ValidateSize always returns nil (no validation).
-func (v *NoOpValidator) ValidateSize(msg []byte) error {
+func (v *NoOpValidator) ValidateSize(_ []byte) error {
 	return nil
 }
 
 // ValidatePolicy always returns nil (no validation).
-func (v *NoOpValidator) ValidatePolicy(msg []byte) error {
+func (v *NoOpValidator) ValidatePolicy(_ []byte) error {
 	return nil
 }
 
 // Validate always returns nil (no validation).
-func (v *NoOpValidator) Validate(msg []byte) error {
+func (v *NoOpValidator) Validate(_ []byte) error {
 	return nil
 }
 
@@ -90,7 +90,7 @@ func NewSizeValidator(maxSize int) *SizeValidator {
 }
 
 // ValidateStructure always returns nil (no structure validation).
-func (v *SizeValidator) ValidateStructure(msg []byte) error {
+func (v *SizeValidator) ValidateStructure(_ []byte) error {
 	return nil
 }
 
@@ -104,7 +104,7 @@ func (v *SizeValidator) ValidateSize(msg []byte) error {
 }
 
 // ValidatePolicy always returns nil (no policy validation).
-func (v *SizeValidator) ValidatePolicy(msg []byte) error {
+func (v *SizeValidator) ValidatePolicy(_ []byte) error {
 	return nil
 }
 

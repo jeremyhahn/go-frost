@@ -146,9 +146,9 @@ func (t *FrostNonceTracker) ClearSession(ctx context.Context, sessionID string) 
 // ClearParticipant removes all commitments for a specific participant in a session.
 // Useful for cleaning up after failed commitment recording or participant removal.
 func (t *FrostNonceTracker) ClearParticipant(
-	ctx context.Context,
-	sessionID string,
-	participantID frost.Identifier,
+	_ context.Context,
+	_ string,
+	_ frost.Identifier,
 ) error {
 	// Clear both hiding and binding commitments
 	// We don't have a direct "clear by participant" method, so we record empty

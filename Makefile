@@ -208,33 +208,29 @@ bench:
 ## lint: Run linters
 lint:
 	@echo "Running linters..."
-	@which golangci-lint > /dev/null 2>&1 || test -f "$$(go env GOPATH)/bin/golangci-lint" || (echo "golangci-lint not installed. Install with: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest" && exit 1)
-	@if which golangci-lint > /dev/null 2>&1; then \
-		golangci-lint run --timeout=5m ./...; \
-	else \
-		$$(go env GOPATH)/bin/golangci-lint run --timeout=5m ./...; \
-	fi
+	@go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
+	$$(go env GOPATH)/bin/golangci-lint run --timeout=5m ./...
 
 .PHONY: gosec
 ## gosec: Run security scanner
 gosec:
 	@echo "Running gosec security scanner..."
-	@which gosec > /dev/null 2>&1 || go install github.com/securego/gosec/v2/cmd/gosec@latest
-	@which gosec > /dev/null 2>&1 && gosec -quiet -exclude=G101,G104,G115,G304,G306,G404 ./... || $$(go env GOPATH)/bin/gosec -quiet -exclude=G101,G104,G115,G304,G306,G404 ./...
+	@go install github.com/securego/gosec/v2/cmd/gosec@latest
+	$$(go env GOPATH)/bin/gosec -quiet -exclude=G101,G104,G115,G304,G306,G404 ./...
 
 .PHONY: govulncheck
 ## govulncheck: Check for known vulnerabilities
 govulncheck:
 	@echo "Running govulncheck..."
-	@which govulncheck > /dev/null 2>&1 || go install golang.org/x/vuln/cmd/govulncheck@latest
-	@which govulncheck > /dev/null 2>&1 && govulncheck ./... || $$(go env GOPATH)/bin/govulncheck ./...
+	@go install golang.org/x/vuln/cmd/govulncheck@latest
+	$$(go env GOPATH)/bin/govulncheck ./...
 
 .PHONY: staticcheck
 ## staticcheck: Run staticcheck linter
 staticcheck:
 	@echo "Running staticcheck..."
-	@which staticcheck > /dev/null 2>&1 || go install honnef.co/go/tools/cmd/staticcheck@latest
-	@which staticcheck > /dev/null 2>&1 && staticcheck ./... || $$(go env GOPATH)/bin/staticcheck ./...
+	@go install honnef.co/go/tools/cmd/staticcheck@latest
+	$$(go env GOPATH)/bin/staticcheck ./...
 
 .PHONY: ci
 ## ci: Run all CI checks (lint, security, static analysis, tests, build)

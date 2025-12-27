@@ -128,7 +128,7 @@ func aggregateWithAllCheaterDetection(
 	}
 
 	// Check that len(signatureShares) >= minSigners
-	if uint32(len(signatureShares)) < minSigners {
+	if uint(len(signatureShares)) < uint(minSigners) {
 		return frost.Signature{}, frost.ErrInsufficientParticipants
 	}
 

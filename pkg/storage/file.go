@@ -144,6 +144,7 @@ func (f *FileBackend) Get(key string) ([]byte, error) {
 
 	fullPath := filepath.Join(f.basePath, key)
 
+	//nolint:gosec // File storage backend intentionally reads from configured path
 	data, err := os.ReadFile(fullPath)
 	if err != nil {
 		if os.IsNotExist(err) {

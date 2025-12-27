@@ -91,9 +91,13 @@ func (cs *Ed448SHAKE256) Group() group.Group {
 // For general hashing, we use 114 bytes (2x the scalar size for wide reduction).
 func (cs *Ed448SHAKE256) Hash(data []byte) []byte {
 	hash := sha3.NewShake256()
-	hash.Write(data)
+	if _, err := hash.Write(data); err != nil {
+		panic("sha3: SHAKE256 Write failed: " + err.Error())
+	}
 	output := make([]byte, hashOutputSize)
-	hash.Read(output)
+	if _, err := hash.Read(output); err != nil {
+		panic("sha3: SHAKE256 Read failed: " + err.Error())
+	}
 	return output
 }
 
@@ -111,13 +115,21 @@ func (cs *Ed448SHAKE256) H2(data []byte) group.Scalar {
 	// H2(m): Implemented by computing H("SigEd448" || 0 || 0 || m)
 	// The two zero bytes represent the empty context string for Ed448ph compatibility
 	hash := sha3.NewShake256()
-	hash.Write([]byte(ed448H2Prefix)) // "SigEd448"
-	hash.Write([]byte{0x00, 0x00})    // Two zero bytes (empty context length + empty context)
-	hash.Write(data)
+	if _, err := hash.Write([]byte(ed448H2Prefix)); err != nil {
+		panic("sha3: SHAKE256 Write failed: " + err.Error())
+	}
+	if _, err := hash.Write([]byte{0x00, 0x00}); err != nil {
+		panic("sha3: SHAKE256 Write failed: " + err.Error())
+	}
+	if _, err := hash.Write(data); err != nil {
+		panic("sha3: SHAKE256 Write failed: " + err.Error())
+	}
 
 	// Read 114 bytes for wide reduction (2x the 57-byte scalar size)
 	output := make([]byte, hashOutputSize)
-	hash.Read(output)
+	if _, err := hash.Read(output); err != nil {
+		panic("sha3: SHAKE256 Read failed: " + err.Error())
+	}
 
 	// Use NewScalarFromBytes for proper reduction
 	return ed448.NewScalarFromBytes(output)
@@ -174,11 +186,15 @@ func (cs *Ed448SHAKE256) HashToCurve(data []byte) (group.Element, error) {
 		hashInput := append(input, counterBuf...)
 
 		hash := sha3.NewShake256()
-		hash.Write(hashInput)
+		if _, err := hash.Write(hashInput); err != nil {
+			panic("sha3: SHAKE256 Write failed: " + err.Error())
+		}
 
 		// Read 57 bytes for Ed448 point encoding
 		pointBytes := make([]byte, 57)
-		hash.Read(pointBytes)
+		if _, err := hash.Read(pointBytes); err != nil {
+			panic("sha3: SHAKE256 Read failed: " + err.Error())
+		}
 
 		// Try to decode as a point
 		point, err := goldilocks.FromBytes(pointBytes)
@@ -262,9 +278,13 @@ func (cs *Ed448SHAKE256) hashToScalar(domain string, data []byte) group.Scalar {
 
 	// Hash with SHAKE256, reading 114 bytes (2x the scalar size)
 	hash := sha3.NewShake256()
-	hash.Write(input)
+	if _, err := hash.Write(input); err != nil {
+		panic("sha3: SHAKE256 Write failed: " + err.Error())
+	}
 	output := make([]byte, hashOutputSize)
-	hash.Read(output)
+	if _, err := hash.Read(output); err != nil {
+		panic("sha3: SHAKE256 Read failed: " + err.Error())
+	}
 
 	// Use NewScalarFromBytes for proper reduction
 	return ed448.NewScalarFromBytes(output)
