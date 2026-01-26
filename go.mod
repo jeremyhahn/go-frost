@@ -5,7 +5,7 @@ go 1.25.5
 require (
 	filippo.io/bigmod v0.1.0
 	filippo.io/edwards25519 v1.1.0
-	github.com/cloudflare/circl v1.6.2
+	github.com/cloudflare/circl v1.6.3
 	github.com/gtank/ristretto255 v0.2.0
 	github.com/stretchr/testify v1.11.1
 	gitlab.com/yawning/secp256k1-voi v0.0.0-20230925100816-f2616030848b
