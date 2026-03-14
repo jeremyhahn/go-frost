@@ -41,6 +41,7 @@ import (
 	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite/ristretto255_sha512"
 	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite/secp256k1_sha256"
 	"github.com/jeremyhahn/go-frost/pkg/frost/service"
+	"github.com/jeremyhahn/go-frost/pkg/secmem"
 )
 
 // Global service instances per ciphersuite
@@ -131,6 +132,7 @@ func frost_generate_keys(
 	// Copy keys to C memory
 	*keysOut = C.CString(string(keysJSON))
 	*keysOutLen = C.size_t(len(keysJSON))
+	secmem.ZeroBytes(keysJSON)
 
 	// Serialize public key
 	pubKeyBytes := groupPublicKey.Bytes()
@@ -163,8 +165,10 @@ func frost_sign(
 	keysData := C.GoBytes(unsafe.Pointer(keysJSON), C.int(keysJSONLen))
 	var keyPackages []frost.KeyPackage
 	if err := json.Unmarshal(keysData, &keyPackages); err != nil {
+		secmem.ZeroBytes(keysData)
 		return C.FROST_ERR_DESERIALIZE_FAILED
 	}
+	secmem.ZeroBytes(keysData)
 
 	// Get signer indices
 	indices := unsafe.Slice((*uint32)(unsafe.Pointer(signerIndices)), signerIndicesLen)

@@ -10,6 +10,7 @@ import (
 	"runtime"
 
 	"github.com/jeremyhahn/go-frost/pkg/frost/group"
+	"github.com/jeremyhahn/go-frost/pkg/secmem"
 )
 
 // Identifier represents a unique participant identifier.
@@ -112,11 +113,9 @@ func (n *SigningNonces) Zeroize() {
 	runtime.KeepAlive(n.BindingNonce)
 
 	if n.HidingNonce != nil {
-		// Get the underlying bytes and zero them
+		// Get the underlying bytes and zero them using constant-time zeroing
 		hidingBytes := n.HidingNonce.Bytes()
-		for i := range hidingBytes {
-			hidingBytes[i] = 0
-		}
+		secmem.ZeroBytes(hidingBytes)
 
 		// Replace with a zero scalar
 		zeroScalar := n.HidingNonce.Sub(n.HidingNonce)
@@ -124,11 +123,9 @@ func (n *SigningNonces) Zeroize() {
 	}
 
 	if n.BindingNonce != nil {
-		// Get the underlying bytes and zero them
+		// Get the underlying bytes and zero them using constant-time zeroing
 		bindingBytes := n.BindingNonce.Bytes()
-		for i := range bindingBytes {
-			bindingBytes[i] = 0
-		}
+		secmem.ZeroBytes(bindingBytes)
 
 		// Replace with a zero scalar
 		zeroScalar := n.BindingNonce.Sub(n.BindingNonce)
@@ -181,13 +178,16 @@ type SecretKeyShare struct {
 //
 // This method should be called when the secret share is no longer needed
 // to reduce the risk of memory disclosure attacks.
+// Zeroize securely erases the secret share from memory.
+//
+// Note: Go's GC may copy scalar internals before this is called.
+// For full protection of key material at rest, use hardware-backed
+// key storage or the secmem package for raw byte data.
 func (s *SecretKeyShare) Zeroize() {
 	runtime.KeepAlive(s.SecretShare)
 	if s.SecretShare != nil {
 		bytes := s.SecretShare.Bytes()
-		for i := range bytes {
-			bytes[i] = 0
-		}
+		secmem.ZeroBytes(bytes)
 		s.SecretShare = s.SecretShare.Sub(s.SecretShare)
 	}
 	runtime.KeepAlive(s.SecretShare)
@@ -230,13 +230,16 @@ type KeyPackage struct {
 // to reduce the risk of memory disclosure attacks. Note that this only
 // clears the secret share; the public key and verification shares are
 // not sensitive and are left intact.
+// Zeroize securely erases the secret share from the key package.
+//
+// Note: Go's GC may copy scalar internals before this is called.
+// For full protection of key material at rest, use hardware-backed
+// key storage or the secmem package for raw byte data.
 func (kp *KeyPackage) Zeroize() {
 	runtime.KeepAlive(kp.SecretShare)
 	if kp.SecretShare != nil {
 		bytes := kp.SecretShare.Bytes()
-		for i := range bytes {
-			bytes[i] = 0
-		}
+		secmem.ZeroBytes(bytes)
 		kp.SecretShare = kp.SecretShare.Sub(kp.SecretShare)
 	}
 	runtime.KeepAlive(kp.SecretShare)
@@ -265,14 +268,17 @@ type Polynomial struct {
 // to prevent the secret polynomial coefficients from remaining in memory.
 // The constant term (coefficient[0]) is particularly sensitive as it
 // represents the secret being shared.
+// Zeroize securely erases all polynomial coefficients from memory.
+//
+// Note: Go's GC may copy scalar internals before this is called.
+// For full protection of key material at rest, use hardware-backed
+// key storage or the secmem package for raw byte data.
 func (p *Polynomial) Zeroize() {
 	for i, coeff := range p.Coefficients {
 		runtime.KeepAlive(coeff)
 		if coeff != nil {
 			bytes := coeff.Bytes()
-			for j := range bytes {
-				bytes[j] = 0
-			}
+			secmem.ZeroBytes(bytes)
 			p.Coefficients[i] = coeff.Sub(coeff)
 		}
 	}

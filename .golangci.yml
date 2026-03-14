@@ -6,8 +6,6 @@ version: "2"
 run:
   timeout: 5m
   tests: true
-  exclude-dirs:
-    - vendor
 
 linters:
   enable:
@@ -28,6 +26,41 @@ linters:
     - whitespace
   disable:
     - prealloc
+
+  settings:
+    errcheck:
+      check-type-assertions: false
+      check-blank: false
+
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment
+        - shadow
+
+    staticcheck:
+      checks:
+        - "all"
+        - "-SA1019"  # Ignore deprecated API warnings (p256 curve API migration pending)
+        - "-ST1003"  # Underscore package names follow RFC 9591 ciphersuite naming conventions
+
+    gosec:
+      excludes:
+        - G103  # Unsafe usage is audited (secmem ZeroString)
+        - G115  # Integer overflow conversions are intentional byte extraction in crypto code
+
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+
+    misspell:
+      locale: US
+
+    revive:
+      rules:
+        - name: exported
+          arguments:
+            - "checkPrivateReceivers"
 
   exclusions:
     generated: lax
@@ -81,35 +114,6 @@ formatters:
     goimports:
       local-prefixes:
         - github.com/jeremyhahn/go-frost
-
-linters-settings:
-  errcheck:
-    check-type-assertions: false
-    check-blank: false
-
-  govet:
-    enable-all: true
-    disable:
-      - fieldalignment
-      - shadow
-
-  staticcheck:
-    checks:
-      - "all"
-      - "-SA1019"  # Ignore deprecated API warnings (ristretto255 API migration pending)
-
-  goconst:
-    min-len: 3
-    min-occurrences: 3
-
-  misspell:
-    locale: US
-
-  revive:
-    rules:
-      - name: exported
-        arguments:
-          - "checkPrivateReceivers"
 
 issues:
   max-issues-per-linter: 0

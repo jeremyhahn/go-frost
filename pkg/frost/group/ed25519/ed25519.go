@@ -176,6 +176,14 @@ func (s *Scalar) Compare(other group.Scalar) int {
 	return sBig.Cmp(oBig)
 }
 
+// Zeroize overwrites the scalar's internal memory with zeros.
+func (s *Scalar) Zeroize() {
+	if s.scalar != nil {
+		var zero [32]byte
+		_, _ = s.scalar.SetCanonicalBytes(zero[:])
+	}
+}
+
 // Group implements the FROST group interface for Ed25519.
 type Group struct {
 	generator *Element

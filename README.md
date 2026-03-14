@@ -2,7 +2,7 @@
 
 A production-ready Go implementation of the FROST (Flexible Round-Optimized Schnorr Threshold) signature scheme as specified in [RFC 9591](https://www.rfc-editor.org/rfc/rfc9591.html).
 
-[![Go Version](https://img.shields.io/badge/go-%3E%3D1.21-blue.svg)](https://golang.org/dl/)
+[![Go Version](https://img.shields.io/badge/go-%3E%3D1.26.1-blue.svg)](https://golang.org/dl/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![RFC 9591](https://img.shields.io/badge/RFC-9591-green.svg)](https://www.rfc-editor.org/rfc/rfc9591.html)
 
@@ -12,16 +12,16 @@ FROST is a threshold signature scheme that enables a threshold number of partici
 
 ### Key Features
 
-- **RFC 9591 Compliant**: Full implementation with all RFC requirements met
-- **Production Ready**: 90%+ test coverage, comprehensive benchmarks, extensive documentation
-- **Secure by Design**: Constant-time operations, nonce reuse prevention, side-channel protection
-- **Clean Architecture**: Service layer abstraction, typed errors, clear interfaces
-- **High Performance**: Lock-free algorithms, optimized for low latency and high throughput
-- **Type Safe**: No unsafe operations or pointer magic, pure Go implementation
+- Implements all RFC 9591 requirements across all 5 ciphersuites
+- 90%+ test coverage, benchmarks, and documentation in docs/
+- Constant-time operations, nonce reuse prevention, and side-channel protection
+- Service layer abstraction with typed errors and clear interfaces
+- Lock-free algorithms, optimized for low latency and high throughput
+- Type safe: minimal, audited unsafe usage limited to secure memory zeroing
 
 ### Supported Ciphersuites
 
-All 5 RFC 9591 ciphersuites are fully implemented and production-ready:
+All 5 RFC 9591 ciphersuites are implemented:
 
 - **FROST(Ed25519, SHA-512)** - RFC 6.1 (Edwards curve, 128-bit security)
 - **FROST(ristretto255, SHA-512)** - RFC 6.2 (extra safety checks, default)
@@ -29,7 +29,7 @@ All 5 RFC 9591 ciphersuites are fully implemented and production-ready:
 - **FROST(P-256, SHA-256)** - RFC 6.4 (NIST standard, 128-bit security)
 - **FROST(secp256k1, SHA-256)** - RFC 6.5 (Bitcoin curve, 128-bit security)
 
-All ciphersuites: 95%+ test coverage, comprehensive benchmarks, table-driven integration tests
+All ciphersuites: 95%+ test coverage, benchmarks, table-driven integration tests
 
 ## Quick Start
 
@@ -122,14 +122,14 @@ go get github.com/jeremyhahn/go-frost
 
 ### Requirements
 
-- Go 1.25.5 or higher
+- Go 1.26.1 or higher
 - No external dependencies for core library
-- Optional: go-keychain or go-objstore for advanced storage backends
+- Optional: go-xkms or go-objstore for advanced storage backends
 - Optional: HSM/TPM libraries if using hardware-backed keys
 
 ## Documentation
 
-Comprehensive documentation is available in the [docs/](docs/) directory:
+Documentation is in the [docs/](docs/) directory:
 
 - **[Getting Started](docs/getting-started/README.md)** - Installation and first signature
 - **[Examples](docs/examples/README.md)** - Complete code examples
@@ -150,8 +150,6 @@ cd go-frost
 make build
 
 # Run unit tests
-make test
-
 make test
 
 # Generate coverage report
@@ -197,13 +195,13 @@ go-frost includes its own storage and cryptographic signer implementations, with
 **Storage Backends** (`pkg/storage/`):
 - **Memory Backend**: Fast in-memory storage for testing and development
 - **File Backend**: Secure file-based storage with atomic writes and configurable permissions
-- **Interface Compatible**: Works with go-keychain and go-objstore implementations
+- **Interface Compatible**: Works with go-xkms and go-objstore implementations
 - **Extensible**: Implement `storage.Backend` for custom backends (HSM, TPM, cloud KMS, DHT, etc.)
 
 **Crypto Signers** (`pkg/signer/`):
 - **Software Keys**: Ed25519 signing using crypto/ed25519
 - **HSM/TPM Support**: Use any `crypto.Signer` implementation (PKCS#11, cloud KMS, etc.)
-- **go-keychain Compatible**: Works with go-keychain backed signers
+- **go-xkms Compatible**: Works with go-xkms backed signers
 - **Standard Interface**: All signers implement Go's `crypto.Signer`
 
 Example with custom storage:
@@ -219,7 +217,7 @@ if err != nil {
     return err
 }
 
-// Or use go-keychain backend (interface compatible)
+// Or use go-xkms backend (interface compatible)
 // backend, err := keychain.NewFileBackend("/var/lib/frost")
 
 // Create keystore with any compatible backend
@@ -248,12 +246,13 @@ proof, err := security.SignCommitmentWithSigner(participantID, commitment, frost
 
 This implementation prioritizes security:
 
-- **Nonce Reuse Prevention**: Comprehensive tracking prevents catastrophic key exposure
-- **Input Validation**: All inputs validated at API boundaries
-- **Constant-Time Operations**: Timing attack mitigation where applicable
-- **No Unsafe Code**: Pure Go, no pointer magic or unsafe operations
-- **Identifiable Abort**: Malicious participants can be identified
-- **Error Sanitization**: Prevents information leakage
+- Nonce reuse prevention: tracking prevents catastrophic key exposure
+- Input validation: all inputs validated at API boundaries
+- Constant-time operations: timing attack mitigation where applicable
+- Unsafe usage is limited to the `pkg/secmem` package for zeroing secret string backing memory, with gosec annotations
+- Secure memory via memguard: the `pkg/secmem` package provides mlock'd memory (protected from swap), encrypted-at-rest storage via Enclave (XSalsa20-Poly1305), and guard pages for sensitive byte slices
+- Identifiable abort: malicious participants can be identified
+- Error sanitization: prevents information leakage
 
 **IMPORTANT**: Before deploying to production, read the [Security Documentation](docs/security/README.md), especially [Error Sanitization](docs/security/error-sanitization.md) to prevent signing oracle attacks.
 
@@ -282,12 +281,7 @@ make coverage
 
 ## Performance
 
-Designed for high performance:
-
-- Lock-free algorithms where possible
-- Efficient memory management
-- Optimized cryptographic operations
-- Minimal allocations in hot paths
+The implementation uses lock-free algorithms where possible, optimized cryptographic operations, and minimal allocations in hot paths.
 
 See benchmark results:
 ```bash
@@ -301,7 +295,7 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 ## Related Projects
 
 - [go-frostdkg](https://github.com/jeremyhahn/go-frostdkg) - FROST Distributed Key Generation for trustless key setup
-- [go-keychain](https://github.com/jeremyhahn/go-keychain) - Key management and storage
+- [go-xkms](https://github.com/jeremyhahn/go-xkms) - Key management and storage
 - [go-trusted-ca](https://github.com/jeremyhahn/go-trusted-ca) - Certificate Authority
 - [go-trusted-platform](https://github.com/jeremyhahn/go-trusted-platform) - Trusted Computing Platform
 

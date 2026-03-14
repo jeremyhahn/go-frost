@@ -102,6 +102,10 @@ func (s *mockScalar) Compare(other group.Scalar) int {
 	return s.value.Cmp(o.value)
 }
 
+func (s *mockScalar) Zeroize() {
+	s.value.SetInt64(0)
+}
+
 // mockElement implements group.Element for testing
 type mockElement struct {
 	x     *big.Int
@@ -295,7 +299,6 @@ func (g *mockGroup) ByteOrder() group.ByteOrder {
 func createParticipantIDs(count int) []frost.Identifier {
 	ids := make([]frost.Identifier, count)
 	for i := 0; i < count; i++ {
-		//nolint:gosec // i+1 bounded by count, safe for test use
 		ids[i] = frost.Identifier(i + 1)
 	}
 	return ids

@@ -7,6 +7,7 @@ import (
 	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite"
 	"github.com/jeremyhahn/go-frost/pkg/frost/group"
 	"github.com/jeremyhahn/go-frost/pkg/frost/helpers"
+	"github.com/jeremyhahn/go-frost/pkg/secmem"
 )
 
 // Part1 executes round 1 of the DKG protocol.
@@ -145,6 +146,7 @@ func computeChallenge(
 		}
 	}
 	buf.Write(idBytes)
+	secmem.ZeroBytes(idBytes)
 
 	// Serialize commitment (g^a_0)
 	buf.Write(commitment.Bytes())
@@ -153,7 +155,10 @@ func computeChallenge(
 	buf.Write(R.Bytes())
 
 	// Hash to scalar using HDKG
-	return suite.HDKG(buf.Bytes())
+	challengeInput := buf.Bytes()
+	result := suite.HDKG(challengeInput)
+	secmem.ZeroBytes(challengeInput)
+	return result
 }
 
 // VerifyProofOfKnowledge verifies a participant's proof of knowledge.

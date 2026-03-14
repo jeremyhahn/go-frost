@@ -18,11 +18,7 @@
 
 ## Executive Summary
 
-Side-channel attacks exploit information leaked through the physical implementation of cryptographic operations rather than weaknesses in the algorithms themselves. The go-frost implementation provides strong protection against timing-based side-channel attacks through:
-
-- **Constant-time underlying primitives** from the ristretto255 library
-- **Careful implementation** avoiding secret-dependent branching and memory access
-- **Defense-in-depth approach** combining multiple mitigation strategies
+Side-channel attacks exploit information leaked through the physical implementation of cryptographic operations rather than weaknesses in the algorithms themselves. The go-frost implementation mitigates timing-based side-channel attacks using constant-time primitives from the ristretto255 library, avoidance of secret-dependent branching and memory access patterns, and multiple layered mitigation strategies.
 
 ### Quick Security Assessment
 

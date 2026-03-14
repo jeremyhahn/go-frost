@@ -4,11 +4,11 @@
 
 The go-frost implementation follows these core principles:
 
-1. **Clean Architecture**: Clear separation between layers with well-defined interfaces
-2. **Type Safety**: No unsafe operations, strongly typed interfaces
-3. **Performance**: Lock-free algorithms, efficient data structures
-4. **Testability**: Comprehensive test coverage with TDD approach
-5. **RFC Compliance**: Strict adherence to RFC 9591 specification
+- Clear separation between layers with well-defined interfaces
+- Type safety: Strongly typed interfaces, minimal audited unsafe usage in secmem
+- Lock-free algorithms and efficient data structures
+- Comprehensive test coverage with TDD approach
+- Strict adherence to RFC 9591 specification
 
 ## Layer Architecture
 
@@ -121,12 +121,4 @@ The implementation uses lock-free algorithms where possible:
 - Atomic operations for state management
 - No shared mutable state in hot paths
 
-## Future Extensions
-
-The architecture supports future enhancements:
-
-- Distributed key generation (DKG)
-- Proactive secret sharing
-- Additional ciphersuites
-- Hardware security module (HSM) integration
-- Identifiable abort mechanisms
+Note: DKG, key refresh, and repairable threshold are already implemented. HSM integration and identifiable abort are potential future additions.

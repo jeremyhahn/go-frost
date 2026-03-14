@@ -4,6 +4,7 @@ import (
 	"github.com/jeremyhahn/go-frost/pkg/frost"
 	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite"
 	"github.com/jeremyhahn/go-frost/pkg/frost/group"
+	"github.com/jeremyhahn/go-frost/pkg/secmem"
 )
 
 // PreprocessedNonces contains multiple nonces and commitments generated in advance.
@@ -195,6 +196,7 @@ func PreprocessDeterministic(
 		hidingInput[len(seed)+3] = byte(i >> 24)
 		copy(hidingInput[len(seed)+4:], "hiding")
 		hidingNonce := suite.H3(hidingInput)
+		secmem.ZeroBytes(hidingInput)
 
 		// Generate binding nonce: H3(seed || i || "binding")
 		bindingInput := make([]byte, len(seed)+8+7)
@@ -205,6 +207,7 @@ func PreprocessDeterministic(
 		bindingInput[len(seed)+3] = byte(i >> 24)
 		copy(bindingInput[len(seed)+4:], "binding")
 		bindingNonce := suite.H3(bindingInput)
+		secmem.ZeroBytes(bindingInput)
 
 		// Compute commitments
 		hidingCommitment := grp.ScalarBaseMult(hidingNonce)

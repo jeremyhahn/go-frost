@@ -9,6 +9,7 @@ import (
 	"github.com/jeremyhahn/go-frost/pkg/frost"
 	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite"
 	"github.com/jeremyhahn/go-frost/pkg/frost/group"
+	"github.com/jeremyhahn/go-frost/pkg/secmem"
 )
 
 const (
@@ -75,6 +76,11 @@ func (n *nonceGenerator) Generate(secret group.Scalar) (group.Scalar, error) {
 
 	// Step 4: Compute H3(random_bytes || secret_enc) and return
 	nonce := n.suite.H3(input)
+
+	// Zero ephemeral secret data to limit exposure window
+	secmem.ZeroBytes(randomBytes)
+	secmem.ZeroBytes(secretBytes)
+	secmem.ZeroBytes(input)
 
 	// Verify the nonce is not zero (should never happen with proper hash function)
 	if nonce.IsZero() {

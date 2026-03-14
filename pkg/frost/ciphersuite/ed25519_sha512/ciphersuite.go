@@ -220,13 +220,19 @@ func (cs *Ed25519SHA512) VerifySignature(message []byte, signature []byte, publi
 
 	c := cs.H2(challengeInput.Bytes())
 
-	// Verify: z * G == R + c * PK
-	// Compute left side: z * G
-	left := cs.group.ScalarBaseMult(z)
+	// Verify: [8][z]B == [8]R + [8][c]PK
+	// Per RFC 9591 Section 6.1, Ed25519 requires cofactor-multiplied verification
+	// to ensure compatibility with RFC 8032 and reject signatures on small-order points.
+	cofactor := cs.group.Cofactor()
 
-	// Compute right side: R + c * PK
+	// Compute left side: [8]([z] * B)
+	zG := cs.group.ScalarBaseMult(z)
+	left := cs.group.ScalarMult(zG, cofactor)
+
+	// Compute right side: [8](R + [c] * PK)
 	cPK := cs.group.ScalarMult(publicKey, c)
-	right := R.Add(cPK)
+	rPlusCPK := R.Add(cPK)
+	right := cs.group.ScalarMult(rPlusCPK, cofactor)
 
 	// Check if left == right
 	if !left.Equal(right) {

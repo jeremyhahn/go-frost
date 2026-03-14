@@ -3,6 +3,7 @@ package helpers
 import (
 	"github.com/jeremyhahn/go-frost/pkg/frost"
 	"github.com/jeremyhahn/go-frost/pkg/frost/group"
+	"github.com/jeremyhahn/go-frost/pkg/secmem"
 )
 
 // PolynomialHelper provides operations on polynomials over scalars.
@@ -126,20 +127,13 @@ func (p *polynomialHelper) DeriveInterpolatingValue(xCoords []group.Scalar, xi g
 	// during key generation (see dealer.go:82-84). This check exists for mathematical
 	// completeness and defense-in-depth.
 	if len(xCoords) == 1 {
-		// Create scalar value 1
-		// For ristretto255, scalars use little-endian encoding (LSB first)
-		oneBytes := make([]byte, p.group.ScalarLength())
-		oneBytes[0] = 1 // Little-endian: LSB at index 0
-		one, _ := p.group.DeserializeScalar(oneBytes)
+		one := scalarOne(p.group)
 		return one, nil
 	}
 
 	// Initialize numerator = 1 and denominator = 1
-	// For ristretto255, scalars use little-endian encoding (LSB first)
-	oneBytes := make([]byte, p.group.ScalarLength())
-	oneBytes[0] = 1 // Little-endian: LSB at index 0
-	numerator, _ := p.group.DeserializeScalar(oneBytes)
-	denominator, _ := p.group.DeserializeScalar(oneBytes)
+	numerator := scalarOne(p.group)
+	denominator := scalarOne(p.group)
 
 	// Compute product terms
 	for _, xj := range xCoords {
@@ -187,4 +181,17 @@ func (p *polynomialHelper) Generate(constantTerm group.Scalar, degree uint32) (f
 	}
 
 	return frost.Polynomial{Coefficients: coefficients}, nil
+}
+
+// scalarOne returns the scalar value 1 encoded in the group's native byte order.
+func scalarOne(grp group.Group) group.Scalar {
+	oneBytes := make([]byte, grp.ScalarLength())
+	if grp.ByteOrder() == group.BigEndian {
+		oneBytes[len(oneBytes)-1] = 1
+	} else {
+		oneBytes[0] = 1
+	}
+	one, _ := grp.DeserializeScalar(oneBytes)
+	secmem.ZeroBytes(oneBytes)
+	return one
 }

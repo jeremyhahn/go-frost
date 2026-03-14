@@ -257,6 +257,13 @@ func (s *Scalar) Compare(other group.Scalar) int {
 	return selfInt.Cmp(otherInt)
 }
 
+// Zeroize overwrites the scalar's internal memory with zeros.
+func (s *Scalar) Zeroize() {
+	for i := range s.value {
+		s.value[i] = 0
+	}
+}
+
 // Group implements the FROST group interface for Ed448.
 type Group struct {
 	curve     goldilocks.Curve
@@ -383,6 +390,18 @@ func (g *Group) DeserializeElement(data []byte) (group.Element, error) {
 	result := &Element{point: point}
 	if result.IsIdentity() {
 		return nil, frost.ErrIdentityElement
+	}
+
+	// Verify the point is in the prime-order subgroup by checking [l]P == Identity,
+	// where l is the group order. Ed448 has cofactor 4, so points on the curve
+	// may be in a subgroup of order 4*l. Without this check, small-order or
+	// mixed-order points could be accepted, which would compromise VSS/DKG security.
+	orderScalar := &Scalar{}
+	copy(orderScalar.value[:], groupOrderBytes[:internalScalarSize])
+	lP := g.curve.ScalarMult(&orderScalar.value, point)
+	lPElem := &Element{point: lP}
+	if !lPElem.IsIdentity() {
+		return nil, frost.NewParameterError("data", "point not in prime-order subgroup", frost.ErrDeserializationFailed)
 	}
 
 	return result, nil

@@ -252,6 +252,14 @@ func (s *Scalar) Compare(other group.Scalar) int {
 	return 0
 }
 
+// Zeroize overwrites the scalar's internal memory with zeros.
+func (s *Scalar) Zeroize() {
+	if s.nat != nil {
+		var zero [32]byte
+		_, _ = s.nat.SetBytes(zero[:], p256Modulus)
+	}
+}
+
 // Group implements the FROST group interface for P-256.
 type Group struct {
 	generator *Element

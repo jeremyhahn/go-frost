@@ -132,7 +132,6 @@ func Aggregate(
 		verificationSlice = append(verificationSlice, vs)
 	}
 
-	//nolint:gosec // len() cannot exceed uint32 max for FROST participants
 	aggregator := NewAggregator(suite, uint32(len(signatureShares)))
 	return aggregator.AggregateWithVerification(
 		groupPublicKey,

@@ -276,6 +276,10 @@ func (s *MockScalar) Compare(other group.Scalar) int {
 	return s.value.Cmp(o.value)
 }
 
+func (s *MockScalar) Zeroize() {
+	s.value.SetInt64(0)
+}
+
 // SetBytes sets the scalar value from bytes (little-endian)
 func (s *MockScalar) SetBytes(data []byte) {
 	// Reverse from little-endian to big-endian for big.Int

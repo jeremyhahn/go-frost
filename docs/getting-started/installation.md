@@ -15,7 +15,7 @@ This guide will help you get started with go-frost, a FROST threshold signature 
 
 ### Prerequisites
 
-- Go 1.21 or later
+- Go 1.26.1 or later
 - Git
 
 ### Install the Package

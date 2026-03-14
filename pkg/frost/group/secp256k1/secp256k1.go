@@ -194,6 +194,13 @@ func (s *Scalar) Compare(other group.Scalar) int {
 	return 0
 }
 
+// Zeroize overwrites the scalar's internal memory with zeros.
+func (s *Scalar) Zeroize() {
+	if s.value != nil {
+		s.value.Zero()
+	}
+}
+
 // Group implements the FROST group interface for secp256k1.
 type Group struct {
 	generator *Element

@@ -2,7 +2,7 @@
 # This container runs integration tests that verify FROST works correctly
 # in a real distributed environment with actual HTTP network communication.
 
-FROM golang:1.25.5-alpine AS builder
+FROM golang:1.26.1-alpine AS builder
 
 # Install build dependencies including gcc for CGO (required for race detector)
 RUN apk add --no-cache git make gcc musl-dev
@@ -23,7 +23,7 @@ COPY . .
 RUN CGO_ENABLED=1 go test -c -tags=integration -race -o /transport-test ./test/transport/
 
 # Final stage
-FROM golang:1.25.5-alpine
+FROM golang:1.26.1-alpine
 
 # Install runtime dependencies including gcc for race detector
 RUN apk add --no-cache ca-certificates gcc musl-dev

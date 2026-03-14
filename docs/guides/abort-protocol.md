@@ -1391,18 +1391,7 @@ func (r AbortReason) String() string {
 
 ## Summary
 
-Proper abort handling is critical for FROST security and reliability:
-
-1. **Always clean up nonces** - Use defer to guarantee cleanup
-2. **Use identifiable abort** - Detect and exclude malicious participants
-3. **Implement timeouts** - Prevent indefinite hangs
-4. **Track misbehavior** - Use reputation system for DoS prevention
-5. **Manage state carefully** - Validate state transitions
-6. **Log comprehensively** - Enable debugging and auditing
-7. **Monitor metrics** - Track abort patterns and system health
-8. **Handle errors gracefully** - Distinguish transient from permanent failures
-9. **Clean up on shutdown** - Prevent resource leaks
-10. **Test abort scenarios** - Ensure robustness under failure
+The patterns above cover the main concerns for abort handling in FROST: nonce cleanup, identifiable abort, timeouts, misbehavior tracking, and graceful error recovery. Apply them as appropriate to your deployment.
 
 For more information, see:
 - [Misbehavior Tracking](MISBEHAVIOR_TRACKING.md)

@@ -4,23 +4,23 @@
 // you may not use this file except in compliance with the License.
 
 // Package storage provides storage backend implementations compatible with
-// go-keychain and go-objstore interfaces.
+// go-xkms and go-objstore interfaces.
 //
 // # Overview
 //
 // This package allows go-frost to have its own storage implementations while
 // maintaining interface compatibility with external storage providers like
-// go-keychain (github.com/jeremyhahn/go-keychain) and go-objstore.
+// go-xkms (github.com/jeremyhahn/go-xkms) and go-objstore.
 //
 // # Interface Compatibility
 //
 // The Backend interface is designed to be compatible with:
-//   - go-keychain: github.com/jeremyhahn/go-keychain/pkg/storage.Backend
+//   - go-xkms: github.com/jeremyhahn/go-xkms/pkg/storage.Backend
 //   - go-objstore: Compatible with Get/Put/Delete operations
 //
 // This means you can:
 //  1. Use go-frost's built-in storage implementations (Memory, File)
-//  2. Pass a go-keychain Backend to go-frost
+//  2. Pass a go-xkms Backend to go-frost
 //  3. Pass a go-objstore implementation to go-frost
 //  4. Implement your own custom Backend (HSM, TPM, cloud KMS, etc.)
 //
@@ -84,14 +84,14 @@
 //	// Create keystore with custom backend
 //	store := keystore.NewKeychainStore(backend, groupCfg)
 //
-// Using external go-keychain backend:
+// Using external go-xkms backend:
 //
 //	import (
-//	    "github.com/jeremyhahn/go-keychain/pkg/storage/file"
+//	    "github.com/jeremyhahn/go-xkms/pkg/storage/file"
 //	    "github.com/jeremyhahn/go-frost/pkg/frost/keystore"
 //	)
 //
-//	// Use go-keychain's file backend
+//	// Use go-xkms's file backend
 //	backend, err := file.New("/var/lib/frost")
 //	if err != nil {
 //	    return err

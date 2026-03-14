@@ -40,7 +40,7 @@ func NewSigningPackage(
 
 	// Verify commitment list is sorted (bounds checked above: len > 0, loop starts at 1)
 	for i := 1; i < len(commitmentList); i++ {
-		if commitmentList[i].Identifier <= commitmentList[i-1].Identifier { //nolint:gosec // bounds checked
+		if commitmentList[i].Identifier <= commitmentList[i-1].Identifier {
 			return nil, frost.ErrUnsortedCommitments
 		}
 	}

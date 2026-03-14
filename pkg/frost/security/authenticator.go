@@ -282,7 +282,7 @@ func SerializeSignatureShare(share frost.SignatureShare) ([]byte, error) {
 // SignCommitmentWithSigner creates an authentication proof for a commitment using a crypto.Signer.
 //
 // This function allows using HSM, TPM, or other hardware-backed signers instead of
-// software keys. The signer must implement crypto.Signer (e.g., from go-keychain,
+// software keys. The signer must implement crypto.Signer (e.g., from go-xkms,
 // PKCS#11, or cloud KMS).
 //
 // Parameters:
@@ -326,7 +326,7 @@ func SignCommitmentWithSigner(participantID frost.Identifier, commitment frost.S
 // SignSignatureShareWithSigner creates an authentication proof for a signature share using a crypto.Signer.
 //
 // This function allows using HSM, TPM, or other hardware-backed signers instead of
-// software keys. The signer must implement crypto.Signer (e.g., from go-keychain,
+// software keys. The signer must implement crypto.Signer (e.g., from go-xkms,
 // PKCS#11, or cloud KMS).
 //
 // Parameters:

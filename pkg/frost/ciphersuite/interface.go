@@ -90,7 +90,7 @@ const (
 	P256SHA256 CiphersuiteID = "FROST-P256-SHA256-v1"
 
 	// Secp256k1SHA256 represents FROST(secp256k1, SHA-256)
-	Secp256k1SHA256 CiphersuiteID = "FROST-SECP256K1-SHA256-v1"
+	Secp256k1SHA256 CiphersuiteID = "FROST-secp256k1-SHA256-v1"
 )
 
 // Registry provides access to ciphersuite implementations.

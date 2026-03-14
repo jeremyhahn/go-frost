@@ -77,6 +77,11 @@ type Scalar interface {
 	// Returns -1 if this < other, 0 if equal, 1 if this > other.
 	// Uses the least nonnegative representation modulo p.
 	Compare(other Scalar) int
+
+	// Zeroize overwrites the scalar's internal memory with zeros.
+	// This is a best-effort operation for defense-in-depth; Go's GC may
+	// retain copies from prior arithmetic operations.
+	Zeroize()
 }
 
 // Group represents a prime-order group G with its operations.

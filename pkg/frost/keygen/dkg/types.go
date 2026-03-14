@@ -27,6 +27,7 @@ import (
 
 	"github.com/jeremyhahn/go-frost/pkg/frost"
 	"github.com/jeremyhahn/go-frost/pkg/frost/group"
+	"github.com/jeremyhahn/go-frost/pkg/secmem"
 )
 
 // Signature represents a Schnorr signature used as a proof of knowledge.
@@ -95,9 +96,7 @@ func (p *Round2Package) Zeroize() {
 	runtime.KeepAlive(p.SigningShare)
 	if p.SigningShare != nil {
 		bytes := p.SigningShare.Bytes()
-		for i := range bytes {
-			bytes[i] = 0
-		}
+		secmem.ZeroBytes(bytes)
 		p.SigningShare = p.SigningShare.Sub(p.SigningShare)
 	}
 	runtime.KeepAlive(p.SigningShare)
@@ -146,9 +145,7 @@ func (sp *Round1SecretPackage) Zeroize() {
 		runtime.KeepAlive(coeff)
 		if coeff != nil {
 			bytes := coeff.Bytes()
-			for j := range bytes {
-				bytes[j] = 0
-			}
+			secmem.ZeroBytes(bytes)
 			sp.Coefficients[i] = coeff.Sub(coeff)
 		}
 	}
@@ -163,9 +160,7 @@ func (sp *Round2SecretPackage) Zeroize() {
 	runtime.KeepAlive(sp.SecretShare)
 	if sp.SecretShare != nil {
 		bytes := sp.SecretShare.Bytes()
-		for i := range bytes {
-			bytes[i] = 0
-		}
+		secmem.ZeroBytes(bytes)
 		sp.SecretShare = sp.SecretShare.Sub(sp.SecretShare)
 	}
 	runtime.KeepAlive(sp.SecretShare)

@@ -1,16 +1,14 @@
 # go-frost Architecture Design Summary
 
-## Executive Summary
+## Overview
 
-A complete, production-ready skeleton architecture for implementing RFC 9591 FROST (Flexible Round-Optimized Schnorr Threshold) signature scheme in Go. The architecture provides clean abstraction layers, typed errors, comprehensive interfaces, and a service-oriented design following Google Go style guide and industry best practices.
+Architecture for the RFC 9591 FROST (Flexible Round-Optimized Schnorr Threshold) signature scheme in Go. The design uses layered abstractions, typed errors, and a service-oriented structure.
 
 ## Project Statistics
 
-- **Go Files Created**: 17
-- **Packages**: 7 main packages (group, ciphersuite, helpers, signing, keygen, service, frost)
-- **Interfaces Defined**: 15+ production-ready interfaces
+- **Packages**: group, ciphersuite, helpers, signing, keygen, service, frost, secmem, signer, storage, and others
+- **Interfaces Defined**: 15+ interfaces
 - **Error Types**: 20+ typed errors with context wrapping
-- **All files compile successfully**: ✓
 
 ## Architecture Layers
 
@@ -25,7 +23,7 @@ A complete, production-ready skeleton architecture for implementing RFC 9591 FRO
 
 **Design Decisions**:
 - Interface-based design allows multiple group implementations (Ed25519, ristretto255, P-256, etc.)
-- No unsafe operations or pointer magic
+- Minimal audited unsafe usage (secmem package only)
 - Immutable value semantics for thread safety
 - Fixed-length serialization for each group
 
@@ -164,57 +162,49 @@ A complete, production-ready skeleton architecture for implementing RFC 9591 FRO
 
 ## Design Principles Applied
 
-### 1. Clean Architecture
-✓ Service layer never exposes implementation details
-✓ Each layer has well-defined interfaces
-✓ Dependencies flow inward (service → signing → helpers → group)
+### Clean Architecture
+- Service layer never exposes implementation details
+- Each layer has well-defined interfaces
+- Dependencies flow inward (service -> signing -> helpers -> group)
 
-### 2. SOLID Principles
-✓ Single Responsibility: Each package has one clear purpose
-✓ Open/Closed: Interfaces allow extension without modification
-✓ Liskov Substitution: All implementations satisfy interface contracts
-✓ Interface Segregation: Focused interfaces (not monolithic)
-✓ Dependency Inversion: Depend on abstractions (interfaces), not concretions
+### SOLID Principles
+- Single Responsibility: Each package has one clear purpose
+- Open/Closed: Interfaces allow extension without modification
+- Liskov Substitution: All implementations satisfy interface contracts
+- Interface Segregation: Focused interfaces (not monolithic)
+- Dependency Inversion: Depend on abstractions (interfaces), not concretions
 
-### 3. Go Best Practices
-✓ Google Go Style Guide compliance
-✓ Clear, simple, concise code (KISS)
-✓ Don't Repeat Yourself (DRY)
-✓ Meaningful package names
-✓ Comprehensive godoc comments
-✓ No unsafe operations
+### Go Best Practices
+- Google Go Style Guide compliance
+- Clear, simple, concise code
+- Meaningful package names
+- Comprehensive godoc comments
 
-### 4. Performance
-✓ Lock-free algorithm design
-✓ Immutable data structures
-✓ Efficient scalar/element operations
-✓ Pre-allocated buffers where appropriate
-✓ Benchmark suite for critical paths
+### Performance
+- Lock-free algorithm design
+- Immutable data structures
+- Efficient scalar/element operations
+- Pre-allocated buffers where appropriate
+- Benchmark suite for critical paths
 
-### 5. Security
-✓ Constant-time operations (where feasible)
-✓ Secure random number generation
-✓ No pointer arithmetic or unsafe code
-✓ Nonce reuse protection
-✓ Input validation at all layers
+### Security
+- Constant-time operations (where feasible)
+- Secure random number generation
+- Audited unsafe usage limited to secmem package for secure memory zeroing
+- Nonce reuse protection
+- Input validation at all layers
 
 ## RFC 9591 Compliance
 
 The architecture implements all required components:
 
-✓ Prime-order group operations (Section 3.1)
-✓ Cryptographic hash functions (Section 3.2)
-✓ Helper functions (Section 4):
-  - Nonce generation (4.1)
-  - Polynomials (4.2)
-  - List operations (4.3)
-  - Binding factors (4.4)
-  - Group commitment (4.5)
-  - Signature challenge (4.6)
-✓ Two-round signing protocol (Section 5)
-✓ Ciphersuite abstraction (Section 6)
-✓ Trusted dealer key generation (Appendix C)
-✓ VSS (Appendix C.2)
+- Prime-order group operations (Section 3.1)
+- Cryptographic hash functions (Section 3.2)
+- Helper functions (Section 4): nonce generation (4.1), polynomials (4.2), list operations (4.3), binding factors (4.4), group commitment (4.5), signature challenge (4.6)
+- Two-round signing protocol (Section 5)
+- Ciphersuite abstraction (Section 6)
+- Trusted dealer key generation (Appendix C)
+- VSS (Appendix C.2)
 
 ## Testing Strategy
 
@@ -235,108 +225,43 @@ The architecture implements all required components:
 - Critical path optimization
 - Per-package benchmark targets
 
-## Next Steps for Implementation
-
-1. **Implement Group Interfaces**:
-   - Ed25519 group implementation
-   - ristretto255 implementation
-   - P-256 implementation
-   - secp256k1 implementation
-   - Ed448 implementation
-
-2. **Implement Ciphersuites**:
-   - Hash function integration
-   - Domain separation
-   - Ciphersuite registry
-
-3. **Implement Helpers**:
-   - Nonce generation with crypto/rand
-   - Polynomial evaluation (Horner's method)
-   - Lagrange interpolation
-   - Binding factor computation
-   - Encoding functions
-
-4. **Implement Key Generation**:
-   - Trusted dealer logic
-   - VSS commitments
-   - Share verification
-
-5. **Implement Signing Protocol**:
-   - Participant round 1/2
-   - Signature aggregation
-   - Coordinator orchestration
-
-6. **Implement Service Layer**:
-   - Wire up all components
-   - Session management
-   - Input validation
-
-7. **Write Tests**:
-   - Unit tests for each package (TDD)
-   - Integration tests
-   - RFC test vectors
-
-8. **Documentation**:
-   - API documentation
-   - Usage examples
-   - Security considerations
+All implementation phases (group interfaces, ciphersuites, helpers, key generation, signing protocol, service layer, and tests) are complete. DKG, key refresh, and repairable threshold have also been implemented.
 
 ## File Structure
 
 ```
 go-frost/
-├── cmd/frost/               # CLI binary
-│   └── main.go
-├── pkg/frost/               # Public API
-│   ├── types.go            # Core type definitions
-│   ├── errors.go           # Typed errors
-│   ├── group/              # Group abstraction
-│   │   └── interface.go
-│   ├── ciphersuite/        # Ciphersuite abstraction
-│   │   └── interface.go
+├── pkg/frost/               # Core FROST library
+│   ├── types.go
+│   ├── errors.go
+│   ├── group/              # Group abstraction + implementations
+│   │   ├── ed25519/
+│   │   ├── ed448/
+│   │   ├── p256/
+│   │   ├── ristretto255/
+│   │   └── secp256k1/
+│   ├── ciphersuite/        # Ciphersuite abstraction + implementations
+│   │   ├── ed25519_sha512/
+│   │   ├── ed448_shake256/
+│   │   ├── p256_sha256/
+│   │   ├── ristretto255_sha512/
+│   │   └── secp256k1_sha256/
 │   ├── helpers/            # Protocol helpers
-│   │   ├── nonce.go
-│   │   ├── polynomial.go
-│   │   ├── binding.go
-│   │   ├── commitment.go
-│   │   ├── challenge.go
-│   │   └── encoding.go
 │   ├── signing/            # Signing protocol
-│   │   ├── participant.go
-│   │   ├── aggregator.go
-│   │   └── coordinator.go
-│   ├── keygen/             # Key generation
-│   │   ├── dealer.go
-│   │   └── vss.go
+│   ├── keygen/             # Key generation (dealer, DKG, refresh, repairable)
+│   │   ├── dkg/
+│   │   ├── refresh/
+│   │   └── repairable/
+│   ├── keystore/           # Key storage abstraction
+│   ├── security/           # Security utilities
+│   ├── serialization/      # Serialization support
 │   └── service/            # Service layer
-│       └── frost.go
-├── internal/               # Private packages
-│   ├── config/
-│   └── testutil/
-├── test/                   # Test suites
-│   ├── unit/
-│   ├── integration/
-│   └── benchmark/
+├── pkg/secmem/             # Secure memory (audited unsafe usage)
+├── pkg/signer/             # Signer abstraction
+├── pkg/storage/            # Storage backends
 ├── docs/                   # Documentation
-│   ├── architecture/
-│   ├── api/
-│   └── examples/
-├── Makefile               # Build system
-├── Dockerfile             # Container definition
-├── .golangci.yml          # Linter configuration
-├── .gitignore
+├── Makefile
 ├── go.mod
 └── README.md
 ```
 
-## Conclusion
-
-This architecture provides a solid, production-ready foundation for implementing RFC 9591 FROST in Go. It emphasizes:
-
-- **Clean abstractions** for maintainability
-- **Type safety** for correctness
-- **Performance** through careful design
-- **Testability** through dependency injection
-- **Extensibility** through interface-based design
-
-All files compile successfully and the structure is ready for TDD implementation following the CLAUDE.md conventions.

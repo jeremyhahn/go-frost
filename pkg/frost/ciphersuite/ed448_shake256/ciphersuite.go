@@ -254,13 +254,19 @@ func (cs *Ed448SHAKE256) VerifySignature(message []byte, signature []byte, publi
 
 	c := cs.H2(challengeInput.Bytes())
 
-	// Verify: z * G == R + c * PK
-	// Compute left side: z * G
-	left := cs.group.ScalarBaseMult(z)
+	// Verify: [4][z]B == [4]R + [4][c]PK
+	// Per RFC 9591 Section 6.3, Ed448 requires cofactor-multiplied verification
+	// to ensure compatibility with RFC 8032 and reject signatures on small-order points.
+	cofactor := cs.group.Cofactor()
 
-	// Compute right side: R + c * PK
+	// Compute left side: [4]([z] * B)
+	zG := cs.group.ScalarBaseMult(z)
+	left := cs.group.ScalarMult(zG, cofactor)
+
+	// Compute right side: [4](R + [c] * PK)
 	cPK := cs.group.ScalarMult(publicKey, c)
-	right := R.Add(cPK)
+	rPlusCPK := R.Add(cPK)
+	right := cs.group.ScalarMult(rPlusCPK, cofactor)
 
 	// Check if left == right
 	if !left.Equal(right) {

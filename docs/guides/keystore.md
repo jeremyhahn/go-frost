@@ -1,6 +1,6 @@
 # FROST Keystore Integration
 
-The `keystore` package provides secure storage for FROST key material using the [go-keychain](https://github.com/jeremyhahn/go-keychain) library. This integration enables production-ready key management with proper security, access control, and lifecycle management.
+The `keystore` package provides secure storage for FROST key material using the [go-xkms](https://github.com/jeremyhahn/go-xkms) library. This integration enables production-ready key management with proper security, access control, and lifecycle management.
 
 ## Overview
 
@@ -11,7 +11,7 @@ The keystore layer abstracts key storage operations and provides:
 - **Serialization/Deserialization**: Automatic conversion between FROST types and storage format
 - **Metadata Management**: Track key creation time, updates, group membership, and custom tags
 - **Group Management**: Store and retrieve group public keys with threshold configuration
-- **Flexible Storage**: Built on go-keychain's storage abstraction (file-based, with future support for cloud KMS, HSM, etc.)
+- **Flexible Storage**: Built on go-xkms's storage abstraction (file-based, with future support for cloud KMS, HSM, etc.)
 
 ## Architecture
 
@@ -46,7 +46,7 @@ The keystore layer abstracts key storage operations and provides:
                   │
 ┌─────────────────▼───────────────────────────────────────────┐
 │                    KeychainStore                            │
-│  - Uses go-keychain for storage backend                    │
+│  - Uses go-xkms for storage backend                    │
 │  - Handles serialization/deserialization                   │
 │  - Manages metadata and lifecycle                          │
 └─────────────────┬───────────────────────────────────────────┘
@@ -54,7 +54,7 @@ The keystore layer abstracts key storage operations and provides:
                   │ uses
                   │
 ┌─────────────────▼───────────────────────────────────────────┐
-│              go-keychain Storage Backend                    │
+│              go-xkms Storage Backend                    │
 │  - File-based storage with proper permissions              │
 │  - Thread-safe operations                                  │
 │  - Future: HSM, Cloud KMS support                          │
@@ -420,9 +420,9 @@ Current coverage: **73.0%**
 make bench-keystore
 ```
 
-## Integration with go-keychain
+## Integration with go-xkms
 
-The keystore uses go-keychain's storage backend for:
+The keystore uses go-xkms's storage backend for:
 
 - **File-based storage**: Production-ready file storage with proper permissions
 - **Storage abstraction**: Clean interface for future backend implementations
@@ -431,7 +431,7 @@ The keystore uses go-keychain's storage backend for:
 
 ### Future Backend Support
 
-The go-keychain library supports multiple backends, allowing future integration with:
+The go-xkms library supports multiple backends, allowing future integration with:
 
 - **HSMs**: PKCS#11, TPM2, SmartCard-HSM
 - **Cloud KMS**: AWS KMS, GCP KMS, Azure Key Vault
@@ -483,6 +483,6 @@ This example demonstrates:
 
 ## References
 
-- [go-keychain](https://github.com/jeremyhahn/go-keychain) - Secure key management library
+- [go-xkms](https://github.com/jeremyhahn/go-xkms) - Secure key management library
 - [RFC 9591](https://www.rfc-editor.org/rfc/rfc9591.html) - FROST specification
 - [go-frost README](../README.md) - Main project documentation

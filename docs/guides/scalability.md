@@ -221,8 +221,6 @@ If you truly need >100 participants:
 
 ## Conclusion
 
-**FROST is excellent for 3-100 participants.**
-**Hundreds are possible but impractical.**
-**Thousands are not viable with the current protocol.**
+FROST works well for 3-100 participants. Hundreds are possible but increasingly impractical. Thousands are not viable with the current protocol.
 
-The default `MaxSignersPerSession: 1000` is a **security ceiling** to prevent DoS attacks, not a performance target. Real-world deployments should use much smaller values based on actual requirements.
+The default `MaxSignersPerSession: 1000` is a security ceiling to prevent DoS attacks, not a performance target. Real-world deployments should use much smaller values based on actual requirements.

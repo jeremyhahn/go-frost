@@ -4,6 +4,7 @@ import (
 	"github.com/jeremyhahn/go-frost/pkg/frost"
 	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite"
 	"github.com/jeremyhahn/go-frost/pkg/frost/group"
+	"github.com/jeremyhahn/go-frost/pkg/secmem"
 )
 
 // BindingFactorComputer computes binding factors for the signing protocol.
@@ -110,10 +111,17 @@ func (b *bindingFactorComputer) Compute(groupPublicKey group.Element, commitment
 			}
 		}
 
-		rhoInput := append(rhoInputPrefix, identifierBytes...)
+		// Create a new slice to avoid append reusing rhoInputPrefix's backing array
+		rhoInput := make([]byte, len(rhoInputPrefix)+len(identifierBytes))
+		copy(rhoInput, rhoInputPrefix)
+		copy(rhoInput[len(rhoInputPrefix):], identifierBytes)
 
 		// b. Compute binding_factor = H1(rho_input)
 		bindingFactor := b.suite.H1(rhoInput)
+
+		// Zero ephemeral buffers
+		secmem.ZeroBytes(identifierBytes)
+		secmem.ZeroBytes(rhoInput)
 
 		// c. Add (identifier, binding_factor) to list
 		bindingFactors[i] = frost.BindingFactor{
@@ -121,6 +129,9 @@ func (b *bindingFactorComputer) Compute(groupPublicKey group.Element, commitment
 			BindingFactor: bindingFactor,
 		}
 	}
+
+	// Zero the prefix buffer
+	secmem.ZeroBytes(rhoInputPrefix)
 
 	return bindingFactors, nil
 }

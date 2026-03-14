@@ -14,7 +14,7 @@ Complete documentation for go-frost, a production-ready Go implementation of the
 
 ### Implementation Guides
 
-4. **[Guides](guides/README.md)** - Implementation and integration guides
+6. **[Guides](guides/README.md)** - Implementation and integration guides
    - [Integration Guide](guides/integration.md)
    - [Implementation Best Practices](guides/implementation.md)
    - [Testing Strategies](guides/testing.md)
@@ -25,7 +25,7 @@ Complete documentation for go-frost, a production-ready Go implementation of the
 
 ### Security - Critical Reading
 
-5. **[Security](security/README.md)** - Security best practices and considerations
+7. **[Security](security/README.md)** - Security best practices and considerations
    - **[Error Sanitization](security/error-sanitization.md)** - CRITICAL: Signing oracle prevention
    - [Channel Security](security/channel-security.md) - TLS and authentication
    - [Misbehavior Tracking](security/misbehavior-tracking.md) - Participant reputation
@@ -34,12 +34,12 @@ Complete documentation for go-frost, a production-ready Go implementation of the
 
 ### Architecture & Design
 
-6. **[Architecture](architecture/README.md)** - System architecture and design
+8. **[Architecture](architecture/README.md)** - System architecture and design
    - [Components](architecture/components.md) - Detailed component architecture
 
 ### RFC Compliance
 
-7. **[RFC 9591 Compliance](rfc-compliance/README.md)** - RFC compliance documentation
+9. **[RFC 9591 Compliance](rfc-compliance/README.md)** - RFC compliance documentation
    - [Compliance Status](rfc-compliance/status.md) - Detailed compliance tracking
    - [Test Coverage](rfc-compliance/test-coverage.md) - RFC test vector coverage
 
@@ -63,15 +63,15 @@ docs/
 
 ### Key Features
 
-- **RFC 9591 Compliant**: Full implementation with 100% compliance
-- **Production Ready**: 90%+ test coverage, comprehensive documentation
-- **Secure by Design**: Constant-time operations, typed errors, no unsafe code
-- **Clean Architecture**: Service layer, clear abstractions, maintainable code
-- **High Performance**: Lock-free algorithms, optimized for low latency
+- RFC 9591 compliant with full test vector coverage
+- 90%+ test coverage with comprehensive documentation
+- Constant-time operations, typed errors, secure memory management via memguard
+- Service layer with clear abstractions
+- Lock-free algorithms optimized for low latency
 
 ### Supported Ciphersuites
 
-- **FROST(ristretto255, SHA-512)** - Production ready
+- FROST(ristretto255, SHA-512)
 - Architecture supports: Ed25519, Ed448, P-256, secp256k1
 
 ## Quick Start
@@ -135,11 +135,11 @@ See [Testing Guide](guides/testing.md) for detailed testing information.
 
 Before deploying to production:
 
-1. **MUST READ**: [Error Sanitization](security/error-sanitization.md) - Prevents signing oracle attacks
-2. **Configure**: [Channel Security](security/channel-security.md) - TLS and authentication
-3. **Implement**: [Misbehavior Tracking](security/misbehavior-tracking.md) - Participant reputation
-4. **Review**: [Side-Channel Protection](security/side-channel-protection.md) - Timing attacks
-5. **Test**: [Security Testing](security/testing.md) - Security test suite
+1. [Error Sanitization](security/error-sanitization.md) - Prevents signing oracle attacks (read this first)
+2. [Channel Security](security/channel-security.md) - TLS and authentication
+3. [Misbehavior Tracking](security/misbehavior-tracking.md) - Participant reputation
+4. [Side-Channel Protection](security/side-channel-protection.md) - Timing attacks
+5. [Security Testing](security/testing.md) - Security test suite
 
 See [Security Documentation](security/README.md) for complete security guidance.
 
@@ -163,6 +163,6 @@ See [LICENSE](../LICENSE) file for details.
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/jeremyhahn/go-frost/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/jeremyhahn/go-frost/discussions)
-- **Security**: See [Security Policy](security/README.md#reporting-security-issues)
+- [GitHub Issues](https://github.com/jeremyhahn/go-frost/issues)
+- [GitHub Discussions](https://github.com/jeremyhahn/go-frost/discussions)
+- [Security Policy](security/README.md#reporting-security-issues)

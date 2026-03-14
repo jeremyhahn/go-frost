@@ -14,7 +14,7 @@
 //   - Hardware Security Modules (HSM)
 //   - Trusted Platform Modules (TPM)
 //   - Cloud Key Management Systems (AWS KMS, Google Cloud KMS, Azure Key Vault)
-//   - go-keychain backed signers
+//   - go-xkms backed signers
 //
 // All signer implementations are compatible with Go's crypto.Signer interface,
 // allowing seamless integration with existing cryptographic libraries and
@@ -160,16 +160,16 @@
 //	participantSigner := multiSigner.GetSigner(1)
 //	signature, err := participantSigner.SignBytes(message)
 //
-// # Integration with go-keychain
+// # Integration with go-xkms
 //
-// If using go-keychain's crypto.Signer implementation:
+// If using go-xkms's crypto.Signer implementation:
 //
 //	import (
-//	    "github.com/jeremyhahn/go-keychain/pkg/keystore"
+//	    "github.com/jeremyhahn/go-xkms/pkg/keystore"
 //	    "github.com/jeremyhahn/go-frost/pkg/signer"
 //	)
 //
-//	// Get signer from go-keychain (implements crypto.Signer)
+//	// Get signer from go-xkms (implements crypto.Signer)
 //	keychainSigner, err := keystore.GetSigner("my-key-id")
 //	if err != nil {
 //	    return err
@@ -217,7 +217,7 @@
 // This package is compatible with:
 //   - crypto.Signer (Go standard library)
 //   - crypto/ed25519 (Go standard library)
-//   - github.com/jeremyhahn/go-keychain (if it provides crypto.Signer)
+//   - github.com/jeremyhahn/go-xkms (if it provides crypto.Signer)
 //   - PKCS#11 implementations (via crypto.Signer wrappers)
 //   - Cloud KMS SDKs (via crypto.Signer wrappers)
 //

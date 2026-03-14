@@ -236,7 +236,7 @@ The side-channel tests are designed to run in CI environments:
 - **Timeout**: 300 seconds (5 minutes) for complete test suite
 - **Resource Requirements**: Single CPU core sufficient
 - **Deterministic**: Tests account for measurement noise and variance
-- **No External Dependencies**: Pure Go implementation
+- No external dependencies beyond the Go standard library and ristretto255
 
 ### Recommended CI Configuration
 

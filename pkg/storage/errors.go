@@ -9,7 +9,7 @@ import "errors"
 
 // ErrNotFound is returned when a storage key is not found.
 //
-// Compatible with go-keychain's storage.ErrNotFound.
+// Compatible with go-xkms's storage.ErrNotFound.
 var ErrNotFound = errors.New("storage: key not found")
 
 // ErrAlreadyExists is returned when attempting to create a key that already exists.
