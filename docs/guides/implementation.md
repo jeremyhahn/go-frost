@@ -252,7 +252,7 @@ Before considering a component complete:
 - [ ] Benchmarks added
 - [ ] Godoc comments complete
 - [ ] Error handling comprehensive
-- [ ] No unsafe operations
+- [ ] No unaudited unsafe operations (note: `secmem` uses audited `unsafe` for secure memory handling)
 - [ ] Constants extracted (no magic numbers)
 - [ ] Edge cases tested
 - [ ] RFC test vectors pass (if applicable)
@@ -284,12 +284,15 @@ if subtle.ConstantTimeCompare(a, b) == 1 {
 
 ### Secret Clearing
 
-Clear secrets after use:
+The project provides `secmem.ZeroBytes()` and `secmem.ZeroString()` for constant-time zeroing of sensitive data, and `secmem.SecretBytes` for encrypted-at-rest storage via memguard. Prefer these over manual loops:
+
 ```go
 for i := range secretBytes {
     secretBytes[i] = 0
 }
 ```
+
+Use `secmem.SecretBytes` when key material must persist in memory, and call `secmem.ZeroBytes()` or `secmem.ZeroString()` for cleanup of temporary buffers.
 
 ### Error Handling
 

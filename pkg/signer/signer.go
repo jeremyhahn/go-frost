@@ -11,7 +11,7 @@
 //   - Hardware Security Modules (HSM)
 //   - Trusted Platform Modules (TPM)
 //   - Cloud Key Management Systems (KMS)
-//   - go-keychain backed signers
+//   - go-xkms backed signers
 //
 // All signer implementations are compatible with Go's crypto.Signer interface.
 package signer
@@ -22,6 +22,9 @@ import (
 	"crypto/rand"
 	"fmt"
 	"io"
+	"log"
+
+	"github.com/jeremyhahn/go-frost/pkg/secmem"
 )
 
 // Signer defines the interface for cryptographic signing operations.
@@ -34,7 +37,7 @@ import (
 //   - HSM-backed signers
 //   - TPM-backed signers
 //   - Cloud KMS signers (AWS KMS, Google Cloud KMS, Azure Key Vault)
-//   - go-keychain signers
+//   - go-xkms signers
 type Signer interface {
 	crypto.Signer
 
@@ -59,9 +62,13 @@ type Signer interface {
 // This signer uses crypto/ed25519 for signing operations and is suitable
 // for development, testing, and production use where hardware backing is
 // not required.
+//
+// The private key is stored in memguard-protected memory (mlock'd, encrypted
+// at rest) when available. Use Destroy() to securely erase the key when
+// the signer is no longer needed.
 type Ed25519Signer struct {
-	privateKey ed25519.PrivateKey
-	publicKey  ed25519.PublicKey
+	secret    *secmem.SecretBytes
+	publicKey ed25519.PublicKey
 }
 
 // NewEd25519Signer creates a new Ed25519 signer from a private key.
@@ -92,11 +99,15 @@ func NewEd25519Signer(privateKey ed25519.PrivateKey) (Signer, error) {
 			ed25519.PrivateKeySize, len(privateKey))
 	}
 
-	publicKey := privateKey.Public().(ed25519.PublicKey)
+	publicKey := make(ed25519.PublicKey, ed25519.PublicKeySize)
+	copy(publicKey, privateKey.Public().(ed25519.PublicKey))
+
+	// Store the private key in secure memory (mlock'd, encrypted at rest)
+	secret := secmem.NewSecretBytes(privateKey)
 
 	return &Ed25519Signer{
-		privateKey: privateKey,
-		publicKey:  publicKey,
+		secret:    secret,
+		publicKey: publicKey,
 	}, nil
 }
 
@@ -118,9 +129,12 @@ func GenerateEd25519Signer() (Signer, error) {
 		return nil, fmt.Errorf("failed to generate ed25519 key: %w", err)
 	}
 
+	// Store the private key in secure memory
+	secret := secmem.NewSecretBytes(priv)
+
 	return &Ed25519Signer{
-		privateKey: priv,
-		publicKey:  pub,
+		secret:    secret,
+		publicKey: pub,
 	}, nil
 }
 
@@ -133,9 +147,23 @@ func (s *Ed25519Signer) Public() crypto.PublicKey {
 //
 // For Ed25519, the opts parameter is ignored and can be nil.
 // The rand parameter is also ignored as Ed25519 signing is deterministic.
+// The private key is temporarily decrypted from secure memory for signing.
 func (s *Ed25519Signer) Sign(_ io.Reader, digest []byte, _ crypto.SignerOpts) ([]byte, error) {
-	// Ed25519 signing is deterministic and doesn't use the rand parameter
-	return ed25519.Sign(s.privateKey, digest), nil
+	var signature []byte
+	err := secmem.WithSecret(s.secret, func(keyBytes []byte) error {
+		// Copy to a Go heap-allocated slice because ed25519.Sign uses internal
+		// caching (weak pointers) that requires Go-managed heap memory.
+		// The memguard LockedBuffer uses mmap'd memory which is incompatible.
+		key := make(ed25519.PrivateKey, len(keyBytes))
+		copy(key, keyBytes)
+		signature = ed25519.Sign(key, digest)
+		secmem.ZeroBytes(key)
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to sign: %w", err)
+	}
+	return signature, nil
 }
 
 // PublicKeyBytes implements Signer.PublicKeyBytes.
@@ -148,13 +176,31 @@ func (s *Ed25519Signer) SignBytes(message []byte) ([]byte, error) {
 	return s.Sign(nil, message, crypto.Hash(0))
 }
 
-// PrivateKey returns the underlying Ed25519 private key.
+// PrivateKey returns a temporary copy of the underlying Ed25519 private key.
 //
-// WARNING: This exposes the raw private key material. Use with caution.
-// This method is provided for compatibility with existing code that requires
-// direct access to the private key.
+// Deprecated: This method exposes raw private key material in unprotected memory.
+// The returned copy should be zeroed with secmem.ZeroBytes() when no longer needed.
+// Prefer using Sign() or SignBytes() which access the key through secure memory.
 func (s *Ed25519Signer) PrivateKey() ed25519.PrivateKey {
-	return s.privateKey
+	log.Println("WARNING: Ed25519Signer.PrivateKey() exposes raw key material in unprotected memory")
+	var key ed25519.PrivateKey
+	err := secmem.WithSecret(s.secret, func(keyBytes []byte) error {
+		key = make(ed25519.PrivateKey, len(keyBytes))
+		copy(key, keyBytes)
+		return nil
+	})
+	if err != nil {
+		return nil
+	}
+	return key
+}
+
+// Destroy permanently destroys the private key material in secure memory.
+// After calling Destroy, all signing operations will fail.
+func (s *Ed25519Signer) Destroy() {
+	if s.secret != nil {
+		s.secret.Destroy()
+	}
 }
 
 // VerifySignature verifies an Ed25519 signature.

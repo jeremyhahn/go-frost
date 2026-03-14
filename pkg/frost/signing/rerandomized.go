@@ -18,6 +18,7 @@ import (
 	"github.com/jeremyhahn/go-frost/pkg/frost"
 	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite"
 	"github.com/jeremyhahn/go-frost/pkg/frost/group"
+	"github.com/jeremyhahn/go-frost/pkg/secmem"
 )
 
 // RandomizedParams contains the parameters for a rerandomized signing session.
@@ -105,8 +106,9 @@ func ComputeRandomizer(
 
 	// Compute randomizer: hash(randomness || encoded_commitments)
 	// This binds the randomizer to the specific signing session
+	randomnessBytes := randomness.Bytes()
 	var input []byte
-	input = append(input, randomness.Bytes()...)
+	input = append(input, randomnessBytes...)
 	for _, c := range commitmentList {
 		input = append(input, c.Identifier.Serialize()...)
 		input = append(input, c.HidingNonceCommitment.Bytes()...)
@@ -115,6 +117,8 @@ func ComputeRandomizer(
 	input = append(input, msg...)
 
 	randomizer := suite.H3(input)
+	secmem.ZeroBytes(randomnessBytes)
+	secmem.ZeroBytes(input)
 
 	return NewRandomizedParams(randomizer, groupPublicKey, suite)
 }

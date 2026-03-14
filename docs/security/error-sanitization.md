@@ -15,7 +15,7 @@
 
 ## Overview
 
-Application-level message validation is a **critical security layer** that sits above the FROST protocol itself. While FROST ensures cryptographic correctness of threshold signatures, it does not validate *what* is being signed. This is where application validation becomes essential.
+Application-level message validation is a critical security layer that sits above the FROST protocol itself. While FROST ensures cryptographic correctness of threshold signatures, it does not validate *what* is being signed. This is where application validation becomes essential.
 
 **Key principle**: The FROST protocol will successfully sign any message you give it. It's your application's responsibility to ensure that only appropriate, safe messages are signed.
 
@@ -1049,15 +1049,7 @@ func (p *ValidatingParticipant) SignRound1(msg []byte) error {
 
 ## Conclusion
 
-Application-level message validation is not optional - it's a critical security requirement for any FROST implementation. By following the patterns and best practices outlined in this guide, you can:
-
-- Prevent signing oracle attacks
-- Enforce business policies
-- Protect against DoS attacks
-- Maintain audit trails
-- Ensure regulatory compliance
-
-Remember: **The FROST protocol will sign anything you ask it to. It's your responsibility to only ask it to sign appropriate messages.**
+Application-level message validation is not optional. The FROST protocol will sign anything you ask it to -- it is the application's responsibility to ensure only appropriate messages are signed.
 
 For more information, see:
 - [Security Guide](CHANNEL_SECURITY.md)

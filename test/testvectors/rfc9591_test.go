@@ -341,11 +341,33 @@ func validateBindingFactors(t *testing.T, suite *ristretto255_sha512.Ristretto25
 				id, expectedBFHex, actualBFHex)
 		}
 
-		// Also validate the binding factor input (rho_input)
-		// This is more complex as it requires reconstructing the exact input
-		t.Logf("P%d binding factor input validation: comparing full rho_input", id)
-		// The binding factor input in the test vector includes the full concatenation
-		// We can log this for manual verification but the binding factor itself is the key test
+		// Validate the binding factor input (rho_input) byte-for-byte
+		if tvParticipant.BindingFactorInput != "" {
+			msgHash := suite.H4(message)
+			encoder := helpers.NewCommitmentListEncoder(grp)
+			encodedCommitmentList, err := encoder.Encode(commitmentList)
+			if err != nil {
+				t.Fatalf("P%d: Failed to encode commitment list: %v", id, err)
+			}
+			encodedCommitmentHash := suite.H5(encodedCommitmentList)
+
+			idBytes := make([]byte, grp.ScalarLength())
+			idBytes[0] = byte(id)
+
+			var rhoInput []byte
+			rhoInput = append(rhoInput, groupPublicKeyBytes...)
+			rhoInput = append(rhoInput, msgHash...)
+			rhoInput = append(rhoInput, encodedCommitmentHash...)
+			rhoInput = append(rhoInput, idBytes...)
+
+			actualRhoInputHex := hex.EncodeToString(rhoInput)
+			if actualRhoInputHex != tvParticipant.BindingFactorInput {
+				t.Errorf("P%d binding_factor_input mismatch\nExpected: %s\nGot:      %s",
+					id, tvParticipant.BindingFactorInput, actualRhoInputHex)
+			} else {
+				t.Logf("P%d binding_factor_input matches", id)
+			}
+		}
 	}
 }
 
@@ -683,6 +705,129 @@ func TestRFC9591_NonceGenerationValidation(t *testing.T) {
 	}
 }
 
+// TestRFC9591_NonceGenerationValidation_AllCiphersuites validates that nonces
+// are correctly generated using H3(randomness || secret) for all 5 ciphersuites
+// defined in RFC 9591. This extends TestRFC9591_NonceGenerationValidation which
+// only covers ristretto255-sha512.
+func TestRFC9591_NonceGenerationValidation_AllCiphersuites(t *testing.T) {
+	tests := []struct {
+		name   string
+		suite  ciphersuite.Ciphersuite
+		vector *TestVector
+	}{
+		{"Ed25519SHA512", ed25519_sha512.New(), Ed25519SHA512Vector()},
+		{"Ed448SHAKE256", ed448_shake256.New(), Ed448SHAKE256Vector()},
+		{"P256SHA256", p256_sha256.New(), P256SHA256Vector()},
+		{"Secp256k1SHA256", secp256k1_sha256.New(), Secp256k1SHA256Vector()},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tv := tt.vector
+			suite := tt.suite
+			grp := suite.Group()
+
+			for _, id := range tv.ParticipantList {
+				tvParticipant := tv.Participants[id]
+
+				t.Run(fmt.Sprintf("P%d_nonce_generation", id), func(t *testing.T) {
+					// Deserialize the participant's secret share
+					shareBytes, err := hex.DecodeString(tvParticipant.Share)
+					if err != nil {
+						t.Fatalf("Failed to decode share: %v", err)
+					}
+					secretShare, err := grp.DeserializeScalar(shareBytes)
+					if err != nil {
+						t.Fatalf("Failed to deserialize share: %v", err)
+					}
+
+					// Test hiding nonce generation
+					t.Run("hiding_nonce", func(t *testing.T) {
+						// Deserialize hiding nonce randomness
+						randomnessBytes, err := hex.DecodeString(tvParticipant.HidingNonceRandomness)
+						if err != nil {
+							t.Fatalf("Failed to decode hiding randomness: %v", err)
+						}
+
+						// Apply H3 to generate nonce: H3(randomness || secret)
+						hidingInput := append(randomnessBytes, secretShare.Bytes()...)
+						computedHidingNonce := suite.H3(hidingInput)
+
+						// Verify against expected nonce
+						_, err = hex.DecodeString(tvParticipant.HidingNonce)
+						if err != nil {
+							t.Fatalf("Failed to decode expected hiding nonce: %v", err)
+						}
+
+						actualNonceHex := hex.EncodeToString(computedHidingNonce.Bytes())
+						expectedNonceHex := tvParticipant.HidingNonce
+
+						if actualNonceHex != expectedNonceHex {
+							t.Errorf("Hiding nonce mismatch\nExpected: %s\nGot:      %s",
+								expectedNonceHex, actualNonceHex)
+						} else {
+							t.Logf("Hiding nonce matches: %s", actualNonceHex)
+						}
+
+						// Verify the commitment as well
+						hidingCommitment := grp.ScalarBaseMult(computedHidingNonce)
+						actualCommitmentHex := hex.EncodeToString(hidingCommitment.Bytes())
+						expectedCommitmentHex := tvParticipant.HidingNonceCommitment
+
+						if actualCommitmentHex != expectedCommitmentHex {
+							t.Errorf("Hiding commitment mismatch\nExpected: %s\nGot:      %s",
+								expectedCommitmentHex, actualCommitmentHex)
+						} else {
+							t.Logf("Hiding commitment matches: %s", actualCommitmentHex)
+						}
+					})
+
+					// Test binding nonce generation
+					t.Run("binding_nonce", func(t *testing.T) {
+						// Deserialize binding nonce randomness
+						randomnessBytes, err := hex.DecodeString(tvParticipant.BindingNonceRandomness)
+						if err != nil {
+							t.Fatalf("Failed to decode binding randomness: %v", err)
+						}
+
+						// Apply H3 to generate nonce: H3(randomness || secret)
+						bindingInput := append(randomnessBytes, secretShare.Bytes()...)
+						computedBindingNonce := suite.H3(bindingInput)
+
+						// Verify against expected nonce
+						_, err = hex.DecodeString(tvParticipant.BindingNonce)
+						if err != nil {
+							t.Fatalf("Failed to decode expected binding nonce: %v", err)
+						}
+
+						actualNonceHex := hex.EncodeToString(computedBindingNonce.Bytes())
+						expectedNonceHex := tvParticipant.BindingNonce
+
+						if actualNonceHex != expectedNonceHex {
+							t.Errorf("Binding nonce mismatch\nExpected: %s\nGot:      %s",
+								expectedNonceHex, actualNonceHex)
+						} else {
+							t.Logf("Binding nonce matches: %s", actualNonceHex)
+						}
+
+						// Verify the commitment as well
+						bindingCommitment := grp.ScalarBaseMult(computedBindingNonce)
+						actualCommitmentHex := hex.EncodeToString(bindingCommitment.Bytes())
+						expectedCommitmentHex := tvParticipant.BindingNonceCommitment
+
+						if actualCommitmentHex != expectedCommitmentHex {
+							t.Errorf("Binding commitment mismatch\nExpected: %s\nGot:      %s",
+								expectedCommitmentHex, actualCommitmentHex)
+						} else {
+							t.Logf("Binding commitment matches: %s", actualCommitmentHex)
+						}
+					})
+				})
+			}
+		})
+	}
+}
+
 // TestRFC9591_NonSignerShareValidation validates that P2's share (non-signer)
 // is correctly generated from the polynomial, even though P2 doesn't participate
 // in signing.
@@ -771,9 +916,35 @@ func TestRFC9591_NonSignerShareValidation(t *testing.T) {
 			}
 		}
 
-		// Verify P2's verification key contributes to group public key reconstruction
-		// Using VSS verification: g^share should be computable from commitments
-		t.Logf("✓ P2 share is valid and unique")
+		// Verify P2's share via Lagrange reconstruction: using P1+P2 shares should
+		// reconstruct the group secret key (since threshold=2).
+		// L_1(0) = 2 / (2 - 1) = 2, L_2(0) = 1 / (1 - 2) = -1
+		p1ShareBytes, _ := hex.DecodeString(tv.Participants[1].Share)
+		p1Share, _ := grp.DeserializeScalar(p1ShareBytes)
+
+		polyHelper2 := helpers.NewPolynomialHelper(grp)
+		p1Scalar := identifierToScalar(grp, 1)
+		p2Scalar := identifierToScalar(grp, p2ID)
+		xCoords := []group.Scalar{p1Scalar, p2Scalar}
+
+		lambda1, err := polyHelper2.DeriveInterpolatingValue(xCoords, p1Scalar)
+		if err != nil {
+			t.Fatalf("Failed to compute lambda1: %v", err)
+		}
+		lambda2, err := polyHelper2.DeriveInterpolatingValue(xCoords, p2Scalar)
+		if err != nil {
+			t.Fatalf("Failed to compute lambda2: %v", err)
+		}
+
+		// Reconstruct secret = L_1 * share_1 + L_2 * share_2
+		reconstructed := lambda1.Mul(p1Share).Add(lambda2.Mul(computedP2Share))
+		reconstructedHex := hex.EncodeToString(reconstructed.Bytes())
+		if reconstructedHex != tv.GroupSecretKey {
+			t.Errorf("Lagrange reconstruction with P1+P2 failed\nExpected: %s\nGot:      %s",
+				tv.GroupSecretKey, reconstructedHex)
+		} else {
+			t.Logf("P2 share verified via Lagrange reconstruction with P1")
+		}
 	})
 
 	// Verify that all 3 participants (P1, P2, P3) have valid shares
@@ -1187,6 +1358,35 @@ func validateBindingFactorsGeneric(t *testing.T, suite ciphersuite.Ciphersuite, 
 		} else {
 			t.Logf("✓ P%d binding factor matches", id)
 		}
+
+		// Validate binding_factor_input (rho_input) byte-for-byte against test vector
+		if tvParticipant.BindingFactorInput != "" {
+			// Reconstruct rho_input: group_public_key || H4(msg) || H5(encoded_commitments) || identifier
+			msgHash := suite.H4(message)
+			encoder := helpers.NewCommitmentListEncoder(grp)
+			encodedCommitmentList, err := encoder.Encode(commitmentList)
+			if err != nil {
+				t.Fatalf("P%d: Failed to encode commitment list: %v", id, err)
+			}
+			encodedCommitmentHash := suite.H5(encodedCommitmentList)
+
+			idScalar := identifierToScalar(grp, id)
+			idBytes := idScalar.Bytes()
+
+			var rhoInput []byte
+			rhoInput = append(rhoInput, groupPublicKeyBytes...)
+			rhoInput = append(rhoInput, msgHash...)
+			rhoInput = append(rhoInput, encodedCommitmentHash...)
+			rhoInput = append(rhoInput, idBytes...)
+
+			actualRhoInputHex := hex.EncodeToString(rhoInput)
+			if actualRhoInputHex != tvParticipant.BindingFactorInput {
+				t.Errorf("P%d binding_factor_input mismatch\nExpected: %s\nGot:      %s",
+					id, tvParticipant.BindingFactorInput, actualRhoInputHex)
+			} else {
+				t.Logf("✓ P%d binding_factor_input matches", id)
+			}
+		}
 	}
 }
 
@@ -1362,6 +1562,19 @@ func validateFinalSignatureGeneric(t *testing.T, suite ciphersuite.Ciphersuite, 
 		t.Errorf("Signature verification failed: %v", err)
 	} else {
 		t.Logf("✓ Signature verification passed")
+	}
+
+	// Verify signature fails with wrong public key
+	wrongKeyScalar, err := grp.RandomScalar()
+	if err != nil {
+		t.Fatalf("Failed to generate random scalar: %v", err)
+	}
+	wrongPublicKey := grp.ScalarBaseMult(wrongKeyScalar)
+	err = suite.VerifySignature(message, actualSig, wrongPublicKey)
+	if err == nil {
+		t.Errorf("Signature should NOT verify with wrong public key")
+	} else {
+		t.Logf("✓ Signature correctly rejected with wrong public key")
 	}
 }
 

@@ -74,7 +74,7 @@ docker run --rm go-frost-transport:latest
 ## Requirements
 
 - Docker (for containerized test execution)
-- Go 1.25.5 or later
+- Go 1.26.1 or later
 - CGO enabled (for race detector)
 
 ## Test Output

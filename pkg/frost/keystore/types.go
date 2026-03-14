@@ -1,7 +1,7 @@
-// Package keystore provides secure storage for FROST key material using go-keychain.
+// Package keystore provides secure storage for FROST key material using go-xkms.
 //
 // The keystore layer abstracts key storage operations and provides integration with
-// the go-keychain library for secure, production-ready key management.
+// the go-xkms library for secure, production-ready key management.
 package keystore
 
 import (
@@ -9,6 +9,7 @@ import (
 
 	"github.com/jeremyhahn/go-frost/pkg/frost"
 	"github.com/jeremyhahn/go-frost/pkg/frost/group"
+	"github.com/jeremyhahn/go-frost/pkg/secmem"
 )
 
 // StoredKeyPackage represents a KeyPackage with metadata for storage.
@@ -16,8 +17,14 @@ type StoredKeyPackage struct {
 	// Identifier of the participant
 	Identifier frost.Identifier
 
-	// SecretShare is the participant's secret key share (serialized)
+	// SecretShare is the participant's secret key share (serialized).
+	// Used for JSON serialization; prefer SecretShareProtected for in-memory access.
 	SecretShare []byte
+
+	// SecretShareProtected holds the secret share in encrypted, mlock'd memory.
+	// This field is not serialized to JSON; it is populated from SecretShare
+	// during FromKeyPackage and used during ToKeyPackage.
+	SecretShareProtected *secmem.SecretBytes `json:"-"`
 
 	// GroupPublicKey is the group's public key (serialized)
 	GroupPublicKey []byte
@@ -102,11 +109,32 @@ func (s *StoredKeyPackage) UnmarshalJSON(data []byte) error {
 }
 
 // ToKeyPackage converts a StoredKeyPackage back to a frost.KeyPackage.
+// If SecretShareProtected is set, the secret share is decrypted from secure memory;
+// otherwise it falls back to the plaintext SecretShare field.
 func (s *StoredKeyPackage) ToKeyPackage(g group.Group) (*frost.KeyPackage, error) {
-	// Deserialize secret share
-	secretShare, err := g.DeserializeScalar(s.SecretShare)
-	if err != nil {
-		return nil, ErrDeserializeScalar.Wrap(err)
+	// Deserialize secret share, preferring protected memory if available
+	var secretShare group.Scalar
+	if s.SecretShareProtected != nil {
+		var deserErr error
+		if err := secmem.WithSecret(s.SecretShareProtected, func(b []byte) error {
+			var err error
+			secretShare, err = g.DeserializeScalar(b)
+			if err != nil {
+				deserErr = ErrDeserializeScalar.Wrap(err)
+			}
+			return nil
+		}); err != nil {
+			return nil, err
+		}
+		if deserErr != nil {
+			return nil, deserErr
+		}
+	} else {
+		var err error
+		secretShare, err = g.DeserializeScalar(s.SecretShare)
+		if err != nil {
+			return nil, ErrDeserializeScalar.Wrap(err)
+		}
 	}
 
 	// Deserialize group public key
@@ -137,9 +165,19 @@ func (s *StoredKeyPackage) ToKeyPackage(g group.Group) (*frost.KeyPackage, error
 }
 
 // FromKeyPackage creates a StoredKeyPackage from a frost.KeyPackage.
+// The secret share is stored both as a plaintext []byte (for JSON serialization)
+// and in protected memory via SecretShareProtected.
 func FromKeyPackage(keyID, groupID string, kp *frost.KeyPackage, minSigners, maxSigners uint32, createdAt int64) (*StoredKeyPackage, error) {
 	// Serialize secret share
 	secretShare := kp.SecretShare.Bytes()
+
+	// Protect the secret share in secure memory
+	secretShareProtected := secmem.NewSecretBytes(secretShare)
+
+	// secretShare was zeroed by NewSecretBytes; re-serialize for JSON field.
+	// Note: caller is responsible for zeroing SecretShare in the returned StoredKeyPackage
+	// after it has been serialized.
+	secretShareForJSON := kp.SecretShare.Bytes()
 
 	// Serialize group public key
 	groupPublicKey := kp.GroupPublicKey.Bytes()
@@ -155,10 +193,11 @@ func FromKeyPackage(keyID, groupID string, kp *frost.KeyPackage, minSigners, max
 	}
 
 	return &StoredKeyPackage{
-		Identifier:         kp.Identifier,
-		SecretShare:        secretShare,
-		GroupPublicKey:     groupPublicKey,
-		VerificationShares: verificationShares,
+		Identifier:           kp.Identifier,
+		SecretShare:          secretShareForJSON,
+		SecretShareProtected: secretShareProtected,
+		GroupPublicKey:       groupPublicKey,
+		VerificationShares:   verificationShares,
 		Metadata: KeyMetadata{
 			KeyID:      keyID,
 			GroupID:    groupID,

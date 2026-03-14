@@ -402,4 +402,7 @@ func TestSignatureShareStruct(t *testing.T) {
 	if share.Identifier != 42 {
 		t.Errorf("Expected identifier 42, got %d", share.Identifier)
 	}
+	if share.SignatureShare == nil {
+		t.Error("Expected non-nil signature share")
+	}
 }

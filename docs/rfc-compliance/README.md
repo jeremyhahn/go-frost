@@ -58,18 +58,15 @@ See [test-coverage.md](test-coverage.md) for detailed test documentation.
 
 ## Ciphersuite Support
 
-### Currently Supported
+### Supported Ciphersuites
 
-- **FROST(ristretto255, SHA-512)** - Production ready
+All five RFC 9591 standard ciphersuites are implemented:
 
-### Architecture Ready
-
-The implementation architecture supports all RFC 9591 standard ciphersuites:
-
-- FROST(Ed25519, SHA-512)
-- FROST(Ed448, SHAKE256)
-- FROST(P-256, SHA-256)
-- FROST(secp256k1, SHA-256)
+- **FROST(ristretto255, SHA-512)**
+- **FROST(Ed25519, SHA-512)**
+- **FROST(Ed448, SHAKE256)**
+- **FROST(P-256, SHA-256)**
+- **FROST(secp256k1, SHA-256)**
 
 ## Compliance Verification
 

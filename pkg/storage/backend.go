@@ -4,19 +4,19 @@
 // you may not use this file except in compliance with the License.
 
 // Package storage provides storage backend implementations compatible with
-// go-keychain and go-objstore interfaces.
+// go-xkms and go-objstore interfaces.
 //
 // This package allows go-frost to have its own storage implementations while
 // maintaining interface compatibility with external storage providers like
-// go-keychain and go-objstore.
+// go-xkms and go-objstore.
 package storage
 
-// Backend defines the storage interface compatible with go-keychain and go-objstore.
+// Backend defines the storage interface compatible with go-xkms and go-objstore.
 //
 // All implementations MUST be thread-safe.
 //
 // Interface compatibility:
-//   - go-keychain: github.com/jeremyhahn/go-keychain/pkg/storage.Backend
+//   - go-xkms: github.com/jeremyhahn/go-xkms/pkg/storage.Backend
 //   - go-objstore: Compatible with Get/Put/Delete operations
 //
 // This interface can be implemented by:
@@ -87,7 +87,7 @@ type Backend interface {
 
 // Options provides options for storage operations.
 //
-// Compatible with go-keychain's storage.Options.
+// Compatible with go-xkms's storage.Options.
 type Options struct {
 	// Permissions specifies the file permissions (for file-based storage).
 	// This field may be ignored by non-file-based storage backends.
@@ -106,7 +106,7 @@ type Options struct {
 
 // DefaultOptions returns default storage options.
 //
-// Compatible with go-keychain's storage.DefaultOptions().
+// Compatible with go-xkms's storage.DefaultOptions().
 func DefaultOptions() *Options {
 	return &Options{
 		Permissions: 0600, // Owner read/write only (secure default)

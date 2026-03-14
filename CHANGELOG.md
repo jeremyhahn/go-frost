@@ -56,8 +56,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Independent storage implementations** - go-frost now includes its own storage backends
   - `MemoryBackend`: In-memory storage with TTL support, thread-safe, ideal for testing
   - `FileBackend`: File system storage with atomic writes, secure permissions (0600 default), and path traversal protection
-  - `Backend` interface: Compatible with go-keychain and go-objstore for external integrations
-- **Interface compatibility** - Storage backends work seamlessly with go-keychain and go-objstore
+  - `Backend` interface: Compatible with go-xkms and go-objstore for external integrations
+- **Interface compatibility** - Storage backends work seamlessly with go-xkms and go-objstore
 - **Extensible architecture** - Easy to implement custom backends (HSM, TPM, cloud KMS, DHT, etc.)
 
 #### Signer Package (`pkg/signer/`)
@@ -79,8 +79,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Removed go-keychain dependency** - go-frost is now fully self-contained
-  - Maintains interface compatibility for users who want to use go-keychain
+- **Removed go-xkms dependency** - go-frost is now fully self-contained
+  - Maintains interface compatibility for users who want to use go-xkms
   - No breaking changes to existing APIs
 - **Storage implementation** - Keystore now uses `pkg/storage` internally
 - **Enhanced flexibility** - Applications can now inject custom storage and signer implementations
@@ -95,13 +95,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated README.md with Storage and Key Management section
 - Added comprehensive package documentation for `pkg/storage/` and `pkg/signer/`
 - Included usage examples for HSM/TPM integration
-- Clarified optional dependencies (go-keychain, go-objstore, HSM/TPM libraries)
+- Clarified optional dependencies (go-xkms, go-objstore, HSM/TPM libraries)
 
 ### Migration Notes
 
-For users currently using go-keychain:
+For users currently using go-xkms:
 - **No action required** - Interface compatibility means existing code continues to work
-- **Optional migration** - Can switch to built-in storage: `storage.NewFileBackend()` instead of go-keychain's `file.New()`
+- **Optional migration** - Can switch to built-in storage: `storage.NewFileBackend()` instead of go-xkms's `file.New()`
 - **HSM/TPM users** - Can now use `signer.FromCryptoSigner()` to integrate hardware-backed keys
 
 ### Security

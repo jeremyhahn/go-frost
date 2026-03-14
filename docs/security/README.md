@@ -1,6 +1,6 @@
 # Security Documentation
 
-Comprehensive security guidance for deploying go-frost in production environments.
+Security guidance for go-frost deployments.
 
 ## Security Audit
 
@@ -11,29 +11,11 @@ Comprehensive security guidance for deploying go-frost in production environment
 
 ### Essential Reading
 
-1. **[error-sanitization.md](error-sanitization.md)** - Signing oracle prevention
-   - **CRITICAL**: Required reading before production deployment
-   - Prevents signing oracle attacks through message validation
-
-2. **[channel-security.md](channel-security.md)** - Network security
-   - TLS configuration
-   - Participant authentication
-   - Secure channel establishment
-
-3. **[misbehavior-tracking.md](misbehavior-tracking.md)** - Participant reputation
-   - Detecting malicious participants
-   - Reputation systems and banning
-   - Recovery from failures
-
-4. **[side-channel-protection.md](side-channel-protection.md)** - Timing attacks
-   - Constant-time operations
-   - Memory safety
-   - All ciphersuites verified secure
-
-5. **[testing.md](testing.md)** - Security testing
-   - Side-channel testing
-   - Security test coverage
-   - Fuzzing procedures
+1. [error-sanitization.md](error-sanitization.md) - Signing oracle prevention through message validation. Required reading before production deployment.
+2. [channel-security.md](channel-security.md) - TLS configuration, participant authentication, and secure channel establishment.
+3. [misbehavior-tracking.md](misbehavior-tracking.md) - Detecting malicious participants, reputation systems, banning, and recovery from failures.
+4. [side-channel-protection.md](side-channel-protection.md) - Constant-time operations, memory safety, and ciphersuite verification.
+5. [testing.md](testing.md) - Side-channel testing, security test coverage, and fuzzing procedures.
 
 ## Security Principles
 
@@ -44,7 +26,8 @@ This implementation follows cryptographic best practices:
 - **Nonce reuse prevention** with comprehensive tracking
 - **Input validation** at all API boundaries
 - **Typed errors** for proper error handling without information leakage
-- **No unsafe operations** - pure Go implementation without pointer magic
+- **Audited unsafe usage** limited to secure memory zeroing (secmem package)
+- **Secure memory management** via memguard in the `pkg/secmem` package: mlock'd memory protected from swap, encrypted-at-rest storage via Enclave (XSalsa20-Poly1305), guard pages for sensitive byte slices, constant-time zeroing of byte slices and string backing memory, and automatic cleanup on process termination signals
 
 ## Production Deployment Checklist
 
@@ -72,7 +55,7 @@ Before deploying to production, ensure you have:
 ### Out-of-Scope Threats
 
 - **Physical Access**: Key material must be protected by the application
-- **Memory Extraction**: Use secure enclaves if required
+- **Memory Extraction**: The memguard-based secmem package provides mlock and encrypted-at-rest protection, but physical memory access remains out of scope
 - **DDoS**: Requires application-level rate limiting
 - **Social Engineering**: Operational security is application responsibility
 

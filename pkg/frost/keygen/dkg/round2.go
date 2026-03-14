@@ -5,6 +5,7 @@ import (
 	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite"
 	"github.com/jeremyhahn/go-frost/pkg/frost/group"
 	"github.com/jeremyhahn/go-frost/pkg/frost/helpers"
+	"github.com/jeremyhahn/go-frost/pkg/secmem"
 )
 
 // Part2 executes round 2 of the DKG protocol.
@@ -168,6 +169,7 @@ func evaluateCommitmentPolynomial(commitment []group.Element, x group.Scalar, gr
 		xPowerBytes[0] = 1
 	}
 	xPower, _ := grp.DeserializeScalar(xPowerBytes)
+	secmem.ZeroBytes(xPowerBytes)
 
 	for _, c := range commitment {
 		// Compute commitment[k]^(x^k)

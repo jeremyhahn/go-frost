@@ -23,6 +23,7 @@ import (
 	"github.com/jeremyhahn/go-frost/pkg/frost/group"
 	"github.com/jeremyhahn/go-frost/pkg/frost/helpers"
 	"github.com/jeremyhahn/go-frost/pkg/frost/keygen/dkg"
+	"github.com/jeremyhahn/go-frost/pkg/secmem"
 )
 
 // RefreshShare represents a refresh share that will be added to a participant's
@@ -46,9 +47,7 @@ func (rs *RefreshShare) Zeroize() {
 	runtime.KeepAlive(rs.Share)
 	if rs.Share != nil {
 		bytes := rs.Share.Bytes()
-		for i := range bytes {
-			bytes[i] = 0
-		}
+		secmem.ZeroBytes(bytes)
 		rs.Share = rs.Share.Sub(rs.Share)
 	}
 	runtime.KeepAlive(rs.Share)
@@ -258,6 +257,7 @@ func evaluateCommitmentPolynomial(commitment []group.Element, x group.Scalar, gr
 		oneBytes[0] = 1
 	}
 	xPower, _ := grp.DeserializeScalar(oneBytes)
+	secmem.ZeroBytes(oneBytes)
 
 	for _, c := range commitment {
 		// Compute commitment[k]^(x^k)

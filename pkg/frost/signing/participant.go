@@ -13,6 +13,7 @@ import (
 	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite"
 	"github.com/jeremyhahn/go-frost/pkg/frost/group"
 	"github.com/jeremyhahn/go-frost/pkg/frost/helpers"
+	"github.com/jeremyhahn/go-frost/pkg/secmem"
 )
 
 // Participant represents a signing participant in the FROST protocol.
@@ -109,8 +110,14 @@ func (p *participant) RoundOne() (frost.SigningNonces, frost.SigningCommitments,
 	}
 
 	// Use H3 to generate hiding nonce: H3(random_bytes || secret)
-	hidingInput := append(hidingRandomBytes, p.keyPackage.SecretShare.Bytes()...)
+	hidingSecretBytes := p.keyPackage.SecretShare.Bytes()
+	hidingInput := append(hidingRandomBytes, hidingSecretBytes...)
 	hidingNonce := p.suite.H3(hidingInput)
+
+	// Zero ephemeral secret data
+	secmem.ZeroBytes(hidingRandomBytes)
+	secmem.ZeroBytes(hidingSecretBytes)
+	secmem.ZeroBytes(hidingInput)
 
 	// 2. Generate binding_nonce using nonce_generate(secret_share)
 	bindingRandomBytes := make([]byte, 32)
@@ -119,8 +126,14 @@ func (p *participant) RoundOne() (frost.SigningNonces, frost.SigningCommitments,
 	}
 
 	// Use H3 to generate binding nonce: H3(random_bytes || secret)
-	bindingInput := append(bindingRandomBytes, p.keyPackage.SecretShare.Bytes()...)
+	bindingSecretBytes := p.keyPackage.SecretShare.Bytes()
+	bindingInput := append(bindingRandomBytes, bindingSecretBytes...)
 	bindingNonce := p.suite.H3(bindingInput)
+
+	// Zero ephemeral secret data
+	secmem.ZeroBytes(bindingRandomBytes)
+	secmem.ZeroBytes(bindingSecretBytes)
+	secmem.ZeroBytes(bindingInput)
 
 	// Verify nonces are not zero
 	if hidingNonce.IsZero() {

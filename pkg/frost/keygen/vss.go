@@ -64,7 +64,6 @@ func (v *vss) CreateCommitments(polynomial frost.Polynomial) ([]frost.Verificati
 	for i, coefficient := range polynomial.Coefficients {
 		commitment := v.group.ScalarBaseMult(coefficient)
 		commitments[i] = frost.VerificationShare{
-			//nolint:gosec // i bounded by slice length, safe
 			Identifier:      frost.Identifier(i),
 			VerificationKey: commitment,
 		}

@@ -82,13 +82,13 @@ func (s *ctScalar) Bytes() []byte {
 // IsZero returns 1 if s == 0, 0 otherwise, in constant time.
 func (s *ctScalar) IsZero() int {
 	// nat.IsZero() returns 0 or 1, safe to convert to int
-	return int(s.nat.IsZero()) //nolint:gosec // IsZero returns 0 or 1, cannot overflow
+	return int(s.nat.IsZero())
 }
 
 // Equal returns 1 if s == t, 0 otherwise, in constant time.
 func (s *ctScalar) Equal(t *ctScalar) int {
 	// nat.Equal() returns 0 or 1, safe to convert to int
-	return int(s.nat.Equal(t.nat)) //nolint:gosec // Equal returns 0 or 1, cannot overflow
+	return int(s.nat.Equal(t.nat))
 }
 
 // isLessThanOrder returns true if s < n. Since we always reduce, this is always true.

@@ -8,6 +8,7 @@ import (
 
 	"github.com/jeremyhahn/go-frost/pkg/frost"
 	"github.com/jeremyhahn/go-frost/pkg/frost/group"
+	"github.com/jeremyhahn/go-frost/pkg/secmem"
 )
 
 const (
@@ -126,8 +127,15 @@ func (k *KeychainStore) StoreKeyPackage(keyID, groupID string, kp *frost.KeyPack
 	opts := DefaultPutOptions()
 	opts.Permissions = 0600 // Owner read/write only
 	if err := k.storage.Put(storageKey, data, opts); err != nil {
+		secmem.ZeroBytes(data)
 		return ErrStorageBackend.Wrap(err)
 	}
+
+	// Zero the serialized data containing the secret share
+	secmem.ZeroBytes(data)
+
+	// Zero the plaintext secret share in the stored key package
+	secmem.ZeroBytes(storedKP.SecretShare)
 
 	return nil
 }
@@ -151,7 +159,17 @@ func (k *KeychainStore) GetKeyPackage(keyID string) (*frost.KeyPackage, *KeyMeta
 	// Unmarshal from JSON
 	var storedKP StoredKeyPackage
 	if err := json.Unmarshal(data, &storedKP); err != nil {
+		secmem.ZeroBytes(data)
 		return nil, nil, ErrUnmarshalJSON.Wrap(err)
+	}
+
+	// Zero the raw JSON data now that it's been parsed
+	secmem.ZeroBytes(data)
+
+	// Protect the deserialized secret share in secure memory
+	if len(storedKP.SecretShare) > 0 {
+		storedKP.SecretShareProtected = secmem.NewSecretBytes(storedKP.SecretShare)
+		// NewSecretBytes zeros storedKP.SecretShare in place
 	}
 
 	// Convert back to KeyPackage
@@ -199,8 +217,11 @@ func (k *KeychainStore) ListKeyPackages(groupID string) ([]*KeyMetadata, error) 
 		// Unmarshal to get metadata
 		var storedKP StoredKeyPackage
 		if err := json.Unmarshal(data, &storedKP); err != nil {
+			secmem.ZeroBytes(data)
 			continue // Skip keys that can't be unmarshaled
 		}
+		secmem.ZeroBytes(data)
+		secmem.ZeroBytes(storedKP.SecretShare)
 
 		// Filter by group ID if specified
 		if groupID != "" && storedKP.Metadata.GroupID != groupID {
@@ -388,15 +409,18 @@ func (k *KeychainStore) UpdateMetadata(keyID string, metadata *KeyMetadata) erro
 	// Unmarshal
 	var storedKP StoredKeyPackage
 	if err := json.Unmarshal(data, &storedKP); err != nil {
+		secmem.ZeroBytes(data)
 		return ErrUnmarshalJSON.Wrap(err)
 	}
+	secmem.ZeroBytes(data)
 
 	// Update metadata
 	metadata.UpdatedAt = time.Now().Unix()
 	storedKP.Metadata = *metadata
 
 	// Marshal back to JSON
-	data, err = json.Marshal(storedKP)
+	updatedData, err := json.Marshal(storedKP)
+	secmem.ZeroBytes(storedKP.SecretShare)
 	if err != nil {
 		return ErrMarshalJSON.Wrap(err)
 	}
@@ -404,9 +428,11 @@ func (k *KeychainStore) UpdateMetadata(keyID string, metadata *KeyMetadata) erro
 	// Store updated key package
 	opts := DefaultPutOptions()
 	opts.Permissions = 0600
-	if err := k.storage.Put(storageKey, data, opts); err != nil {
+	if err := k.storage.Put(storageKey, updatedData, opts); err != nil {
+		secmem.ZeroBytes(updatedData)
 		return ErrStorageBackend.Wrap(err)
 	}
+	secmem.ZeroBytes(updatedData)
 
 	return nil
 }

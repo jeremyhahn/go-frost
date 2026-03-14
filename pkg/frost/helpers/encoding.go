@@ -3,6 +3,7 @@ package helpers
 import (
 	"github.com/jeremyhahn/go-frost/pkg/frost"
 	"github.com/jeremyhahn/go-frost/pkg/frost/group"
+	"github.com/jeremyhahn/go-frost/pkg/secmem"
 )
 
 // CommitmentListEncoder encodes commitment lists for hashing.
@@ -173,5 +174,7 @@ func IdentifierToScalar(grp group.Group, id frost.Identifier) (group.Scalar, err
 		}
 	}
 
-	return grp.DeserializeScalar(idBytes)
+	scalar, err := grp.DeserializeScalar(idBytes)
+	secmem.ZeroBytes(idBytes)
+	return scalar, err
 }

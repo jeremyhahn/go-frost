@@ -6,6 +6,7 @@ import (
 	"github.com/jeremyhahn/go-frost/pkg/frost"
 	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite"
 	"github.com/jeremyhahn/go-frost/pkg/frost/group"
+	"github.com/jeremyhahn/go-frost/pkg/secmem"
 )
 
 // Serializer provides versioned serialization for FROST data structures.
@@ -255,6 +256,7 @@ func (s *Serializer) SerializeSecretShare(share group.Scalar) ([]byte, error) {
 	data := make([]byte, HeaderSize+len(shareBytes))
 	copy(data[:HeaderSize], header.Serialize())
 	copy(data[HeaderSize:], shareBytes)
+	secmem.ZeroBytes(shareBytes)
 
 	return data, nil
 }

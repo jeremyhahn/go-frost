@@ -20,6 +20,7 @@ import (
 	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite/secp256k1_sha256"
 	"github.com/jeremyhahn/go-frost/pkg/frost/keygen"
 	"github.com/jeremyhahn/go-frost/pkg/frost/signing"
+	"github.com/jeremyhahn/go-frost/pkg/secmem"
 )
 
 var (
@@ -97,6 +98,10 @@ func safeIntToUint16(v int) uint16 {
 }
 
 func main() {
+	// Initialize secure memory subsystem (mlock, interrupt handlers)
+	secmem.Init()
+	defer secmem.Purge()
+
 	if len(os.Args) < 2 {
 		printUsage()
 		os.Exit(1)
@@ -244,11 +249,13 @@ func keygenCommand() {
 	}
 
 	for i, pkg := range keyPackages {
+		secretShareBytes := pkg.SecretShare.Bytes()
 		outputData.KeyPackages[i] = KeyPackageExport{
 			Identifier:  safeUint32ToUint16(uint32(pkg.Identifier)),
-			SecretShare: hex.EncodeToString(pkg.SecretShare.Bytes()),
+			SecretShare: hex.EncodeToString(secretShareBytes),
 			PublicKey:   hex.EncodeToString(pkg.GroupPublicKey.Bytes()),
 		}
+		secmem.ZeroBytes(secretShareBytes)
 	}
 
 	// Write to file
@@ -259,8 +266,15 @@ func keygenCommand() {
 	}
 
 	if err := os.WriteFile(*output, data, 0600); err != nil {
+		secmem.ZeroBytes(data)
 		fmt.Fprintf(os.Stderr, "Error writing output file: %v\n", err)
 		os.Exit(1)
+	}
+	secmem.ZeroBytes(data)
+
+	// Zero the hex-encoded secret share strings in the output struct
+	for i := range outputData.KeyPackages {
+		secmem.ZeroString(&outputData.KeyPackages[i].SecretShare)
 	}
 
 	fmt.Printf("Generated %d key packages (%d-of-%d threshold)\n", *maxSigners, *minSigners, *maxSigners)
@@ -324,9 +338,11 @@ func signCommand() {
 	}
 
 	if err := json.Unmarshal(keysData, &keysInput); err != nil {
+		secmem.ZeroBytes(keysData)
 		fmt.Fprintf(os.Stderr, "Error parsing keys file: %v\n", err)
 		os.Exit(1)
 	}
+	secmem.ZeroBytes(keysData)
 
 	// Parse signers
 	var signerIDs []int
@@ -369,6 +385,7 @@ func signCommand() {
 					os.Exit(1)
 				}
 				secret, err := grp.DeserializeScalar(secretBytes)
+				secmem.ZeroBytes(secretBytes)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "Error deserializing secret share: %v\n", err)
 					os.Exit(1)
@@ -426,6 +443,7 @@ func signCommand() {
 			os.Exit(1)
 		}
 		signatureShares[i] = share
+		nonces[i].Zeroize()
 	}
 
 	// Aggregate signature
@@ -456,6 +474,11 @@ func signCommand() {
 	if err := os.WriteFile(*output, sigData, 0600); err != nil {
 		fmt.Fprintf(os.Stderr, "Error writing signature file: %v\n", err)
 		os.Exit(1)
+	}
+
+	// Zero the hex-encoded secret share strings from parsed keys input
+	for i := range keysInput.KeyPackages {
+		secmem.ZeroString(&keysInput.KeyPackages[i].SecretShare)
 	}
 
 	fmt.Printf("Signature created successfully\n")
@@ -522,9 +545,11 @@ func commitCommand() {
 	}
 
 	if err := json.Unmarshal(keysData, &keysInput); err != nil {
+		secmem.ZeroBytes(keysData)
 		fmt.Fprintf(os.Stderr, "Error parsing keys file: %v\n", err)
 		os.Exit(1)
 	}
+	secmem.ZeroBytes(keysData)
 
 	suite := getCiphersuite(*ciphersuiteFlag)
 	grp := suite.Group()
@@ -539,6 +564,7 @@ func commitCommand() {
 				os.Exit(1)
 			}
 			secret, err := grp.DeserializeScalar(secretBytes)
+			secmem.ZeroBytes(secretBytes)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Error deserializing secret share: %v\n", err)
 				os.Exit(1)
@@ -600,15 +626,19 @@ func commitCommand() {
 	}
 
 	// Save private nonces (keep secret!)
+	hidingNonceBytes := nonces.HidingNonce.Bytes()
+	bindingNonceBytes := nonces.BindingNonce.Bytes()
 	noncesOutput := struct {
 		Identifier   uint16 `json:"identifier"`
 		HidingNonce  string `json:"hiding_nonce"`
 		BindingNonce string `json:"binding_nonce"`
 	}{
 		Identifier:   safeUintToUint16(*participantID),
-		HidingNonce:  hex.EncodeToString(nonces.HidingNonce.Bytes()),
-		BindingNonce: hex.EncodeToString(nonces.BindingNonce.Bytes()),
+		HidingNonce:  hex.EncodeToString(hidingNonceBytes),
+		BindingNonce: hex.EncodeToString(bindingNonceBytes),
 	}
+	secmem.ZeroBytes(hidingNonceBytes)
+	secmem.ZeroBytes(bindingNonceBytes)
 
 	noncesData, err := json.MarshalIndent(noncesOutput, "", "  ")
 	if err != nil {
@@ -617,8 +647,19 @@ func commitCommand() {
 	}
 
 	if err := os.WriteFile(*outputNonces, noncesData, 0600); err != nil {
+		secmem.ZeroBytes(noncesData)
 		fmt.Fprintf(os.Stderr, "Error writing nonces file: %v\n", err)
 		os.Exit(1)
+	}
+	secmem.ZeroBytes(noncesData)
+
+	// Zero the hex-encoded nonce strings in the output struct
+	secmem.ZeroString(&noncesOutput.HidingNonce)
+	secmem.ZeroString(&noncesOutput.BindingNonce)
+
+	// Zero the hex-encoded secret share strings from parsed keys input
+	for i := range keysInput.KeyPackages {
+		secmem.ZeroString(&keysInput.KeyPackages[i].SecretShare)
 	}
 
 	fmt.Printf("Round 1 completed for participant %d\n", *participantID)
@@ -695,9 +736,11 @@ func signShareCommand() {
 	}
 
 	if err := json.Unmarshal(keysData, &keysInput); err != nil {
+		secmem.ZeroBytes(keysData)
 		fmt.Fprintf(os.Stderr, "Error parsing keys file: %v\n", err)
 		os.Exit(1)
 	}
+	secmem.ZeroBytes(keysData)
 
 	// Find participant's key package
 	var keyPackage *frost.KeyPackage
@@ -709,6 +752,7 @@ func signShareCommand() {
 				os.Exit(1)
 			}
 			secret, err := grp.DeserializeScalar(secretBytes)
+			secmem.ZeroBytes(secretBytes)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Error deserializing secret share: %v\n", err)
 				os.Exit(1)
@@ -753,9 +797,11 @@ func signShareCommand() {
 	}
 
 	if err := json.Unmarshal(noncesData, &noncesInput); err != nil {
+		secmem.ZeroBytes(noncesData)
 		fmt.Fprintf(os.Stderr, "Error parsing nonces file: %v\n", err)
 		os.Exit(1)
 	}
+	secmem.ZeroBytes(noncesData)
 
 	hidingNonceBytes, err := hex.DecodeString(noncesInput.HidingNonce)
 	if err != nil {
@@ -763,6 +809,7 @@ func signShareCommand() {
 		os.Exit(1)
 	}
 	hidingNonce, err := grp.DeserializeScalar(hidingNonceBytes)
+	secmem.ZeroBytes(hidingNonceBytes)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error deserializing hiding nonce: %v\n", err)
 		os.Exit(1)
@@ -774,6 +821,7 @@ func signShareCommand() {
 		os.Exit(1)
 	}
 	bindingNonce, err := grp.DeserializeScalar(bindingNonceBytes)
+	secmem.ZeroBytes(bindingNonceBytes)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error deserializing binding nonce: %v\n", err)
 		os.Exit(1)
@@ -837,6 +885,7 @@ func signShareCommand() {
 	participant := signing.NewParticipant(*keyPackage, suite)
 	messageBytes := []byte(*message)
 	signatureShare, err := participant.RoundTwo(nonces, messageBytes, commitments)
+	nonces.Zeroize()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating signature share: %v\n", err)
 		os.Exit(1)
@@ -861,6 +910,15 @@ func signShareCommand() {
 		fmt.Fprintf(os.Stderr, "Error writing signature share file: %v\n", err)
 		os.Exit(1)
 	}
+
+	// Zero the hex-encoded secret share strings from parsed keys input
+	for i := range keysInput.KeyPackages {
+		secmem.ZeroString(&keysInput.KeyPackages[i].SecretShare)
+	}
+
+	// Zero the hex-encoded nonce strings from parsed nonces input
+	secmem.ZeroString(&noncesInput.HidingNonce)
+	secmem.ZeroString(&noncesInput.BindingNonce)
 
 	fmt.Printf("Round 2 completed for participant %d\n", *participantID)
 	fmt.Printf("Signature share saved to: %s\n", *output)
@@ -920,9 +978,11 @@ func aggregateCommand() {
 	}
 
 	if err := json.Unmarshal(keysData, &keysInput); err != nil {
+		secmem.ZeroBytes(keysData)
 		fmt.Fprintf(os.Stderr, "Error parsing keys file: %v\n", err)
 		os.Exit(1)
 	}
+	secmem.ZeroBytes(keysData)
 
 	// Parse group public key
 	groupPubKeyBytes, err := hex.DecodeString(keysInput.GroupPublicKey)
@@ -998,9 +1058,11 @@ func aggregateCommand() {
 	}
 
 	if err := json.Unmarshal(sharesData, &sharesInput); err != nil {
+		secmem.ZeroBytes(sharesData)
 		fmt.Fprintf(os.Stderr, "Error parsing shares file: %v\n", err)
 		os.Exit(1)
 	}
+	secmem.ZeroBytes(sharesData)
 
 	signatureShares := make([]frost.SignatureShare, len(sharesInput))
 	for i, s := range sharesInput {
@@ -1010,6 +1072,7 @@ func aggregateCommand() {
 			os.Exit(1)
 		}
 		share, err := grp.DeserializeScalar(shareBytes)
+		secmem.ZeroBytes(shareBytes)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error deserializing signature share: %v\n", err)
 			os.Exit(1)
