@@ -48,3 +48,4 @@ tmp/
 # Claude Code
 .claude
 CLAUDE.md
+go.work.sum
