@@ -125,9 +125,17 @@ test:
 # concurrent runs on one host — several CI jobs, or a developer alongside CI —
 # cannot collide. test-transport below runs the same suite inside a container
 # when that extra isolation is wanted.
+#
+# Scoped to ./test/transport/ rather than ./test/... deliberately. The other
+# two packages under test/ carry no build tag and are not part of this suite:
+# test/testvectors passes, but test/rfc's side-channel tests measure
+# nanosecond timing differences and call a leak at an 8ns delta, which a
+# CPU-capped shared runner produces as noise. Both were already unrun by any
+# workflow (the unit job covers ./pkg/... only); wiring them in is a separate
+# decision, not a side effect of enabling the transport suite.
 integration-test:
 	@echo "Running integration tests..."
-	@$(GOTEST) -tags=integration -race -timeout 300s ./test/...
+	@$(GOTEST) -tags=integration -race -timeout 300s ./test/transport/
 
 .PHONY: test-transport
 ## test-transport: Run distributed network transport tests in Docker
