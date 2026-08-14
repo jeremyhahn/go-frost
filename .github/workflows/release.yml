@@ -210,10 +210,23 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 
-    - name: Log in to GitHub Container Registry
+    # ghcr.io on GitHub, Gitea's own registry (same host and port as its web
+    # UI) on the internal network — derived, never hardcoded (devops.md §2).
+    # ghcr.io simply does not exist on the internal network, so a release built
+    # there had nowhere to push (lessons.md).
+    - name: Resolve registry
+      id: registry
+      run: |
+        if [ "${{ github.server_url }}" = "https://github.com" ]; then
+          echo "host=ghcr.io" >> $GITHUB_OUTPUT
+        else
+          echo "host=$(echo '${{ github.server_url }}' | sed -E 's#^https?://##')" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Log in to the container registry
       uses: docker/login-action@v3
       with:
-        registry: ghcr.io
+        registry: ${{ steps.registry.outputs.host }}
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
@@ -221,7 +234,7 @@ jobs:
       id: meta
       uses: docker/metadata-action@v5
       with:
-        images: ghcr.io/${{ github.repository_owner }}/frost
+        images: ${{ steps.registry.outputs.host }}/${{ github.repository_owner }}/frost
         tags: |
           type=semver,pattern={{version}}
           type=semver,pattern={{major}}.{{minor}}
@@ -276,8 +289,8 @@ jobs:
 
           #### Docker
           ```bash
-          docker pull ghcr.io/${{ github.repository_owner }}/frost:${{ steps.get_version.outputs.VERSION }}
-          docker run ghcr.io/${{ github.repository_owner }}/frost:${{ steps.get_version.outputs.VERSION }} version
+          docker pull ${{ steps.registry.outputs.host }}/${{ github.repository_owner }}/frost:${{ steps.get_version.outputs.VERSION }}
+          docker run ${{ steps.registry.outputs.host }}/${{ github.repository_owner }}/frost:${{ steps.get_version.outputs.VERSION }} version
           ```
 
           ### Using the Library
