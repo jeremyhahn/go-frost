@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -27,6 +28,7 @@ type Node struct {
 	keyPackage  frost.KeyPackage
 	participant signing.Participant
 	server      *http.Server
+	listener    net.Listener
 
 	// Session management
 	sessions map[string]*NodeSession
@@ -68,26 +70,55 @@ func NewNode(id frost.Identifier, addr string, suite ciphersuite.Ciphersuite, ke
 	return node
 }
 
-// Start starts the HTTP server in a background goroutine.
+// Addr returns the address the node is actually listening on. It is only
+// meaningful after a successful Start: when the node is constructed with port
+// 0 the real port is not known until the listener is bound.
+func (n *Node) Addr() string {
+	return n.addr
+}
+
+// Start binds the node's listener and serves on it in a background goroutine.
+//
+// The bind is deliberately synchronous. The previous version called
+// ListenAndServe inside the goroutine, printed any error, and then decided the
+// node was ready as soon as *something* answered GET /health on the configured
+// address. When the port was already taken that probe was answered by the
+// unrelated process holding it, so Start reported success for a node that had
+// never bound — and the test then spoke FROST to a stranger. Binding here
+// means a port conflict fails immediately, with the address in the error,
+// instead of being papered over by a readiness check that cannot tell this
+// node's server from anyone else's.
 func (n *Node) Start() error {
+	ln, err := net.Listen("tcp", n.server.Addr)
+	if err != nil {
+		return fmt.Errorf("node %d: listen on %s: %w", n.id, n.server.Addr, err)
+	}
+
+	// Record the bound address: with port 0 the kernel picks the port, and
+	// that resolved value is what peers must be told to dial.
+	n.addr = ln.Addr().String()
+	n.listener = ln
+
 	go func() {
-		if err := n.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := n.server.Serve(ln); err != nil && err != http.ErrServerClosed {
 			fmt.Printf("Node %d server error: %v\n", n.id, err)
 		}
 	}()
 
-	// Wait for server to be ready
-	maxAttempts := 50
-	for i := 0; i < maxAttempts; i++ {
+	// The listener is already accepting by the time Serve is called, so this
+	// only waits for the handler goroutine to be scheduled. Poll until the
+	// node answers rather than sleeping a fixed amount.
+	for i := 0; i < 50; i++ {
 		resp, err := http.Get(fmt.Sprintf("http://%s/health", n.addr))
 		if err == nil {
 			resp.Body.Close()
 			return nil
 		}
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(10 * time.Millisecond)
 	}
 
-	return fmt.Errorf("node %d failed to start after %d attempts", n.id, maxAttempts)
+	_ = n.Stop()
+	return fmt.Errorf("node %d bound %s but never answered /health", n.id, n.addr)
 }
 
 // Stop stops the HTTP server.

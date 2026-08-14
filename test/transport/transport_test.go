@@ -13,6 +13,7 @@ package transport
 
 import (
 	"fmt"
+	"net"
 	"sync"
 	"testing"
 	"time"
@@ -21,6 +22,35 @@ import (
 	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite/ristretto255_sha512"
 	"github.com/jeremyhahn/go-frost/pkg/frost/service"
 )
+
+// addrsOf maps each node to the address it actually bound. Nodes are created
+// with port 0, so the real port is only known after Start returns.
+func addrsOf(nodes ...*Node) map[frost.Identifier]string {
+	addrs := make(map[frost.Identifier]string, len(nodes))
+	for _, n := range nodes {
+		addrs[n.id] = n.Addr()
+	}
+	return addrs
+}
+
+// unusedAddr returns a loopback address with nothing listening on it, by
+// binding an ephemeral port and immediately closing the listener. Tests that
+// need a deliberately unreachable peer use this rather than naming a port:
+// a hardcoded "nothing runs here" port is only unused until something else on
+// the host claims it, and then the test silently exercises a live stranger
+// instead of the failure path it is meant to cover.
+func unusedAddr(t *testing.T) string {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("reserve unused address: %v", err)
+	}
+	addr := ln.Addr().String()
+	if err := ln.Close(); err != nil {
+		t.Fatalf("release reserved address: %v", err)
+	}
+	return addr
+}
 
 // TestDistributedSigning2of3 tests a 2-of-3 threshold signature over the network.
 func TestDistributedSigning2of3(t *testing.T) {
@@ -42,9 +72,9 @@ func TestDistributedSigning2of3(t *testing.T) {
 
 	// Create nodes on different ports
 	nodes := []*Node{
-		NewNode(1, "127.0.0.1:8081", suite, keyPackages[0]),
-		NewNode(2, "127.0.0.1:8082", suite, keyPackages[1]),
-		NewNode(3, "127.0.0.1:8083", suite, keyPackages[2]),
+		NewNode(1, "127.0.0.1:0", suite, keyPackages[0]),
+		NewNode(2, "127.0.0.1:0", suite, keyPackages[1]),
+		NewNode(3, "127.0.0.1:0", suite, keyPackages[2]),
 	}
 
 	// Start all nodes
@@ -56,11 +86,7 @@ func TestDistributedSigning2of3(t *testing.T) {
 	}
 
 	// Create network coordinator with all nodes for verification
-	nodeAddrs := map[frost.Identifier]string{
-		1: "127.0.0.1:8081",
-		2: "127.0.0.1:8082",
-		3: "127.0.0.1:8083",
-	}
+	nodeAddrs := addrsOf(nodes...)
 
 	coordinator := NewNetworkCoordinator(
 		suite,
@@ -125,11 +151,11 @@ func TestDistributedSigning3of5(t *testing.T) {
 
 	// Create nodes on different ports
 	nodes := []*Node{
-		NewNode(1, "127.0.0.1:8091", suite, keyPackages[0]),
-		NewNode(2, "127.0.0.1:8092", suite, keyPackages[1]),
-		NewNode(3, "127.0.0.1:8093", suite, keyPackages[2]),
-		NewNode(4, "127.0.0.1:8094", suite, keyPackages[3]),
-		NewNode(5, "127.0.0.1:8095", suite, keyPackages[4]),
+		NewNode(1, "127.0.0.1:0", suite, keyPackages[0]),
+		NewNode(2, "127.0.0.1:0", suite, keyPackages[1]),
+		NewNode(3, "127.0.0.1:0", suite, keyPackages[2]),
+		NewNode(4, "127.0.0.1:0", suite, keyPackages[3]),
+		NewNode(5, "127.0.0.1:0", suite, keyPackages[4]),
 	}
 
 	// Start all nodes
@@ -141,13 +167,7 @@ func TestDistributedSigning3of5(t *testing.T) {
 	}
 
 	// Create network coordinator with all nodes for verification
-	nodeAddrs := map[frost.Identifier]string{
-		1: "127.0.0.1:8091",
-		2: "127.0.0.1:8092",
-		3: "127.0.0.1:8093",
-		4: "127.0.0.1:8094",
-		5: "127.0.0.1:8095",
-	}
+	nodeAddrs := addrsOf(nodes...)
 
 	coordinator := NewNetworkCoordinator(
 		suite,
@@ -196,9 +216,9 @@ func TestMultipleDistributedSessions(t *testing.T) {
 
 	// Create nodes on different ports
 	nodes := []*Node{
-		NewNode(1, "127.0.0.1:8101", suite, keyPackages[0]),
-		NewNode(2, "127.0.0.1:8102", suite, keyPackages[1]),
-		NewNode(3, "127.0.0.1:8103", suite, keyPackages[2]),
+		NewNode(1, "127.0.0.1:0", suite, keyPackages[0]),
+		NewNode(2, "127.0.0.1:0", suite, keyPackages[1]),
+		NewNode(3, "127.0.0.1:0", suite, keyPackages[2]),
 	}
 
 	// Start all nodes
@@ -210,11 +230,7 @@ func TestMultipleDistributedSessions(t *testing.T) {
 	}
 
 	// Create network coordinator with all nodes for verification
-	nodeAddrs := map[frost.Identifier]string{
-		1: "127.0.0.1:8101",
-		2: "127.0.0.1:8102",
-		3: "127.0.0.1:8103",
-	}
+	nodeAddrs := addrsOf(nodes...)
 
 	coordinator := NewNetworkCoordinator(
 		suite,
@@ -305,10 +321,10 @@ func TestDifferentParticipantCombinations(t *testing.T) {
 
 	// Create nodes on different ports
 	nodes := []*Node{
-		NewNode(1, "127.0.0.1:8111", suite, keyPackages[0]),
-		NewNode(2, "127.0.0.1:8112", suite, keyPackages[1]),
-		NewNode(3, "127.0.0.1:8113", suite, keyPackages[2]),
-		NewNode(4, "127.0.0.1:8114", suite, keyPackages[3]),
+		NewNode(1, "127.0.0.1:0", suite, keyPackages[0]),
+		NewNode(2, "127.0.0.1:0", suite, keyPackages[1]),
+		NewNode(3, "127.0.0.1:0", suite, keyPackages[2]),
+		NewNode(4, "127.0.0.1:0", suite, keyPackages[3]),
 	}
 
 	// Start all nodes
@@ -338,12 +354,7 @@ func TestDifferentParticipantCombinations(t *testing.T) {
 	for _, combo := range combinations {
 		t.Run(combo.name, func(t *testing.T) {
 			// Create coordinator with all nodes (for verification)
-			nodeAddrs := map[frost.Identifier]string{
-				1: "127.0.0.1:8111",
-				2: "127.0.0.1:8112",
-				3: "127.0.0.1:8113",
-				4: "127.0.0.1:8114",
-			}
+			nodeAddrs := addrsOf(nodes...)
 
 			coordinator := NewNetworkCoordinator(
 				suite,
@@ -391,8 +402,8 @@ func TestNodeFailureHandling(t *testing.T) {
 
 	// Create only 2 nodes (node 2 is "offline")
 	nodes := []*Node{
-		NewNode(1, "127.0.0.1:8121", suite, keyPackages[0]),
-		NewNode(3, "127.0.0.1:8123", suite, keyPackages[2]),
+		NewNode(1, "127.0.0.1:0", suite, keyPackages[0]),
+		NewNode(3, "127.0.0.1:0", suite, keyPackages[2]),
 	}
 
 	// Start available nodes
@@ -405,8 +416,8 @@ func TestNodeFailureHandling(t *testing.T) {
 
 	// Try to sign with node 1 and unavailable node 2
 	nodeAddrs := map[frost.Identifier]string{
-		1: "127.0.0.1:8121",
-		2: "127.0.0.1:8122", // This node doesn't exist
+		nodes[0].id: nodes[0].Addr(),
+		2:           unusedAddr(t), // this node was never started
 	}
 
 	coordinator := NewNetworkCoordinator(
@@ -425,10 +436,7 @@ func TestNodeFailureHandling(t *testing.T) {
 	}
 
 	// Now sign with available nodes 1 and 3
-	nodeAddrs = map[frost.Identifier]string{
-		1: "127.0.0.1:8121",
-		3: "127.0.0.1:8123",
-	}
+	nodeAddrs = addrsOf(nodes...)
 
 	coordinator = NewNetworkCoordinator(
 		suite,
@@ -474,8 +482,8 @@ func TestNetworkTimeout(t *testing.T) {
 
 	// Create nodes
 	nodes := []*Node{
-		NewNode(1, "127.0.0.1:8131", suite, keyPackages[0]),
-		NewNode(2, "127.0.0.1:8132", suite, keyPackages[1]),
+		NewNode(1, "127.0.0.1:0", suite, keyPackages[0]),
+		NewNode(2, "127.0.0.1:0", suite, keyPackages[1]),
 	}
 
 	// Start nodes
@@ -490,10 +498,7 @@ func TestNetworkTimeout(t *testing.T) {
 	signingParticipants := []frost.Identifier{1, 2}
 
 	// Test with very short timeout - create a separate coordinator for this test
-	nodeAddrs := map[frost.Identifier]string{
-		1: "127.0.0.1:8131",
-		2: "127.0.0.1:8132",
-	}
+	nodeAddrs := addrsOf(nodes...)
 
 	shortTimeoutCoordinator := NewNetworkCoordinator(
 		suite,
@@ -554,9 +559,9 @@ func TestSessionIsolation(t *testing.T) {
 
 	// Create nodes
 	nodes := []*Node{
-		NewNode(1, "127.0.0.1:8141", suite, keyPackages[0]),
-		NewNode(2, "127.0.0.1:8142", suite, keyPackages[1]),
-		NewNode(3, "127.0.0.1:8143", suite, keyPackages[2]),
+		NewNode(1, "127.0.0.1:0", suite, keyPackages[0]),
+		NewNode(2, "127.0.0.1:0", suite, keyPackages[1]),
+		NewNode(3, "127.0.0.1:0", suite, keyPackages[2]),
 	}
 
 	// Start nodes
@@ -568,11 +573,7 @@ func TestSessionIsolation(t *testing.T) {
 	}
 
 	// Create two coordinators for parallel sessions with all nodes for verification
-	nodeAddrs := map[frost.Identifier]string{
-		1: "127.0.0.1:8141",
-		2: "127.0.0.1:8142",
-		3: "127.0.0.1:8143",
-	}
+	nodeAddrs := addrsOf(nodes...)
 
 	coordinator1 := NewNetworkCoordinator(
 		suite,
@@ -669,8 +670,7 @@ func TestLargeScaleDistributed(t *testing.T) {
 	// Create 7 nodes
 	nodes := make([]*Node, 7)
 	for i := 0; i < 7; i++ {
-		port := 8151 + i
-		nodes[i] = NewNode(frost.Identifier(i+1), fmt.Sprintf("127.0.0.1:%d", port), suite, keyPackages[i])
+		nodes[i] = NewNode(frost.Identifier(i+1), "127.0.0.1:0", suite, keyPackages[i])
 	}
 
 	// Start all nodes
@@ -682,10 +682,7 @@ func TestLargeScaleDistributed(t *testing.T) {
 	}
 
 	// Create coordinator with all nodes for verification
-	nodeAddrs := make(map[frost.Identifier]string)
-	for i := 0; i < 7; i++ {
-		nodeAddrs[frost.Identifier(i+1)] = fmt.Sprintf("127.0.0.1:%d", 8151+i)
-	}
+	nodeAddrs := addrsOf(nodes...)
 
 	coordinator := NewNetworkCoordinator(
 		suite,

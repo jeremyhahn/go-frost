@@ -118,6 +118,17 @@ test:
 		echo "Skipping internal/ (no Go packages found)"; \
 	fi
 
+.PHONY: integration-test
+## integration-test: Run the build-tagged integration suite (devops.md §4)
+# Runs the distributed transport suite directly rather than through Docker.
+# The nodes bind port 0 and peers are told the address the kernel assigned, so
+# concurrent runs on one host — several CI jobs, or a developer alongside CI —
+# cannot collide. test-transport below runs the same suite inside a container
+# when that extra isolation is wanted.
+integration-test:
+	@echo "Running integration tests..."
+	@$(GOTEST) -tags=integration -race -timeout 300s ./test/...
+
 .PHONY: test-transport
 ## test-transport: Run distributed network transport tests in Docker
 test-transport:

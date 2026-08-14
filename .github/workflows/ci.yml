@@ -201,6 +201,31 @@ jobs:
         flags: unittests
         fail_ci_if_error: false
 
+  integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    timeout-minutes: 20
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+
+    - name: Set up Go
+      uses: actions/setup-go@v6
+      with:
+        go-version-file: 'go.mod'
+        cache: true
+
+    # The build-tagged suite under test/ — a real distributed FROST exchange
+    # over HTTP between in-process participant nodes. It had never been run by
+    # any workflow before 2026-08-14. make integration-test is the same target
+    # a developer runs (devops.md §4); the nodes bind port 0, so this is safe
+    # to run concurrently with other jobs even though job containers share the
+    # host network namespace.
+    - name: Run integration suite
+      run: make integration-test
+
   build:
     name: Build
     runs-on: ubuntu-latest
@@ -246,7 +271,7 @@ jobs:
     name: CI Gate
     runs-on: ubuntu-latest
     if: always()
-    needs: [lint, security, trivy, trivy-image, test, build]
+    needs: [lint, security, trivy, trivy-image, test, integration, build]
 
     steps:
     - name: Fail closed on any non-success
@@ -258,5 +283,6 @@ jobs:
         check trivy       "${{ needs.trivy.result }}"
         check trivy-image "${{ needs.trivy-image.result }}"
         check test        "${{ needs.test.result }}"
+        check integration "${{ needs.integration.result }}"
         check build       "${{ needs.build.result }}"
         exit $BAD
