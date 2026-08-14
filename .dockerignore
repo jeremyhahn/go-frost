@@ -45,3 +45,10 @@ Thumbs.db
 # Docker files themselves
 .dockerignore
 Dockerfile
+
+# BuildKit credential staging file (dependency-resolution.md §6). The canonical
+# Gitea module-credential pattern mounts these variables via
+# --mount=type=secret and the file is meant to live OUTSIDE the build context;
+# this line is the second line of defence, so that a copy landing in the tree
+# by accident can never be baked into a layer by a broad COPY.
+gomodauth*
