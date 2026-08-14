@@ -10,6 +10,12 @@ on:
     branches: [ main, develop ]
   pull_request:
     branches: [ main, develop ]
+  # Re-run by hand without an empty commit. Jobs here occasionally fail on
+  # transient infrastructure rather than on the tree — the Trivy installer
+  # resolves its version through the unauthenticated GitHub API, which is
+  # rate-limited when the whole portfolio builds at once — and this Gitea
+  # build exposes no rerun API (devops.md §5).
+  workflow_dispatch:
 
 permissions:
   contents: read
