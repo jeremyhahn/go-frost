@@ -62,6 +62,9 @@ const (
 	DataTypeSignatureShare
 )
 
+// unknownDataTypeName is the name String reports for an unrecognized DataType.
+const unknownDataTypeName = "Unknown"
+
 // String returns a human-readable name for the data type
 func (dt DataType) String() string {
 	switch dt {
@@ -80,7 +83,7 @@ func (dt DataType) String() string {
 	case DataTypeSignatureShare:
 		return "SignatureShare"
 	default:
-		return "Unknown"
+		return unknownDataTypeName
 	}
 }
 

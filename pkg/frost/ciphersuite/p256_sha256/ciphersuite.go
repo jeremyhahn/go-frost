@@ -17,6 +17,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"math/big"
+	"slices"
 
 	"github.com/jeremyhahn/go-frost/pkg/frost"
 	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite"
@@ -135,7 +136,7 @@ func (cs *P256SHA256) HashToCurve(data []byte) (group.Element, error) {
 	for i := 0; i < 256; i++ {
 		// Hash the input with counter
 		counterBuf := []byte{byte(i)}
-		hashInput := append(input, counterBuf...)
+		hashInput := slices.Concat(input, counterBuf)
 		hash := cs.Hash(hashInput)
 
 		// Try to construct a point from the hash
@@ -282,7 +283,7 @@ func expandMessageXMD(msg, dst []byte, lenInBytes int) []byte {
 	}
 
 	// Step 3: DST_prime = DST || I2OSP(len(DST), 1)
-	dstPrime := append(dst, byte(len(dst)))
+	dstPrime := slices.Concat(dst, []byte{byte(len(dst))})
 
 	// Step 4: Z_pad = I2OSP(0, s_in_bytes)
 	zPad := make([]byte, sInBytes)

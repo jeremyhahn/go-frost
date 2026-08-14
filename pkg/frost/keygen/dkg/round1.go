@@ -124,7 +124,7 @@ func computeProofOfKnowledge(
 func computeChallenge(
 	identifier frost.Identifier,
 	commitment group.Element,
-	R group.Element,
+	R group.Element, //nolint:gocritic // R is the RFC 9591 / Schnorr name for the commitment point; lowercase r conventionally denotes the nonce scalar.
 	suite ciphersuite.Ciphersuite,
 ) group.Scalar {
 	grp := suite.Group()

@@ -100,11 +100,18 @@ func safeIntToUint16(v int) uint16 {
 func main() {
 	// Initialize secure memory subsystem (mlock, interrupt handlers)
 	secmem.Init()
+	os.Exit(run())
+}
+
+// run dispatches the requested subcommand and returns the process exit code.
+// It is kept separate from main so that the deferred secmem.Purge still runs
+// on the failure paths; os.Exit does not run deferred functions.
+func run() int {
 	defer secmem.Purge()
 
 	if len(os.Args) < 2 {
 		printUsage()
-		os.Exit(1)
+		return 1
 	}
 
 	switch os.Args[1] {
@@ -131,8 +138,10 @@ func main() {
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n\n", os.Args[1])
 		printUsage()
-		os.Exit(1)
+		return 1
 	}
+
+	return 0
 }
 
 func printVersion() {

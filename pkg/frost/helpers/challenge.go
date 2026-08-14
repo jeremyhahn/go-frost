@@ -1,6 +1,8 @@
 package helpers
 
 import (
+	"slices"
+
 	"github.com/jeremyhahn/go-frost/pkg/frost"
 	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite"
 	"github.com/jeremyhahn/go-frost/pkg/frost/group"
@@ -59,8 +61,7 @@ func (c *challengeComputer) Compute(groupCommitment group.Element, groupPublicKe
 	groupPublicKeyBytes := groupPublicKey.Bytes()
 
 	// 3. Compute challenge_input = group_commitment_enc || group_public_key_enc || msg
-	challengeInput := append(groupCommitmentBytes, groupPublicKeyBytes...)
-	challengeInput = append(challengeInput, msg...)
+	challengeInput := slices.Concat(groupCommitmentBytes, groupPublicKeyBytes, msg)
 
 	// 4. Return H2(challenge_input)
 	challenge := c.suite.H2(challengeInput)

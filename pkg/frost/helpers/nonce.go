@@ -5,6 +5,7 @@ package helpers
 
 import (
 	cryptorand "crypto/rand"
+	"slices"
 
 	"github.com/jeremyhahn/go-frost/pkg/frost"
 	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite"
@@ -72,7 +73,7 @@ func (n *nonceGenerator) Generate(secret group.Scalar) (group.Scalar, error) {
 	secretBytes := secret.Bytes()
 
 	// Step 3: Concatenate random_bytes || secret_enc
-	input := append(randomBytes, secretBytes...)
+	input := slices.Concat(randomBytes, secretBytes)
 
 	// Step 4: Compute H3(random_bytes || secret_enc) and return
 	nonce := n.suite.H3(input)

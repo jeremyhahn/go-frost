@@ -256,6 +256,10 @@ func (s *ErrorSanitizer) sanitizeDevelopment(msg string) string {
 	return strings.TrimSpace(msg)
 }
 
+// msgCommitmentValidationFailed is the common prefix of every sanitized
+// commitment validation failure message.
+const msgCommitmentValidationFailed = "commitment validation failed"
+
 // SanitizeCommitmentError creates a sanitized error for commitment-related failures.
 // Preserves participant/session information based on configuration.
 func (s *ErrorSanitizer) SanitizeCommitmentError(sessionID string, participantID interface{}, baseErr error) error {
@@ -267,12 +271,13 @@ func (s *ErrorSanitizer) SanitizeCommitmentError(sessionID string, participantID
 	sanitizedBase := s.Sanitize(baseErr)
 
 	var msg string
-	if s.config.AllowParticipantID && s.config.AllowSessionID {
-		msg = fmt.Sprintf("commitment validation failed for participant %v in session %s", participantID, sessionID)
-	} else if s.config.AllowParticipantID {
-		msg = fmt.Sprintf("commitment validation failed for participant %v", participantID)
-	} else {
-		msg = "commitment validation failed"
+	switch {
+	case s.config.AllowParticipantID && s.config.AllowSessionID:
+		msg = fmt.Sprintf(msgCommitmentValidationFailed+" for participant %v in session %s", participantID, sessionID)
+	case s.config.AllowParticipantID:
+		msg = fmt.Sprintf(msgCommitmentValidationFailed+" for participant %v", participantID)
+	default:
+		msg = msgCommitmentValidationFailed
 	}
 
 	return fmt.Errorf("%s: %w", msg, sanitizedBase)

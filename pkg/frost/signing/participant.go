@@ -8,6 +8,7 @@ package signing
 
 import (
 	"crypto/rand"
+	"slices"
 
 	"github.com/jeremyhahn/go-frost/pkg/frost"
 	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite"
@@ -111,7 +112,7 @@ func (p *participant) RoundOne() (frost.SigningNonces, frost.SigningCommitments,
 
 	// Use H3 to generate hiding nonce: H3(random_bytes || secret)
 	hidingSecretBytes := p.keyPackage.SecretShare.Bytes()
-	hidingInput := append(hidingRandomBytes, hidingSecretBytes...)
+	hidingInput := slices.Concat(hidingRandomBytes, hidingSecretBytes)
 	hidingNonce := p.suite.H3(hidingInput)
 
 	// Zero ephemeral secret data
@@ -127,7 +128,7 @@ func (p *participant) RoundOne() (frost.SigningNonces, frost.SigningCommitments,
 
 	// Use H3 to generate binding nonce: H3(random_bytes || secret)
 	bindingSecretBytes := p.keyPackage.SecretShare.Bytes()
-	bindingInput := append(bindingRandomBytes, bindingSecretBytes...)
+	bindingInput := slices.Concat(bindingRandomBytes, bindingSecretBytes)
 	bindingNonce := p.suite.H3(bindingInput)
 
 	// Zero ephemeral secret data

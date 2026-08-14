@@ -1,6 +1,8 @@
 package helpers
 
 import (
+	"slices"
+
 	"github.com/jeremyhahn/go-frost/pkg/frost"
 	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite"
 	"github.com/jeremyhahn/go-frost/pkg/frost/group"
@@ -85,8 +87,7 @@ func (b *bindingFactorComputer) Compute(groupPublicKey group.Element, commitment
 	encodedCommitmentHash := b.suite.H5(encodedCommitmentList)
 
 	// 4. Create rho_input_prefix = group_public_key_enc || msg_hash || encoded_commitment_hash
-	rhoInputPrefix := append(groupPublicKeyBytes, msgHash...)
-	rhoInputPrefix = append(rhoInputPrefix, encodedCommitmentHash...)
+	rhoInputPrefix := slices.Concat(groupPublicKeyBytes, msgHash, encodedCommitmentHash)
 
 	// 5. For each participant, compute binding factor
 	bindingFactors := make(frost.BindingFactorList, len(commitmentList))

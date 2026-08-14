@@ -20,6 +20,7 @@ package ed25519_sha512
 import (
 	"bytes"
 	"crypto/sha512"
+	"slices"
 
 	"filippo.io/edwards25519"
 
@@ -159,7 +160,7 @@ func (cs *Ed25519SHA512) HashToCurve(data []byte) (group.Element, error) {
 	for i := 0; i < 256; i++ {
 		// Hash the input with counter
 		counterBuf := []byte{byte(i)}
-		hashInput := append(input, counterBuf...)
+		hashInput := slices.Concat(input, counterBuf)
 		hash := cs.Hash(hashInput)
 
 		// Try to decode the first 32 bytes as a point

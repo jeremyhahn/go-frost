@@ -23,6 +23,7 @@ package ed448_shake256
 
 import (
 	"bytes"
+	"slices"
 
 	"github.com/cloudflare/circl/ecc/goldilocks"
 	"golang.org/x/crypto/sha3"
@@ -183,7 +184,7 @@ func (cs *Ed448SHAKE256) HashToCurve(data []byte) (group.Element, error) {
 	for i := 0; i < 256; i++ {
 		// Hash the input with counter using SHAKE256
 		counterBuf := []byte{byte(i)}
-		hashInput := append(input, counterBuf...)
+		hashInput := slices.Concat(input, counterBuf)
 
 		hash := sha3.NewShake256()
 		if _, err := hash.Write(hashInput); err != nil {
