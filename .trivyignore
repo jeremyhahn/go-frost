@@ -1,0 +1,14 @@
+# Trivy ignore list for go-frost.
+#
+# The gate is a SOURCE filesystem scan (trivy fs) of the shipped Go module plus
+# an image scan of the container this repository builds, both failing on
+# CRITICAL/HIGH (conventions/devops.md §8). test/ is skipped on the filesystem
+# scan: it holds the transport harness and RFC 9591 vectors, none of which ship
+# to a consumer of the library.
+#
+# Add specific advisory IDs below ONLY when a finding is confirmed
+# not-applicable or unfixable, with a one-line justification AND the date it
+# was accepted. An entry without both is a defect.
+#
+# Example:
+# CVE-XXXX-XXXXX  # 2026-01-01 <reason this advisory does not apply to go-frost>

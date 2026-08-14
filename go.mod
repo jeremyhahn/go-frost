@@ -10,7 +10,7 @@ require (
 	github.com/gtank/ristretto255 v0.2.0
 	github.com/stretchr/testify v1.11.1
 	gitlab.com/yawning/secp256k1-voi v0.0.0-20230925100816-f2616030848b
-	golang.org/x/crypto v0.51.0
+	golang.org/x/crypto v0.52.0
 )
 
 require (

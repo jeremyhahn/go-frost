@@ -24,6 +24,7 @@ linters:
     - bodyclose
     - noctx
     - whitespace
+    - gocritic
   disable:
     - prealloc
 
@@ -75,6 +76,7 @@ linters:
           - unparam
           - errcheck
           - goconst
+          - gocritic
           - ineffassign
           - revive
           - staticcheck
@@ -84,6 +86,7 @@ linters:
           - unparam
           - errcheck
           - goconst
+          - gocritic
           - ineffassign
           - revive
           - staticcheck
@@ -94,6 +97,7 @@ linters:
           - unparam
           - errcheck
           - goconst
+          - gocritic
           - ineffassign
           - revive
           - staticcheck

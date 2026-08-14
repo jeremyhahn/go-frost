@@ -232,9 +232,39 @@ staticcheck:
 	@go install honnef.co/go/tools/cmd/staticcheck@latest
 	$$(go env GOPATH)/bin/staticcheck ./...
 
+.PHONY: modverify
+## modverify: Verify module integrity against go.sum
+modverify:
+	@echo "Verifying module integrity..."
+	$(GOMOD) verify
+
+.PHONY: trivy
+## trivy: Filesystem CVE/secret scan, gated on CRITICAL/HIGH
+# test/ holds the transport harness and RFC vectors; nothing under it ships to
+# a consumer of the library, so its dependencies are out of scope for the gate.
+trivy:
+	@command -v trivy >/dev/null 2>&1 || { \
+		echo "trivy not installed - skipping filesystem scan (see https://trivy.dev/latest/getting-started/installation/)"; \
+		exit 0; \
+	}; \
+	trivy fs --scanners vuln,secret --severity CRITICAL,HIGH --exit-code 1 --skip-dirs test .
+
+.PHONY: trivy-image
+## trivy-image: Build the container image and scan it, gated on CRITICAL/HIGH
+trivy-image:
+	@command -v docker >/dev/null 2>&1 || { echo "docker not installed - skipping image scan"; exit 0; }; \
+	command -v trivy >/dev/null 2>&1 || { echo "trivy not installed - skipping image scan"; exit 0; }; \
+	docker build -t $(DOCKER_IMAGE):$(DOCKER_TAG) . && \
+	trivy image --scanners vuln,secret --severity CRITICAL,HIGH --exit-code 1 $(DOCKER_IMAGE):$(DOCKER_TAG)
+
+.PHONY: security
+## security: Full security suite (devops.md §8) - gosec, govulncheck, go mod verify, trivy fs + image
+security: gosec govulncheck modverify trivy trivy-image
+	@echo "Security suite passed"
+
 .PHONY: ci
 ## ci: Run all CI checks (lint, security, static analysis, tests, build)
-ci: tidy vet lint staticcheck gosec govulncheck test build build-lib
+ci: tidy vet lint staticcheck security test build build-lib
 	@echo ""
 	@echo "========================================"
 	@echo "CI pipeline completed successfully!"
