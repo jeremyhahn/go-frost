@@ -1,6 +1,6 @@
 module github.com/jeremyhahn/go-frost
 
-go 1.26.5
+go 1.26.6
 
 require (
 	filippo.io/bigmod v0.1.0
