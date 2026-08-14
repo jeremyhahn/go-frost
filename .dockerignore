@@ -1,0 +1,47 @@
+# Keep the build context small and reproducible.
+#
+# Both Dockerfiles here use `COPY . .`, so anything not excluded is baked into
+# the image: .git alone is usually larger than the source, and host-built
+# binaries can shadow what the image is supposed to compile itself.
+
+# VCS and CI config — never needed inside the image
+.git/
+.gitignore
+.gitattributes
+.github/
+
+# Host-built binaries and build output
+/frost
+dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test and coverage artifacts, regenerated in the container
+coverage/
+*.test
+*.out
+*.coverprofile
+*.prof
+
+# A stray go.work silently changes module resolution inside the build
+go.work
+go.work.sum
+vendor/
+
+# Editor, agent and OS noise
+.idea/
+.vscode/
+.claude/
+.serena/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Docker files themselves
+.dockerignore
+Dockerfile
