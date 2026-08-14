@@ -1,6 +1,7 @@
 package keystore
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -47,6 +48,90 @@ func setupTestStore(t *testing.T) (KeyStore, string, group.Group) {
 	}
 
 	return store, tmpDir, g
+}
+
+// errStorageInjected is the failure faultyStorage reports for armed operations.
+var errStorageInjected = errors.New("injected storage failure")
+
+// faultyStorage wraps a StorageBackend and fails the operations it has been
+// armed with. Storage failures cannot be provoked by revoking directory
+// permissions: CI runs the job container as root, and root bypasses the
+// discretionary access checks that would deny the operation everywhere else.
+type faultyStorage struct {
+	StorageBackend
+	armed map[string]bool
+}
+
+// fail arms the named operations so every later call to them returns
+// errStorageInjected, letting a test populate the store before the fault.
+func (f *faultyStorage) fail(ops ...string) {
+	if f.armed == nil {
+		f.armed = make(map[string]bool, len(ops))
+	}
+	for _, op := range ops {
+		f.armed[op] = true
+	}
+}
+
+func (f *faultyStorage) Put(key string, data []byte, opts *PutOptions) error {
+	if f.armed["Put"] {
+		return errStorageInjected
+	}
+	return f.StorageBackend.Put(key, data, opts)
+}
+
+func (f *faultyStorage) Get(key string) ([]byte, error) {
+	if f.armed["Get"] {
+		return nil, errStorageInjected
+	}
+	return f.StorageBackend.Get(key)
+}
+
+func (f *faultyStorage) Delete(key string) error {
+	if f.armed["Delete"] {
+		return errStorageInjected
+	}
+	return f.StorageBackend.Delete(key)
+}
+
+func (f *faultyStorage) Exists(key string) (bool, error) {
+	if f.armed["Exists"] {
+		return false, errStorageInjected
+	}
+	return f.StorageBackend.Exists(key)
+}
+
+func (f *faultyStorage) List(prefix string) ([]string, error) {
+	if f.armed["List"] {
+		return nil, errStorageInjected
+	}
+	return f.StorageBackend.List(prefix)
+}
+
+// setupFaultyStore creates a keystore over a faultyStorage backend, returning
+// the backend so the test can arm it once the fixture is in place.
+func setupFaultyStore(t *testing.T) (KeyStore, *faultyStorage, group.Group) {
+	t.Helper()
+
+	g := ristretto255.NewGroup()
+
+	backend, err := NewFileStorage(t.TempDir())
+	if err != nil {
+		t.Fatalf("Failed to create storage: %v", err)
+	}
+	storage := &faultyStorage{StorageBackend: backend}
+
+	store, err := NewKeychainStore(&Config{
+		Group:   g,
+		Storage: storage,
+		Tags:    map[string]string{"test": "true"},
+	})
+	if err != nil {
+		t.Fatalf("Failed to create keystore: %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	return store, storage, g
 }
 
 // generateTestKeyPackages creates test key packages using the dealer.
@@ -709,12 +794,11 @@ func TestFileStorage_NewFileStorage_Error(t *testing.T) {
 }
 
 func TestFileStorage_Put_Error(t *testing.T) {
-	tmpDir := filepath.Join(os.TempDir(), "frost-test-put-error")
+	tmpDir := t.TempDir()
 	storage, err := NewFileStorage(tmpDir)
 	if err != nil {
 		t.Fatalf("Failed to create storage: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
 	defer storage.Close()
 
 	// Store a value
@@ -723,14 +807,17 @@ func TestFileStorage_Put_Error(t *testing.T) {
 		t.Fatalf("Put() error = %v", err)
 	}
 
-	// Now make the directory read-only to cause error
-	os.Chmod(tmpDir, 0400)
-	defer os.Chmod(tmpDir, 0700)
+	// Put has to create the parent directory of the key. Occupying that path
+	// with a regular file fails the write with ENOTDIR for every user,
+	// including the root that CI runs the job container as.
+	blocker := filepath.Join(tmpDir, "blocked")
+	if err := os.WriteFile(blocker, []byte("not a directory"), 0600); err != nil {
+		t.Fatalf("Failed to create blocking file: %v", err)
+	}
 
-	// Try to write again - should fail
-	err = storage.Put("test-key-2", []byte("test-value"), DefaultPutOptions())
+	err = storage.Put("blocked/test-key-2", []byte("test-value"), DefaultPutOptions())
 	if err == nil {
-		t.Error("Expected error when writing to read-only directory")
+		t.Error("Expected error when the key's parent path is not a directory")
 	}
 }
 
@@ -1259,9 +1346,7 @@ func TestKeychainStore_ToKeyPackage_VerificationShareError(t *testing.T) {
 }
 
 func TestKeychainStore_GetKeyPackage_StorageError(t *testing.T) {
-	store, tmpDir, g := setupTestStore(t)
-	defer os.RemoveAll(tmpDir)
-	defer store.Close()
+	store, storage, g := setupFaultyStore(t)
 
 	// Store a key package
 	keyPackages := generateTestKeyPackages(t, g, 2, 3)
@@ -1272,21 +1357,17 @@ func TestKeychainStore_GetKeyPackage_StorageError(t *testing.T) {
 		t.Fatalf("Failed to store key package: %v", err)
 	}
 
-	// Make directory read-only to cause storage error
-	os.Chmod(tmpDir, 0000)
-	defer os.Chmod(tmpDir, 0700)
+	storage.fail("Get")
 
 	// Try to get - should fail with storage error
 	_, _, err = store.GetKeyPackage(keyID)
-	if err == nil {
-		t.Error("Expected storage error")
+	if !errors.Is(err, errStorageInjected) {
+		t.Errorf("Expected storage error, got %v", err)
 	}
 }
 
 func TestKeychainStore_DeleteKeyPackage_StorageError(t *testing.T) {
-	store, tmpDir, g := setupTestStore(t)
-	defer os.RemoveAll(tmpDir)
-	defer store.Close()
+	store, storage, g := setupFaultyStore(t)
 
 	// Store a key package
 	keyPackages := generateTestKeyPackages(t, g, 2, 3)
@@ -1297,21 +1378,17 @@ func TestKeychainStore_DeleteKeyPackage_StorageError(t *testing.T) {
 		t.Fatalf("Failed to store key package: %v", err)
 	}
 
-	// Make directory read-only to cause storage error
-	os.Chmod(tmpDir, 0000)
-	defer os.Chmod(tmpDir, 0700)
+	storage.fail("Delete")
 
 	// Try to delete - should fail with storage error
 	err = store.DeleteKeyPackage(keyID)
-	if err == nil {
-		t.Error("Expected storage error")
+	if !errors.Is(err, errStorageInjected) {
+		t.Errorf("Expected storage error, got %v", err)
 	}
 }
 
 func TestKeychainStore_GetGroupPublicKey_StorageError(t *testing.T) {
-	store, tmpDir, g := setupTestStore(t)
-	defer os.RemoveAll(tmpDir)
-	defer store.Close()
+	store, storage, g := setupFaultyStore(t)
 
 	// Store a group
 	keyPackages := generateTestKeyPackages(t, g, 2, 3)
@@ -1322,21 +1399,17 @@ func TestKeychainStore_GetGroupPublicKey_StorageError(t *testing.T) {
 		t.Fatalf("Failed to store group: %v", err)
 	}
 
-	// Make directory read-only to cause storage error
-	os.Chmod(tmpDir, 0000)
-	defer os.Chmod(tmpDir, 0700)
+	storage.fail("Get")
 
 	// Try to get - should fail with storage error
 	_, err = store.GetGroupPublicKey(groupID)
-	if err == nil {
-		t.Error("Expected storage error")
+	if !errors.Is(err, errStorageInjected) {
+		t.Errorf("Expected storage error, got %v", err)
 	}
 }
 
 func TestKeychainStore_DeleteGroupPublicKey_StorageError(t *testing.T) {
-	store, tmpDir, g := setupTestStore(t)
-	defer os.RemoveAll(tmpDir)
-	defer store.Close()
+	store, storage, g := setupFaultyStore(t)
 
 	// Store a group
 	keyPackages := generateTestKeyPackages(t, g, 2, 3)
@@ -1347,53 +1420,41 @@ func TestKeychainStore_DeleteGroupPublicKey_StorageError(t *testing.T) {
 		t.Fatalf("Failed to store group: %v", err)
 	}
 
-	// Make directory read-only to cause storage error
-	os.Chmod(tmpDir, 0000)
-	defer os.Chmod(tmpDir, 0700)
+	storage.fail("Delete")
 
 	// Try to delete - should fail with storage error
 	err = store.DeleteGroupPublicKey(groupID)
-	if err == nil {
-		t.Error("Expected storage error")
+	if !errors.Is(err, errStorageInjected) {
+		t.Errorf("Expected storage error, got %v", err)
 	}
 }
 
 func TestKeychainStore_KeyPackageExists_StorageError(t *testing.T) {
-	store, tmpDir, _ := setupTestStore(t)
-	defer os.RemoveAll(tmpDir)
-	defer store.Close()
+	store, storage, _ := setupFaultyStore(t)
 
-	// Make directory inaccessible
-	os.Chmod(tmpDir, 0000)
-	defer os.Chmod(tmpDir, 0700)
+	storage.fail("Exists")
 
 	// Should fail with storage error
 	_, err := store.KeyPackageExists("test-key")
-	if err == nil {
-		t.Error("Expected storage error")
+	if !errors.Is(err, errStorageInjected) {
+		t.Errorf("Expected storage error, got %v", err)
 	}
 }
 
 func TestKeychainStore_GroupExists_StorageError(t *testing.T) {
-	store, tmpDir, _ := setupTestStore(t)
-	defer os.RemoveAll(tmpDir)
-	defer store.Close()
+	store, storage, _ := setupFaultyStore(t)
 
-	// Make directory inaccessible
-	os.Chmod(tmpDir, 0000)
-	defer os.Chmod(tmpDir, 0700)
+	storage.fail("Exists")
 
 	// Should fail with storage error
 	_, err := store.GroupExists("test-group")
-	if err == nil {
-		t.Error("Expected storage error")
+	if !errors.Is(err, errStorageInjected) {
+		t.Errorf("Expected storage error, got %v", err)
 	}
 }
 
 func TestKeychainStore_StoreKeyPackage_ExistsError(t *testing.T) {
-	store, tmpDir, g := setupTestStore(t)
-	defer os.RemoveAll(tmpDir)
-	defer store.Close()
+	store, storage, g := setupFaultyStore(t)
 
 	keyPackages := generateTestKeyPackages(t, g, 2, 3)
 	kp := &keyPackages[0]
@@ -1405,21 +1466,17 @@ func TestKeychainStore_StoreKeyPackage_ExistsError(t *testing.T) {
 		t.Fatalf("Failed to store key package: %v", err)
 	}
 
-	// Make directory read-only to cause storage.Exists error
-	os.Chmod(tmpDir, 0000)
-	defer os.Chmod(tmpDir, 0700)
+	storage.fail("Exists")
 
 	// Try to store again - should fail with storage error during Exists check
 	err = store.StoreKeyPackage(keyID+"2", "group", kp, 2, 3)
-	if err == nil {
-		t.Error("Expected storage error during Exists check")
+	if !errors.Is(err, errStorageInjected) {
+		t.Errorf("Expected storage error during Exists check, got %v", err)
 	}
 }
 
 func TestKeychainStore_StoreGroupPublicKey_ExistsError(t *testing.T) {
-	store, tmpDir, g := setupTestStore(t)
-	defer os.RemoveAll(tmpDir)
-	defer store.Close()
+	store, storage, g := setupFaultyStore(t)
 
 	keyPackages := generateTestKeyPackages(t, g, 2, 3)
 	groupPublicKey := keyPackages[0].GroupPublicKey
@@ -1431,21 +1488,17 @@ func TestKeychainStore_StoreGroupPublicKey_ExistsError(t *testing.T) {
 		t.Fatalf("Failed to store group: %v", err)
 	}
 
-	// Make directory read-only to cause storage.Exists error
-	os.Chmod(tmpDir, 0000)
-	defer os.Chmod(tmpDir, 0700)
+	storage.fail("Exists")
 
 	// Try to store another group - should fail with storage error during Exists check
 	err = store.StoreGroupPublicKey(groupID+"2", groupPublicKey, 2, 3)
-	if err == nil {
-		t.Error("Expected storage error during Exists check")
+	if !errors.Is(err, errStorageInjected) {
+		t.Errorf("Expected storage error during Exists check, got %v", err)
 	}
 }
 
 func TestKeychainStore_UpdateMetadata_StorageError(t *testing.T) {
-	store, tmpDir, g := setupTestStore(t)
-	defer os.RemoveAll(tmpDir)
-	defer store.Close()
+	store, storage, g := setupFaultyStore(t)
 
 	// Store a key package
 	keyPackages := generateTestKeyPackages(t, g, 2, 3)
@@ -1462,45 +1515,62 @@ func TestKeychainStore_UpdateMetadata_StorageError(t *testing.T) {
 		t.Fatalf("Failed to get key package: %v", err)
 	}
 
-	// Make directory read-only to cause storage error
-	os.Chmod(tmpDir, 0000)
-	defer os.Chmod(tmpDir, 0700)
+	storage.fail("Get")
 
 	// Try to update - should fail with storage error
 	err = store.UpdateMetadata(keyID, metadata)
-	if err == nil {
-		t.Error("Expected storage error")
+	if !errors.Is(err, errStorageInjected) {
+		t.Errorf("Expected storage error, got %v", err)
+	}
+}
+
+func TestKeychainStore_UpdateMetadata_PutError(t *testing.T) {
+	store, storage, g := setupFaultyStore(t)
+
+	// Store a key package
+	keyPackages := generateTestKeyPackages(t, g, 2, 3)
+	kp := &keyPackages[0]
+	keyID := "update-put-test"
+	err := store.StoreKeyPackage(keyID, "group", kp, 2, 3)
+	if err != nil {
+		t.Fatalf("Failed to store key package: %v", err)
+	}
+
+	// Get metadata
+	_, metadata, err := store.GetKeyPackage(keyID)
+	if err != nil {
+		t.Fatalf("Failed to get key package: %v", err)
+	}
+
+	storage.fail("Put")
+
+	// The read-back succeeds, so this exercises the write-back failure
+	err = store.UpdateMetadata(keyID, metadata)
+	if !errors.Is(err, errStorageInjected) {
+		t.Errorf("Expected storage error, got %v", err)
 	}
 }
 
 func TestKeychainStore_ListKeyPackages_StorageError(t *testing.T) {
-	store, tmpDir, _ := setupTestStore(t)
-	defer os.RemoveAll(tmpDir)
-	defer store.Close()
+	store, storage, _ := setupFaultyStore(t)
 
-	// Make directory inaccessible
-	os.Chmod(tmpDir, 0000)
-	defer os.Chmod(tmpDir, 0700)
+	storage.fail("List")
 
 	// Should fail with storage error
 	_, err := store.ListKeyPackages("")
-	if err == nil {
-		t.Error("Expected storage error")
+	if !errors.Is(err, errStorageInjected) {
+		t.Errorf("Expected storage error, got %v", err)
 	}
 }
 
 func TestKeychainStore_ListGroups_StorageError(t *testing.T) {
-	store, tmpDir, _ := setupTestStore(t)
-	defer os.RemoveAll(tmpDir)
-	defer store.Close()
+	store, storage, _ := setupFaultyStore(t)
 
-	// Make directory inaccessible
-	os.Chmod(tmpDir, 0000)
-	defer os.Chmod(tmpDir, 0700)
+	storage.fail("List")
 
 	// Should fail with storage error
 	_, err := store.ListGroups()
-	if err == nil {
-		t.Error("Expected storage error")
+	if !errors.Is(err, errStorageInjected) {
+		t.Errorf("Expected storage error, got %v", err)
 	}
 }
