@@ -263,6 +263,27 @@ jobs:
           frost
           dist/
 
+  fips:
+    name: FIPS
+    runs-on: ubuntu-latest
+    needs: [build]
+    timeout-minutes: 30
+    env:
+      GOFIPS140: latest
+      GODEBUG: fips140=on
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: 'go.mod'
+
+      - name: Build all packages (FIPS mode)
+        run: go build ./...
+
+      - name: Unit tests (FIPS mode)
+        run: go test -count=1 -timeout=900s ./...
+
   # The single required check (devops.md §1). Every job above appears in BOTH
   # the needs list and the results check -- a gate that can pass vacuously is
   # worse than no gate. join(needs.*.result) is deliberately not used: it
@@ -271,7 +292,7 @@ jobs:
     name: CI Gate
     runs-on: ubuntu-latest
     if: always()
-    needs: [lint, security, trivy, trivy-image, test, integration, build]
+    needs: [lint, security, trivy, trivy-image, test, integration, build, fips]
 
     steps:
     - name: Fail closed on any non-success
@@ -285,4 +306,5 @@ jobs:
         check test        "${{ needs.test.result }}"
         check integration "${{ needs.integration.result }}"
         check build       "${{ needs.build.result }}"
+        check fips        "${{ needs.fips.result }}"
         exit $BAD
