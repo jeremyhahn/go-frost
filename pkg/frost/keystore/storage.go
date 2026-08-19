@@ -5,11 +5,19 @@
 
 package keystore
 
+import (
+	"github.com/jeremyhahn/go-frost/pkg/secmem"
+)
+
 // StorageBackend defines the interface for pluggable storage implementations.
 //
-// This interface is compatible with go-objstore's Get/Put/Delete operations
-// and allows applications to provide their own storage implementations
-// (file-based, DHT, cloud storage, etc.).
+// The Put/Get pair is compatible with go-objstore's Get/Put/Delete operations
+// and carries public material (group public keys). Secret-bearing payloads -
+// serialized key packages - go through the PutSecret/GetSecret pair instead,
+// so that a serialized secret share is never held or returned as a plain
+// []byte. Implementations that wrap a []byte-oriented backend must keep any
+// transient plaintext as short-lived as possible and zeroize it before
+// returning.
 //
 // All implementations MUST be thread-safe.
 type StorageBackend interface {
@@ -69,6 +77,46 @@ type StorageBackend interface {
 	// Returns:
 	//   - error: Any error that occurred during cleanup
 	Close() error
+
+	// PutSecret stores secret-bearing data at the given key.
+	// If the key already exists, it is overwritten.
+	//
+	// The payload is supplied in protected memory. Implementations MUST NOT
+	// retain it as a plain []byte: any plaintext needed to reach the
+	// underlying medium must be zeroized before returning. The caller retains
+	// ownership of data, so implementations that keep the payload in memory
+	// must store an independent copy (see secmem.Clone).
+	//
+	// Parameters:
+	//   - key: Storage key (e.g., "frost/keypackages/key-123.json")
+	//   - data: Secret data held in protected memory
+	//   - opts: Optional storage options (permissions, metadata, etc.)
+	//
+	// Returns:
+	//   - error: Any error that occurred during storage
+	PutSecret(key string, data *secmem.SecretBytes, opts *PutOptions) error
+
+	// GetSecret retrieves secret-bearing data for the given key, returning it
+	// in protected memory.
+	//
+	// The caller owns the returned SecretBytes and is responsible for
+	// destroying it once it is no longer needed.
+	//
+	// GetSecret is not necessarily a pure read. An implementation that can
+	// hold a value either in the clear or in protected memory MAY migrate it
+	// on the way out - moving a value written through the plain Put path into
+	// protected memory, and leaving no plaintext behind - so that a key
+	// package written by an older revision does not stay resident in the
+	// clear. NewMemoryStorage does exactly this. Callers must not assume the
+	// backend is unchanged by a GetSecret.
+	//
+	// Parameters:
+	//   - key: Storage key to retrieve
+	//
+	// Returns:
+	//   - *secmem.SecretBytes: The stored data, sealed in protected memory
+	//   - error: ErrNotFound if key doesn't exist, or other storage errors
+	GetSecret(key string) (*secmem.SecretBytes, error)
 }
 
 // PutOptions provides options for storage operations.

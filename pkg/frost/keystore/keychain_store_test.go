@@ -1,6 +1,8 @@
 package keystore
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -11,6 +13,7 @@ import (
 	"github.com/jeremyhahn/go-frost/pkg/frost/group"
 	"github.com/jeremyhahn/go-frost/pkg/frost/group/ristretto255"
 	"github.com/jeremyhahn/go-frost/pkg/frost/keygen"
+	"github.com/jeremyhahn/go-frost/pkg/secmem"
 )
 
 // setupTestStore creates a temporary keystore for testing.
@@ -106,6 +109,20 @@ func (f *faultyStorage) List(prefix string) ([]string, error) {
 		return nil, errStorageInjected
 	}
 	return f.StorageBackend.List(prefix)
+}
+
+func (f *faultyStorage) PutSecret(key string, data *secmem.SecretBytes, opts *PutOptions) error {
+	if f.armed["PutSecret"] {
+		return errStorageInjected
+	}
+	return f.StorageBackend.PutSecret(key, data, opts)
+}
+
+func (f *faultyStorage) GetSecret(key string) (*secmem.SecretBytes, error) {
+	if f.armed["GetSecret"] {
+		return nil, errStorageInjected
+	}
+	return f.StorageBackend.GetSecret(key)
 }
 
 // setupFaultyStore creates a keystore over a faultyStorage backend, returning
@@ -1357,7 +1374,7 @@ func TestKeychainStore_GetKeyPackage_StorageError(t *testing.T) {
 		t.Fatalf("Failed to store key package: %v", err)
 	}
 
-	storage.fail("Get")
+	storage.fail("GetSecret")
 
 	// Try to get - should fail with storage error
 	_, _, err = store.GetKeyPackage(keyID)
@@ -1515,7 +1532,7 @@ func TestKeychainStore_UpdateMetadata_StorageError(t *testing.T) {
 		t.Fatalf("Failed to get key package: %v", err)
 	}
 
-	storage.fail("Get")
+	storage.fail("GetSecret")
 
 	// Try to update - should fail with storage error
 	err = store.UpdateMetadata(keyID, metadata)
@@ -1542,7 +1559,7 @@ func TestKeychainStore_UpdateMetadata_PutError(t *testing.T) {
 		t.Fatalf("Failed to get key package: %v", err)
 	}
 
-	storage.fail("Put")
+	storage.fail("PutSecret")
 
 	// The read-back succeeds, so this exercises the write-back failure
 	err = store.UpdateMetadata(keyID, metadata)
@@ -1570,6 +1587,166 @@ func TestKeychainStore_ListGroups_StorageError(t *testing.T) {
 
 	// Should fail with storage error
 	_, err := store.ListGroups()
+	if !errors.Is(err, errStorageInjected) {
+		t.Errorf("Expected storage error, got %v", err)
+	}
+}
+
+// TestKeychainStore_StoredWireFormat verifies the serialized key package
+// written to the backend still carries the share under the "SecretShare" key,
+// so stores written before the share moved into protected memory - and by
+// other implementations of the same format - remain readable.
+func TestKeychainStore_StoredWireFormat(t *testing.T) {
+	g := ristretto255.NewGroup()
+	backend := NewMemoryStorage()
+	t.Cleanup(func() { _ = backend.Close() })
+
+	store, err := NewKeychainStore(&Config{Group: g, Storage: backend})
+	if err != nil {
+		t.Fatalf("Failed to create keystore: %v", err)
+	}
+
+	keyPackages := generateTestKeyPackages(t, g, 2, 3)
+	kp := &keyPackages[0]
+	want := kp.SecretShare.Bytes()
+
+	if err := store.StoreKeyPackage("wire-format", "group", kp, 2, 3); err != nil {
+		t.Fatalf("StoreKeyPackage failed: %v", err)
+	}
+
+	data, err := backend.Get("frost/keypackages/wire-format.json")
+	if err != nil {
+		t.Fatalf("failed to read the stored document: %v", err)
+	}
+
+	var wire struct {
+		Identifier  frost.Identifier
+		SecretShare []byte
+	}
+	if err := json.Unmarshal(data, &wire); err != nil {
+		t.Fatalf("failed to decode the stored document: %v", err)
+	}
+	if wire.Identifier != kp.Identifier {
+		t.Errorf("stored identifier = %d, want %d", wire.Identifier, kp.Identifier)
+	}
+	if !bytes.Equal(wire.SecretShare, want) {
+		t.Errorf("stored share = %x, want %x", wire.SecretShare, want)
+	}
+}
+
+// TestKeychainStore_ReadsPlainStoredDocument verifies a key package that a
+// backend holds as plain bytes - anything written before PutSecret existed -
+// is still read back correctly, through protected memory.
+func TestKeychainStore_ReadsPlainStoredDocument(t *testing.T) {
+	g := ristretto255.NewGroup()
+	backend := NewMemoryStorage()
+	t.Cleanup(func() { _ = backend.Close() })
+
+	store, err := NewKeychainStore(&Config{Group: g, Storage: backend})
+	if err != nil {
+		t.Fatalf("Failed to create keystore: %v", err)
+	}
+
+	keyPackages := generateTestKeyPackages(t, g, 2, 3)
+	kp := &keyPackages[0]
+
+	data := legacyKeyPackageDocument(t, kp, "legacy", "group")
+	if err := backend.Put("frost/keypackages/legacy.json", data, DefaultPutOptions()); err != nil {
+		t.Fatalf("Put failed: %v", err)
+	}
+
+	restored, metadata, err := store.GetKeyPackage("legacy")
+	if err != nil {
+		t.Fatalf("GetKeyPackage failed: %v", err)
+	}
+	if !restored.SecretShare.Equal(kp.SecretShare) {
+		t.Error("restored secret share does not match the original")
+	}
+	if metadata.KeyID != "legacy" {
+		t.Errorf("restored key ID = %q, want %q", metadata.KeyID, "legacy")
+	}
+}
+
+// TestKeychainStore_MemoryBackendRoundTrip exercises the full store/list/read
+// cycle over the in-memory backend, whose protected keyspace is separate from
+// its plain one.
+func TestKeychainStore_MemoryBackendRoundTrip(t *testing.T) {
+	g := ristretto255.NewGroup()
+	backend := NewMemoryStorage()
+	t.Cleanup(func() { _ = backend.Close() })
+
+	store, err := NewKeychainStore(&Config{Group: g, Storage: backend})
+	if err != nil {
+		t.Fatalf("Failed to create keystore: %v", err)
+	}
+
+	keyPackages := generateTestKeyPackages(t, g, 2, 3)
+	kp := &keyPackages[0]
+
+	if err := store.StoreKeyPackage("mem-key", "mem-group", kp, 2, 3); err != nil {
+		t.Fatalf("StoreKeyPackage failed: %v", err)
+	}
+
+	exists, err := store.KeyPackageExists("mem-key")
+	if err != nil {
+		t.Fatalf("KeyPackageExists failed: %v", err)
+	}
+	if !exists {
+		t.Fatal("stored key package does not exist")
+	}
+
+	restored, metadata, err := store.GetKeyPackage("mem-key")
+	if err != nil {
+		t.Fatalf("GetKeyPackage failed: %v", err)
+	}
+	if !restored.SecretShare.Equal(kp.SecretShare) {
+		t.Error("restored secret share does not match the original")
+	}
+	if metadata.GroupID != "mem-group" {
+		t.Errorf("restored group ID = %q, want %q", metadata.GroupID, "mem-group")
+	}
+
+	listed, err := store.ListKeyPackages("mem-group")
+	if err != nil {
+		t.Fatalf("ListKeyPackages failed: %v", err)
+	}
+	if len(listed) != 1 || listed[0].KeyID != "mem-key" {
+		t.Errorf("ListKeyPackages = %+v, want a single mem-key entry", listed)
+	}
+
+	metadata.Tags = map[string]string{"rotated": "true"}
+	if err := store.UpdateMetadata("mem-key", metadata); err != nil {
+		t.Fatalf("UpdateMetadata failed: %v", err)
+	}
+
+	restored, metadata, err = store.GetKeyPackage("mem-key")
+	if err != nil {
+		t.Fatalf("GetKeyPackage after update failed: %v", err)
+	}
+	if !restored.SecretShare.Equal(kp.SecretShare) {
+		t.Error("secret share changed across a metadata update")
+	}
+	if metadata.Tags["rotated"] != "true" {
+		t.Errorf("updated tags = %v, want rotated=true", metadata.Tags)
+	}
+
+	if err := store.DeleteKeyPackage("mem-key"); err != nil {
+		t.Fatalf("DeleteKeyPackage failed: %v", err)
+	}
+	if _, _, err := store.GetKeyPackage("mem-key"); err != ErrNotFound {
+		t.Errorf("expected ErrNotFound after delete, got %v", err)
+	}
+}
+
+// TestKeychainStore_StoreKeyPackage_PutSecretError verifies a failure on the
+// protected write path is reported as a storage error.
+func TestKeychainStore_StoreKeyPackage_PutSecretError(t *testing.T) {
+	store, storage, g := setupFaultyStore(t)
+
+	storage.fail("PutSecret")
+
+	keyPackages := generateTestKeyPackages(t, g, 2, 3)
+	err := store.StoreKeyPackage("put-secret-error", "group", &keyPackages[0], 2, 3)
 	if !errors.Is(err, errStorageInjected) {
 		t.Errorf("Expected storage error, got %v", err)
 	}

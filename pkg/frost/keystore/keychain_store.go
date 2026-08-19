@@ -8,7 +8,6 @@ import (
 
 	"github.com/jeremyhahn/go-frost/pkg/frost"
 	"github.com/jeremyhahn/go-frost/pkg/frost/group"
-	"github.com/jeremyhahn/go-frost/pkg/secmem"
 )
 
 const (
@@ -103,12 +102,14 @@ func (k *KeychainStore) StoreKeyPackage(keyID, groupID string, kp *frost.KeyPack
 		return ErrAlreadyExists
 	}
 
-	// Convert to stored format
+	// Convert to stored format. The stored package holds the share only in
+	// protected memory, so it must be destroyed before returning.
 	createdAt := time.Now().Unix()
 	storedKP, err := FromKeyPackage(keyID, groupID, kp, minSigners, maxSigners, createdAt)
 	if err != nil {
 		return err
 	}
+	defer storedKP.Zeroize()
 
 	// Apply tags from config
 	if k.config.Tags != nil {
@@ -117,27 +118,40 @@ func (k *KeychainStore) StoreKeyPackage(keyID, groupID string, kp *frost.KeyPack
 		}
 	}
 
-	// Marshal to JSON
-	data, err := json.Marshal(storedKP)
+	// Serialize the package straight into protected memory: the document
+	// carries the share, so it is never a plain []byte.
+	payload, err := storedKP.Seal()
 	if err != nil {
-		return ErrMarshalJSON.Wrap(err)
+		return err
 	}
+	defer payload.Destroy()
 
 	// Store using the pluggable storage backend
 	opts := DefaultPutOptions()
 	opts.Permissions = 0600 // Owner read/write only
-	if err := k.storage.Put(storageKey, data, opts); err != nil {
-		secmem.ZeroBytes(data)
+	if err := k.storage.PutSecret(storageKey, payload, opts); err != nil {
 		return ErrStorageBackend.Wrap(err)
 	}
 
-	// Zero the serialized data containing the secret share
-	secmem.ZeroBytes(data)
-
-	// Zero the plaintext secret share in the stored key package
-	secmem.ZeroBytes(storedKP.SecretShare)
-
 	return nil
+}
+
+// readStoredKeyPackage reads a serialized key package out of the storage
+// backend and decodes it without the document ever existing as a plain
+// []byte: it is decoded from inside the enclave that the backend returns.
+//
+// Callers own the returned package and must Zeroize it.
+func (k *KeychainStore) readStoredKeyPackage(storageKey string) (*StoredKeyPackage, error) {
+	payload, err := k.storage.GetSecret(storageKey)
+	if err != nil {
+		if err == ErrNotFound {
+			return nil, ErrNotFound
+		}
+		return nil, ErrStorageBackend.Wrap(err)
+	}
+	defer payload.Destroy()
+
+	return OpenStoredKeyPackage(payload)
 }
 
 // GetKeyPackage retrieves a key package by key ID.
@@ -148,29 +162,13 @@ func (k *KeychainStore) GetKeyPackage(keyID string) (*frost.KeyPackage, *KeyMeta
 
 	// Retrieve from storage
 	storageKey := k.keyPackageStorageKey(keyID)
-	data, err := k.storage.Get(storageKey)
+	storedKP, err := k.readStoredKeyPackage(storageKey)
 	if err != nil {
-		if err == ErrNotFound {
-			return nil, nil, ErrNotFound
-		}
-		return nil, nil, ErrStorageBackend.Wrap(err)
+		return nil, nil, err
 	}
-
-	// Unmarshal from JSON
-	var storedKP StoredKeyPackage
-	if err := json.Unmarshal(data, &storedKP); err != nil {
-		secmem.ZeroBytes(data)
-		return nil, nil, ErrUnmarshalJSON.Wrap(err)
-	}
-
-	// Zero the raw JSON data now that it's been parsed
-	secmem.ZeroBytes(data)
-
-	// Protect the deserialized secret share in secure memory
-	if len(storedKP.SecretShare) > 0 {
-		storedKP.SecretShareProtected = secmem.NewSecretBytes(storedKP.SecretShare)
-		// NewSecretBytes zeros storedKP.SecretShare in place
-	}
+	// The share lives on in the returned KeyPackage; the keystore's own
+	// protected copy is destroyed as soon as it has been converted.
+	defer storedKP.Zeroize()
 
 	// Convert back to KeyPackage
 	kp, err := storedKP.ToKeyPackage(k.group)
@@ -208,20 +206,13 @@ func (k *KeychainStore) ListKeyPackages(groupID string) ([]*KeyMetadata, error) 
 
 	metadata := make([]*KeyMetadata, 0, len(keys))
 	for _, key := range keys {
-		// Get the key package data
-		data, err := k.storage.Get(key)
+		// Read the key package; only its metadata is of interest here, so the
+		// protected share is destroyed immediately.
+		storedKP, err := k.readStoredKeyPackage(key)
 		if err != nil {
-			continue // Skip keys that can't be read
+			continue // Skip keys that can't be read or unmarshaled
 		}
-
-		// Unmarshal to get metadata
-		var storedKP StoredKeyPackage
-		if err := json.Unmarshal(data, &storedKP); err != nil {
-			secmem.ZeroBytes(data)
-			continue // Skip keys that can't be unmarshaled
-		}
-		secmem.ZeroBytes(data)
-		secmem.ZeroBytes(storedKP.SecretShare)
+		storedKP.Zeroize()
 
 		// Filter by group ID if specified
 		if groupID != "" && storedKP.Metadata.GroupID != groupID {
@@ -398,41 +389,29 @@ func (k *KeychainStore) UpdateMetadata(keyID string, metadata *KeyMetadata) erro
 
 	// Retrieve existing key package
 	storageKey := k.keyPackageStorageKey(keyID)
-	data, err := k.storage.Get(storageKey)
+	storedKP, err := k.readStoredKeyPackage(storageKey)
 	if err != nil {
-		if err == ErrNotFound {
-			return ErrNotFound
-		}
-		return ErrStorageBackend.Wrap(err)
+		return err
 	}
-
-	// Unmarshal
-	var storedKP StoredKeyPackage
-	if err := json.Unmarshal(data, &storedKP); err != nil {
-		secmem.ZeroBytes(data)
-		return ErrUnmarshalJSON.Wrap(err)
-	}
-	secmem.ZeroBytes(data)
+	defer storedKP.Zeroize()
 
 	// Update metadata
 	metadata.UpdatedAt = time.Now().Unix()
 	storedKP.Metadata = *metadata
 
-	// Marshal back to JSON
-	updatedData, err := json.Marshal(storedKP)
-	secmem.ZeroBytes(storedKP.SecretShare)
+	// Serialize back into protected memory
+	payload, err := storedKP.Seal()
 	if err != nil {
-		return ErrMarshalJSON.Wrap(err)
+		return err
 	}
+	defer payload.Destroy()
 
 	// Store updated key package
 	opts := DefaultPutOptions()
 	opts.Permissions = 0600
-	if err := k.storage.Put(storageKey, updatedData, opts); err != nil {
-		secmem.ZeroBytes(updatedData)
+	if err := k.storage.PutSecret(storageKey, payload, opts); err != nil {
 		return ErrStorageBackend.Wrap(err)
 	}
-	secmem.ZeroBytes(updatedData)
 
 	return nil
 }

@@ -415,10 +415,10 @@ func TestMemoryBackend_cleanExpired(t *testing.T) {
 	mb.cleanExpired()
 
 	// Verify expired entry was removed
-	mb.mu.RLock()
+	mb.mu.Lock()
 	_, expiringExists := mb.data["expiring/key"]
 	_, permanentExists := mb.data["permanent/key"]
-	mb.mu.RUnlock()
+	mb.mu.Unlock()
 
 	if expiringExists {
 		t.Error("expired entry should have been cleaned")
@@ -453,5 +453,360 @@ func TestDefaultOptions(t *testing.T) {
 
 	if opts.TTL != 0 {
 		t.Errorf("expected TTL 0, got %d", opts.TTL)
+	}
+}
+
+func TestMemoryBackend_Take(t *testing.T) {
+	backend := NewMemoryBackend()
+	defer backend.Close()
+
+	memory := backend.(*MemoryBackend)
+
+	if err := backend.Put("key", []byte("payload"), nil); err != nil {
+		t.Fatalf("Put failed: %v", err)
+	}
+
+	data, expiration, err := memory.Take("key")
+	if err != nil {
+		t.Fatalf("Take failed: %v", err)
+	}
+	if string(data) != "payload" {
+		t.Errorf("Take returned %q, want %q", data, "payload")
+	}
+	if !expiration.IsZero() {
+		t.Errorf("Take reported expiration %v for an entry stored without a TTL", expiration)
+	}
+
+	// Taken means removed, not copied.
+	if _, err := backend.Get("key"); err != ErrNotFound {
+		t.Errorf("the entry survived Take (err = %v)", err)
+	}
+	if exists, _ := backend.Exists("key"); exists {
+		t.Error("Exists still reports the taken entry")
+	}
+}
+
+// TestMemoryBackend_Take_TransfersOwnership verifies Take hands over the
+// backend's own slice rather than a copy of it. That is the whole point of the
+// method: a caller sealing secret material can zeroize what it gets back and
+// know that no copy is left in the map behind it.
+func TestMemoryBackend_Take_TransfersOwnership(t *testing.T) {
+	backend := NewMemoryBackend()
+	defer backend.Close()
+
+	memory := backend.(*MemoryBackend)
+
+	if err := backend.Put("key", []byte("payload"), nil); err != nil {
+		t.Fatalf("Put failed: %v", err)
+	}
+
+	stored := memory.data["key"].data
+
+	data, _, err := memory.Take("key")
+	if err != nil {
+		t.Fatalf("Take failed: %v", err)
+	}
+	if &data[0] != &stored[0] {
+		t.Error("Take returned a copy; the backend's own slice is still out there to be zeroized by nobody")
+	}
+}
+
+func TestMemoryBackend_Take_ReportsExpiration(t *testing.T) {
+	backend := NewMemoryBackend()
+	defer backend.Close()
+
+	memory := backend.(*MemoryBackend)
+
+	opts := DefaultOptions()
+	opts.TTL = 600
+
+	before := time.Now()
+	if err := backend.Put("key", []byte("payload"), opts); err != nil {
+		t.Fatalf("Put failed: %v", err)
+	}
+
+	_, expiration, err := memory.Take("key")
+	if err != nil {
+		t.Fatalf("Take failed: %v", err)
+	}
+	if expiration.IsZero() {
+		t.Fatal("Take reported no expiration for an entry stored with a TTL")
+	}
+	if expiration.Before(before.Add(600*time.Second)) || expiration.After(time.Now().Add(600*time.Second)) {
+		t.Errorf("Take reported expiration %v, outside the window the TTL implies", expiration)
+	}
+}
+
+// TestMemoryBackend_Take_ReapsExpiredEntry verifies an entry whose TTL has
+// elapsed is removed and its data zeroized rather than left resident for the
+// rest of the process's life.
+func TestMemoryBackend_Take_ReapsExpiredEntry(t *testing.T) {
+	backend := NewMemoryBackend()
+	defer backend.Close()
+
+	memory := backend.(*MemoryBackend)
+
+	if err := backend.Put("key", []byte("payload"), nil); err != nil {
+		t.Fatalf("Put failed: %v", err)
+	}
+
+	// Expire it by hand rather than by waiting a second.
+	stored := memory.data["key"].data
+	memory.data["key"].expiration = time.Now().Add(-time.Second)
+
+	if _, _, err := memory.Take("key"); err != ErrNotFound {
+		t.Fatalf("Take on an expired entry returned %v, want ErrNotFound", err)
+	}
+	if _, ok := memory.data["key"]; ok {
+		t.Error("the expired entry is still in the map")
+	}
+	for i, b := range stored {
+		if b != 0 {
+			t.Errorf("the expired entry's data survives at byte %d (%q); it was not zeroized", i, stored)
+			break
+		}
+	}
+}
+
+// TestMemoryBackend_Take_LeavesEmptyEntryInPlace verifies an entry with no data
+// is reported without being removed. Take moves a payload out; an empty entry
+// has none, and discarding it would lose a value on what the caller meant as a
+// read.
+func TestMemoryBackend_Take_LeavesEmptyEntryInPlace(t *testing.T) {
+	backend := NewMemoryBackend()
+	defer backend.Close()
+
+	memory := backend.(*MemoryBackend)
+
+	if err := backend.Put("key", []byte{}, nil); err != nil {
+		t.Fatalf("Put failed: %v", err)
+	}
+
+	data, _, err := memory.Take("key")
+	if err != nil {
+		t.Fatalf("Take failed: %v", err)
+	}
+	if len(data) != 0 {
+		t.Errorf("Take returned %d bytes for an empty entry", len(data))
+	}
+	if _, ok := memory.data["key"]; !ok {
+		t.Error("the empty entry was discarded")
+	}
+}
+
+func TestMemoryBackend_Take_Errors(t *testing.T) {
+	backend := NewMemoryBackend()
+	memory := backend.(*MemoryBackend)
+
+	if _, _, err := memory.Take(""); err != ErrInvalidKey {
+		t.Errorf("Take with an empty key returned %v, want ErrInvalidKey", err)
+	}
+	if _, _, err := memory.Take("absent"); err != ErrNotFound {
+		t.Errorf("Take on a missing key returned %v, want ErrNotFound", err)
+	}
+
+	if err := backend.Close(); err != nil {
+		t.Fatalf("Close failed: %v", err)
+	}
+	if _, _, err := memory.Take("key"); err != ErrStorageClosed {
+		t.Errorf("Take on a closed backend returned %v, want ErrStorageClosed", err)
+	}
+}
+
+// assertZeroed fails unless every byte of b is zero.
+func assertZeroed(t *testing.T, b []byte, what string) {
+	t.Helper()
+
+	if len(b) == 0 {
+		t.Fatalf("%s: nothing to check; the test did not capture the stored slice", what)
+	}
+	for i, v := range b {
+		if v != 0 {
+			t.Errorf("%s: byte %d is %#x, want 0; the data survives in the heap the backend released (%q)",
+				what, i, v, b)
+			return
+		}
+	}
+}
+
+// storedSlice returns the exact slice the backend holds for key, so a test can
+// look at those bytes again after the backend has dropped the entry.
+func storedSlice(t *testing.T, m *MemoryBackend, key string) []byte {
+	t.Helper()
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	entry, ok := m.data[key]
+	if !ok {
+		t.Fatalf("the backend holds no entry for %q", key)
+	}
+	return entry.data
+}
+
+// TestMemoryBackend_DropsZeroizeData covers every path that drops an entry
+// without handing its data to anyone. Removing the map reference is not
+// enough - the backing array keeps the bytes until the allocator reuses them,
+// and callers store secret material here.
+func TestMemoryBackend_DropsZeroizeData(t *testing.T) {
+	const key = "frost/keypackages/secret.json"
+
+	tests := []struct {
+		name string
+		drop func(t *testing.T, backend Backend, memory *MemoryBackend)
+	}{
+		{
+			name: "Delete",
+			drop: func(t *testing.T, backend Backend, memory *MemoryBackend) {
+				if err := backend.Delete(key); err != nil {
+					t.Fatalf("Delete failed: %v", err)
+				}
+			},
+		},
+		{
+			name: "Put over an existing key",
+			drop: func(t *testing.T, backend Backend, memory *MemoryBackend) {
+				if err := backend.Put(key, []byte("replacement"), nil); err != nil {
+					t.Fatalf("Put failed: %v", err)
+				}
+			},
+		},
+		{
+			name: "Close",
+			drop: func(t *testing.T, backend Backend, memory *MemoryBackend) {
+				if err := backend.Close(); err != nil {
+					t.Fatalf("Close failed: %v", err)
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			backend := NewMemoryBackend()
+			memory := backend.(*MemoryBackend)
+
+			if err := backend.Put(key, []byte("secret payload"), nil); err != nil {
+				t.Fatalf("Put failed: %v", err)
+			}
+			stored := storedSlice(t, memory, key)
+
+			tt.drop(t, backend, memory)
+
+			assertZeroed(t, stored, tt.name)
+		})
+	}
+}
+
+// TestMemoryBackend_Put_ReplacementIsReadable guards the ordering inside Put:
+// the incoming data is copied before the replaced entry is zeroized, so a
+// caller that passes back a slice it got from the backend still stores the
+// bytes it meant to.
+func TestMemoryBackend_Put_ReplacementIsReadable(t *testing.T) {
+	backend := NewMemoryBackend()
+	defer backend.Close()
+
+	if err := backend.Put("key", []byte("first"), nil); err != nil {
+		t.Fatalf("Put failed: %v", err)
+	}
+	if err := backend.Put("key", []byte("second"), nil); err != nil {
+		t.Fatalf("Put failed: %v", err)
+	}
+
+	data, err := backend.Get("key")
+	if err != nil {
+		t.Fatalf("Get failed: %v", err)
+	}
+	if string(data) != "second" {
+		t.Errorf("Get returned %q, want %q", data, "second")
+	}
+}
+
+// TestMemoryBackend_ReapsExpiredOnEveryPath verifies an entry past its TTL is
+// removed and zeroized by whichever operation next passes it, rather than
+// merely being reported absent while its data stays resident.
+func TestMemoryBackend_ReapsExpiredOnEveryPath(t *testing.T) {
+	const key = "frost/keypackages/expiring.json"
+
+	tests := []struct {
+		name string
+		pass func(t *testing.T, backend Backend, memory *MemoryBackend)
+	}{
+		{
+			name: "Get",
+			pass: func(t *testing.T, backend Backend, memory *MemoryBackend) {
+				if _, err := backend.Get(key); err != ErrNotFound {
+					t.Errorf("Get on an expired entry returned %v, want ErrNotFound", err)
+				}
+			},
+		},
+		{
+			name: "Exists",
+			pass: func(t *testing.T, backend Backend, memory *MemoryBackend) {
+				exists, err := backend.Exists(key)
+				if err != nil {
+					t.Fatalf("Exists failed: %v", err)
+				}
+				if exists {
+					t.Error("Exists reports an expired entry as present")
+				}
+			},
+		},
+		{
+			name: "List",
+			pass: func(t *testing.T, backend Backend, memory *MemoryBackend) {
+				keys, err := backend.List("")
+				if err != nil {
+					t.Fatalf("List failed: %v", err)
+				}
+				if len(keys) != 0 {
+					t.Errorf("List returned %v, want no keys", keys)
+				}
+			},
+		},
+		{
+			name: "Take",
+			pass: func(t *testing.T, backend Backend, memory *MemoryBackend) {
+				if _, _, err := memory.Take(key); err != ErrNotFound {
+					t.Errorf("Take on an expired entry returned %v, want ErrNotFound", err)
+				}
+			},
+		},
+		{
+			name: "cleanExpired",
+			pass: func(t *testing.T, backend Backend, memory *MemoryBackend) {
+				memory.cleanExpired()
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			backend := NewMemoryBackend()
+			defer backend.Close()
+			memory := backend.(*MemoryBackend)
+
+			if err := backend.Put(key, []byte("secret payload"), nil); err != nil {
+				t.Fatalf("Put failed: %v", err)
+			}
+			stored := storedSlice(t, memory, key)
+
+			// Expire it by hand rather than by waiting out a TTL, whose
+			// resolution is a whole second.
+			memory.mu.Lock()
+			memory.data[key].expiration = time.Now().Add(-time.Second)
+			memory.mu.Unlock()
+
+			tt.pass(t, backend, memory)
+
+			memory.mu.Lock()
+			_, stillThere := memory.data[key]
+			memory.mu.Unlock()
+			if stillThere {
+				t.Errorf("%s left the expired entry in the map", tt.name)
+			}
+
+			assertZeroed(t, stored, tt.name+" on an expired entry")
+		})
 	}
 }

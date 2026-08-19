@@ -123,6 +123,8 @@ func TestErrorSentinels(t *testing.T) {
 		ErrStorageBackend,
 		ErrInvalidKeyPackage,
 		ErrInvalidMetadata,
+		ErrMissingSecretShare,
+		ErrProtectedMemory,
 	}
 
 	for _, err := range sentinels {

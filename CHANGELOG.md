@@ -5,6 +5,103 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **Protected-memory keystore boundary** (`pkg/frost/keystore`) - the secret
+  share is now held only in protected memory
+  - `StoredKeyPackage.SecretShare []byte` is removed; the share lives solely in
+    `SecretShareProtected`
+  - **BREAKING: a `StoredKeyPackage` can no longer be serialized with
+    `encoding/json`.** Its `MarshalJSON`/`UnmarshalJSON` now return
+    `ErrPlaintextSerialization`. A serialized key package carries the share, so
+    the document is secret too, and `encoding/json` cannot produce or consume
+    one without leaving plaintext on the ordinary heap: `Marshal` assembles its
+    result in a buffer drawn from a package-level `sync.Pool` and returns that
+    buffer to the pool with the plaintext still in it, out of reach of any
+    zeroization. Use `StoredKeyPackage.Seal` and `OpenStoredKeyPackage`
+  - `Seal` assembles the document inside a mlock'd buffer, base64-encoding the
+    share straight out of its enclave and splicing the public members - which
+    `encoding/json` still serializes - in around it. `OpenStoredKeyPackage`
+    decodes from inside the enclave and base64-decodes the share straight into
+    a protected buffer. Neither the share nor the document is ever an ordinary
+    heap allocation. **The on-disk format is unchanged**, byte for byte
+  - A document carrying no share is rejected with `ErrMissingSecretShare`, and
+    one this package cannot decode without routing the share through the heap -
+    a duplicated share member, or one carrying a JSON escape - is rejected
+    rather than decoded
+  - `StoredKeyPackage.Zeroize()` destroys the protected share
+  - `ToKeyPackage` no longer falls back to a plaintext share and returns
+    `ErrMissingSecretShare` when none is present; `FromKeyPackage` rejects a
+    key package without a share with `ErrInvalidKeyPackage`
+- **BREAKING: `StorageBackend` widened** with `PutSecret`/`GetSecret`, which
+  move serialized key packages through `secmem.SecretBytes` instead of plain
+  `[]byte`. `Put`/`Get` are unchanged and still carry public material.
+  Custom backends must implement the two new methods
+  - `MemoryStorage` keeps protected payloads in enclaves rather than in the
+    plain map of the underlying backend, with the same TTL semantics. A key
+    moves between the plain and protected keyspaces atomically, so concurrent
+    `Put`/`PutSecret` calls cannot interleave into losing the value. An entry
+    whose TTL has elapsed is destroyed and removed by the next operation that
+    passes it rather than merely hidden, so a payload never stays resident
+    past the lifetime its TTL set
+  - `MemoryStorage.GetSecret` **promotes** a value written through the plain
+    `Put` path instead of copying it out: the backend hands its entry over
+    rather than copying it, the one remaining slice is zeroized as it is
+    sealed, and the key moves into the protected keyspace carrying whatever
+    was left of its TTL. Reading a key package written by an older revision
+    therefore leaves no plaintext behind; previously the backend kept its own
+    plain `[]byte` for the rest of the process's life, however many times the
+    key was read through the protected API
+  - `FileStorage` writes payloads to disk straight out of the enclave and
+    seals what it reads back before returning it
+
+- **`storage.MemoryBackend` zeroizes an entry's data whenever it drops it.**
+  Deleting the map reference leaves the bytes in the backing array until the
+  allocator happens to reuse them, and callers store secret material here - a
+  serialized key package among other things. Every drop now goes through one
+  path, so a route added later cannot quietly reintroduce the residue:
+  - `Delete`, and so `MemoryStorage.PutSecret`, which clears whatever plain
+    value the key held before installing the protected one
+  - `Put` over an existing key, which zeroizes the entry it replaces (the
+    incoming data is copied first, so a caller passing back a slice it got
+    from the backend still stores what it meant to)
+  - `Close`, which must not leave payloads readable in the heap it releases
+  - an entry whose TTL has elapsed, reaped and zeroized by whichever of `Get`,
+    `Exists`, `List`, `Take` or `cleanExpired` next passes it rather than
+    reported absent while its data stays resident
+  - `Take` is the one path that does not zeroize, because it hands the data to
+    its caller rather than dropping it
+  - `Get`, `Exists` and `List` take the exclusive lock they now need to reap,
+    so the mutex is no longer an `RWMutex`
+
+- **`secmem.SecretBytes` open/reseal cycle made atomic** - `WithSecret` and
+  `Clone` now hold the secret's mutex for the whole open/use/reseal cycle, so a
+  concurrent `Destroy` either prevents the cycle from starting (`ErrDestroyed`)
+  or takes effect after it finishes; previously the reseal could install a
+  fresh enclave over a destroyed one and resurrect the secret
+  - `Reseal` on a destroyed secret now discards the plaintext instead of
+    sealing it back: destruction is final even for a buffer that was opened
+    before the `Destroy` landed
+  - `Size` reads under the mutex, since `Destroy` writes it
+
+### Added
+- `secmem.Clone` - copies a `SecretBytes` between mlock'd buffers, so a
+  payload can be handed to another owner without a plaintext heap copy
+- `secmem.NewSecret(size, fill)` - builds a secret in place inside a mlock'd,
+  guard-paged buffer, for material that has to be assembled or decoded rather
+  than simply copied. Unlike `NewSecretBytes`, which can only seal what is
+  already on the heap, nothing fill writes ever exists as a heap allocation
+- `StoredKeyPackage.Seal` and `OpenStoredKeyPackage` - the protected-memory
+  serialization boundary for key packages
+- `storage.MemoryBackend.Take` - removes an entry and hands its data to the
+  caller rather than copying it, reporting the entry's expiration so the value
+  can be moved elsewhere with its remaining lifetime intact. `Get` cannot serve
+  a caller holding secret material, because it returns a copy and leaves the
+  original in the map with nobody to zeroize it
+- Keystore errors `ErrMissingSecretShare`, `ErrProtectedMemory` and
+  `ErrPlaintextSerialization`
+
 ## [0.1.5-alpha] - 2025-12-27
 
 ### Changed

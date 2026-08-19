@@ -329,15 +329,54 @@ Retrieves the group public key for a signing group.
 
 ```go
 type StoredKeyPackage struct {
-	Identifier         frost.Identifier
-	SecretShare        []byte
-	GroupPublicKey     []byte
-	VerificationShares []StoredVerificationShare
-	Metadata           KeyMetadata
+	Identifier           frost.Identifier
+	SecretShareProtected *secmem.SecretBytes `json:"-"`
+	GroupPublicKey       []byte
+	VerificationShares   []StoredVerificationShare
+	Metadata             KeyMetadata
 }
 ```
 
 Represents a key package in storage format with serialized cryptographic material.
+
+The secret share is held only in protected memory (`secmem.SecretBytes`): the
+struct carries no plaintext copy of it. Call `Zeroize()` when finished with a
+stored key package to destroy the enclave.
+
+Because the struct carries the share, its serialized form is secret too - the
+document holds the share base64-encoded in plain sight. So a `StoredKeyPackage`
+**cannot be serialized with `encoding/json`**: `MarshalJSON` and
+`UnmarshalJSON` return `ErrPlaintextSerialization`. `encoding/json` assembles
+its output in a buffer it draws from a package-level `sync.Pool` and returns to
+that pool with the plaintext still in it, where no amount of zeroization by
+this package can reach it.
+
+Use `Seal` and `OpenStoredKeyPackage` instead:
+
+```go
+payload, err := storedKP.Seal()   // *secmem.SecretBytes, caller destroys
+defer payload.Destroy()
+
+restored, err := keystore.OpenStoredKeyPackage(payload)
+defer restored.Zeroize()
+```
+
+`Seal` assembles the document inside a mlock'd buffer, base64-encoding the
+share straight out of its enclave and splicing the public members - which
+`encoding/json` still serializes, since they carry nothing secret - in around
+it. `OpenStoredKeyPackage` decodes from inside the enclave and base64-decodes
+the share straight into a protected buffer of its own. Neither the share nor
+the document is ever an ordinary heap allocation, and the wire format is
+unchanged - the share is still written under the `SecretShare` key, byte for
+byte as `encoding/json` used to write it, member order included: the share
+member is spliced in after `Identifier`, where the plaintext field used to be
+declared. Existing stores read back unmodified.
+
+A document carrying no share is rejected with `ErrMissingSecretShare`. So is
+one this package cannot decode without routing the share through the heap: a
+duplicated `SecretShare` member, which `encoding/json` and the share scan would
+resolve differently, or a value carrying a JSON escape, which base64 never
+produces and unescaping would copy.
 
 #### KeyMetadata
 
@@ -386,9 +425,42 @@ All keystore operations are thread-safe using `sync.RWMutex`:
 
 ### Key Material Handling
 
-- Secret shares are stored as serialized bytes
+- Secret shares live in protected memory (mlock'd, encrypted at rest via
+  `secmem.SecretBytes`) for as long as they are in the process; no plaintext
+  duplicate is kept beside the protected copy
+- Serialized key packages move between the keystore and its storage backend
+  through the `PutSecret`/`GetSecret` pair of `StorageBackend`, so a
+  serialized secret share is never held or returned as a plain `[]byte`; the
+  plain `Put`/`Get` pair carries public material (group public keys)
+- Serialization does not route the share through the ordinary heap at all:
+  the document is assembled and decoded inside protected memory. Any transient
+  plaintext that does reach the heap - the share a `frost.KeyPackage` hands to
+  `FromKeyPackage`, for instance - is zeroized in place as soon as it has been
+  sealed
+- `secmem.NewSecret(size, fill)` builds a secret in place inside a protected
+  buffer, for material that has to be assembled or decoded rather than simply
+  copied; `secmem.NewSecretBytes` can only seal what is already on the heap
+- Reach for `secmem.WithSecret` or `secmem.Clone` rather than pairing
+  `Open`/`Reseal` by hand: those two hold the secret's mutex for the whole
+  open/use/reseal cycle, so a concurrent `Destroy` cannot be undone by the
+  reseal that follows it
 - No key material is logged or exposed in error messages
 - Keys are sanitized to prevent path traversal attacks
+
+Custom storage backends must implement `PutSecret` and `GetSecret` alongside
+the plain operations. `PutSecret` receives the payload in protected memory and
+must not retain it as a plain `[]byte`; `GetSecret` returns a `SecretBytes`
+that the caller owns and destroys. A backend that keeps the two kinds of
+payload in separate stores must move a key between them atomically, so that
+concurrent `Put` and `PutSecret` calls on one key cannot interleave into a
+state where both report success and the key holds nothing. `NewMemoryStorage`
+keeps such payloads in enclaves rather than in its plain map, serializing every
+operation on both keyspaces under one lock, and promotes a value written
+through the plain `Put` path on the first `GetSecret` that reads it - moving it
+into the protected keyspace with its remaining TTL rather than copying it out
+and leaving the plaintext behind; `NewFileStorage` writes them to
+disk straight out of the enclave (at-rest protection remains the file system's
+job, with 0600 permissions).
 
 ### Best Practices
 

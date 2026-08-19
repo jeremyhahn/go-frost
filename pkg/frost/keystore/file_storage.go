@@ -6,6 +6,7 @@
 package keystore
 
 import (
+	"github.com/jeremyhahn/go-frost/pkg/secmem"
 	"github.com/jeremyhahn/go-frost/pkg/storage"
 )
 
@@ -108,6 +109,63 @@ func (f *FileStorage) List(prefix string) ([]string, error) {
 	}
 
 	return keys, nil
+}
+
+// PutSecret stores secret-bearing data at the given key.
+//
+// The payload is written to disk straight out of the enclave: the plaintext
+// only ever exists inside the mlock'd buffer opened for the write, and the
+// buffer is resealed before this function returns. Note that the file itself
+// holds the payload in the clear - at-rest protection is the responsibility
+// of the filesystem (the default 0600 permissions apply).
+func (f *FileStorage) PutSecret(key string, data *secmem.SecretBytes, opts *PutOptions) error {
+	if data == nil {
+		return ErrProtectedMemory.Wrap(secmem.ErrNilSecret)
+	}
+
+	if opts == nil {
+		opts = DefaultPutOptions()
+	}
+
+	// Convert our PutOptions to storage.Options
+	storageOpts := storage.DefaultOptions()
+	storageOpts.Permissions = opts.Permissions
+	storageOpts.Metadata = opts.Metadata
+	storageOpts.TTL = opts.TTL
+
+	var putErr error
+	if err := secmem.WithSecret(data, func(b []byte) error {
+		putErr = f.backend.Put(key, b, storageOpts)
+		return nil
+	}); err != nil {
+		return ErrProtectedMemory.Wrap(err)
+	}
+	if putErr != nil {
+		return ErrStorageBackend.Wrap(putErr)
+	}
+
+	return nil
+}
+
+// GetSecret retrieves secret-bearing data for the given key, returning it in
+// protected memory. The plaintext read from disk is sealed into an enclave
+// and zeroized in place immediately.
+func (f *FileStorage) GetSecret(key string) (*secmem.SecretBytes, error) {
+	data, err := f.backend.Get(key)
+	if err != nil {
+		if err == storage.ErrNotFound {
+			return nil, ErrNotFound
+		}
+		return nil, ErrStorageBackend.Wrap(err)
+	}
+
+	// NewSecretBytes zeroizes data in place as it seals it.
+	secret := secmem.NewSecretBytes(data)
+	if secret == nil {
+		return nil, ErrProtectedMemory.Wrap(errEmptyPayload)
+	}
+
+	return secret, nil
 }
 
 // Close releases any resources held by the storage backend.
