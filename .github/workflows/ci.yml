@@ -57,6 +57,7 @@ jobs:
   security:
     name: Security Scan
     runs-on: ubuntu-latest
+    needs: [lint, test]  # v1.9 staged fail-fast: expensive tier gates on the fast tier (no cancel API — task #90)
 
     steps:
     - name: Checkout code
@@ -84,6 +85,7 @@ jobs:
   trivy:
     name: Trivy
     runs-on: ubuntu-latest
+    needs: [lint, test]  # v1.9 staged fail-fast: expensive tier gates on the fast tier (no cancel API — task #90)
 
     steps:
     - name: Checkout code
@@ -139,6 +141,7 @@ jobs:
   trivy-image:
     name: Trivy Image
     runs-on: ubuntu-latest
+    needs: [lint, test]  # v1.9 staged fail-fast: expensive tier gates on the fast tier (no cancel API — task #90)
 
     steps:
     - name: Checkout code
