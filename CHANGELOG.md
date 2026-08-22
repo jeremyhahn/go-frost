@@ -2,10 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.3.0-alpha] - 2026-08-22
+
+Minor rather than patch: the change is additive for library consumers (the new
+`suites` package) but breaking at the CLI and C-ABI surfaces. Pre-1.0, MINOR is
+where breakage lives.
 
 ### Added
 - **`pkg/frost/ciphersuite/suites`** - resolves a ciphersuite from an
@@ -47,7 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Coverage runs in the `fips` CI job: the RFC 9591 Appendix E.4 known-answer
     check and a full P-256 keygen/sign/verify through the selection API
 
-### Changed
+### Changed — BREAKING: an unknown `--ciphersuite` exits 1 instead of signing on ristretto255; libfrost rejects an unknown enum instead of substituting one
 - **BREAKING (CLI): an unrecognized `--ciphersuite` value now exits 1.** It
   printed a warning, substituted ristretto255 and exited 0, so a typo produced
   key material on a curve the operator never asked for
