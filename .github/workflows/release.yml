@@ -1,334 +1,274 @@
 name: Release
 
+# workflow_dispatch carries a tag input so a Release object can be published
+# for a tag that ALREADY EXISTS. v0.3.0-alpha published as a Go module and then
+# lost its Release object to the failures described in #16, and a published tag
+# is immutable (release-versioning.md §3 rule 3) -- re-tagging to re-trigger is
+# exactly the thing that turns into a portfolio-wide go.sum cleanup.
 on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Existing tag to publish a Release for (e.g. v0.3.0-alpha)'
+        required: true
+        type: string
 
 permissions:
   contents: write
   packages: write
 
-
 jobs:
-  test:
-    name: Pre-release Tests
+  # Nothing publishes until the tag, the VERSION file and the CHANGELOG agree.
+  # release-versioning.md §2 names this as a known unclosed gap -- "two sources
+  # of truth, and nothing reconciles them" -- and go-truststrap shipped two
+  # different releases identifying themselves as the same version because of
+  # it. The tag is v-prefixed and VERSION is not; that asymmetry is deliberate
+  # and portfolio-wide, so the check strips the prefix rather than demanding
+  # they be spelled identically.
+  validate:
+    name: Validate release metadata
     runs-on: ubuntu-latest
-
+    outputs:
+      tag: ${{ steps.resolve.outputs.tag }}
+      version: ${{ steps.resolve.outputs.version }}
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v6
+      - name: Resolve the tag being released
+        id: resolve
+        run: |
+          TAG="${{ inputs.release_tag || github.ref_name }}"
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "version=${TAG#v}" >> $GITHUB_OUTPUT
+          echo "releasing ${TAG}"
 
-    - name: Set up Go
-      uses: actions/setup-go@v6
-      with:
-        go-version-file: 'go.mod'
-        cache: true
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.resolve.outputs.tag }}
 
-    - name: Run tests
-      run: make test
+      - name: Tag matches VERSION and CHANGELOG
+        run: |
+          TAG="${{ steps.resolve.outputs.version }}"
+          FILE="$(tr -d '[:space:]' < VERSION)"
 
-    - name: Run security scan
-      run: |
-        go install github.com/securego/gosec/v2/cmd/gosec@latest
-        gosec -quiet -exclude=G101,G104,G115,G304,G306,G404 ./...
-
-  build-binaries:
-    name: Build Binaries
-    runs-on: ubuntu-latest
-    needs: test
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v6
-      with:
-        fetch-depth: 0
-
-    - name: Set up Go
-      uses: actions/setup-go@v6
-      with:
-        go-version-file: 'go.mod'
-        cache: true
-
-    - name: Get version from tag
-      id: get_version
-      run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
-
-    - name: Build binaries for all platforms
-      env:
-        VERSION: ${{ steps.get_version.outputs.VERSION }}
-        CGO_ENABLED: 0
-      run: |
-        BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-        GIT_COMMIT=$(git rev-parse --short HEAD)
-        LDFLAGS="-s -w -X main.Version=${VERSION} -X main.GitCommit=${GIT_COMMIT} -X main.BuildDate=${BUILD_DATE}"
-
-        mkdir -p dist
-
-        platforms=(
-          "linux/amd64"
-          "linux/arm64"
-          "darwin/amd64"
-          "darwin/arm64"
-          "windows/amd64"
-          "windows/arm64"
-        )
-
-        # Build standard binaries
-        for platform in "${platforms[@]}"; do
-          GOOS="${platform%/*}"
-          GOARCH="${platform#*/}"
-          output_name="frost-${VERSION}-${GOOS}-${GOARCH}"
-
-          if [ "$GOOS" = "windows" ]; then
-            output_name+=".exe"
+          if [ "$TAG" != "$FILE" ]; then
+            echo "::error::tag v${TAG} does not match VERSION file (${FILE})."
+            echo "Bump VERSION in the release commit before tagging."
+            exit 1
           fi
 
-          echo "Building for $GOOS/$GOARCH..."
-          GOOS=$GOOS GOARCH=$GOARCH go build \
-            -ldflags="${LDFLAGS}" \
-            -o "dist/${output_name}" \
-            ./cmd/frost
-        done
+          if ! grep -qF "## [${TAG}]" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no '## [${TAG}]' heading."
+            echo "Every released tag gets its own section; do not tag from [Unreleased]."
+            exit 1
+          fi
 
-        # Build FIPS binaries (Linux only - FIPS mode requires specific OS support)
-        fips_platforms=(
-          "linux/amd64"
-          "linux/arm64"
-        )
+          echo "tag v${TAG} matches VERSION and has a CHANGELOG section"
 
-        for platform in "${fips_platforms[@]}"; do
-          GOOS="${platform%/*}"
-          GOARCH="${platform#*/}"
-          output_name="frost-fips-${VERSION}-${GOOS}-${GOARCH}"
-
-          echo "Building FIPS binary for $GOOS/$GOARCH..."
-          GOFIPS140=latest GOOS=$GOOS GOARCH=$GOARCH go build \
-            -ldflags="${LDFLAGS}" \
-            -o "dist/${output_name}" \
-            ./cmd/frost
-        done
-
-    - name: Upload binary artifacts
-      uses: actions/upload-artifact@v6
-      with:
-        name: binaries
-        path: dist/frost-*
-
-  build-libraries:
-    name: Build Libraries
-    runs-on: ubuntu-latest
-    needs: test
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v6
-      with:
-        fetch-depth: 0
-
-    - name: Set up Go
-      uses: actions/setup-go@v6
-      with:
-        go-version-file: 'go.mod'
-        cache: true
-
-    - name: Install build dependencies
-      run: sudo apt-get update && sudo apt-get install -y build-essential
-
-    - name: Get version from tag
-      id: get_version
-      run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
-
-    - name: Build standard libraries
-      env:
-        VERSION: ${{ steps.get_version.outputs.VERSION }}
-      run: |
-        make build-lib
-        # Rename with version
-        mv dist/libfrost.so dist/libfrost-${VERSION}-linux-amd64.so
-        mv dist/libfrost.a dist/libfrost-${VERSION}-linux-amd64.a
-        mv dist/libfrost.h dist/libfrost-${VERSION}.h
-
-    - name: Build FIPS libraries
-      env:
-        VERSION: ${{ steps.get_version.outputs.VERSION }}
-      run: |
-        make build-lib-fips
-        # Rename with version
-        mv dist/fips/libfrost-fips.so dist/libfrost-fips-${VERSION}-linux-amd64.so
-        mv dist/fips/libfrost-fips.a dist/libfrost-fips-${VERSION}-linux-amd64.a
-        mv dist/fips/libfrost-fips.h dist/libfrost-fips-${VERSION}.h
-
-    - name: Upload library artifacts
-      uses: actions/upload-artifact@v6
-      with:
-        name: libraries
-        path: |
-          dist/libfrost-*.so
-          dist/libfrost-*.a
-          dist/libfrost-*.h
-
+  # Binaries and libraries build in ONE job. They used to be two, passing files
+  # through actions/upload-artifact@v6 -- which is @actions/artifact v2, a
+  # GitHub-only service that refuses to run against a GHES-shaped host. That is
+  # what failed on v0.3.0-alpha (#16). Building both here means nothing has to
+  # cross a job boundary at all, and the libraries need cgo and build-essential
+  # anyway, so the split was buying an artifact hop and nothing else.
   release:
-    name: Create Release
+    name: Build and publish
     runs-on: ubuntu-latest
-    needs: [build-binaries, build-libraries]
+    needs: [validate]
+    env:
+      TAG: ${{ needs.validate.outputs.tag }}
+      VERSION: ${{ needs.validate.outputs.version }}
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v6
-      with:
-        fetch-depth: 0
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.validate.outputs.tag }}
+          fetch-depth: 0
 
-    - name: Set up Go
-      uses: actions/setup-go@v6
-      with:
-        go-version-file: 'go.mod'
-        cache: true
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: 'go.mod'
+          cache: true
 
-    - name: Get version from tag
-      id: get_version
-      run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+      - name: Run tests
+        run: make test
 
-    - name: Download binary artifacts
-      uses: actions/download-artifact@v7
-      with:
-        name: binaries
-        path: dist/
+      - name: Install build dependencies
+        run: sudo apt-get update && sudo apt-get install -y build-essential
 
-    - name: Download library artifacts
-      uses: actions/download-artifact@v7
-      with:
-        name: libraries
-        path: dist/
+      - name: Build binaries
+        env:
+          CGO_ENABLED: 0
+        run: |
+          BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          GIT_COMMIT=$(git rev-parse --short HEAD)
+          LDFLAGS="-s -w -X main.Version=${VERSION} -X main.GitCommit=${GIT_COMMIT} -X main.BuildDate=${BUILD_DATE}"
+          mkdir -p dist
 
-    - name: Generate checksums
-      run: |
-        cd dist
-        sha256sum * > checksums.txt
-        cat checksums.txt
+          for platform in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64; do
+            GOOS="${platform%/*}"
+            GOARCH="${platform#*/}"
+            name="frost-${VERSION}-${GOOS}-${GOARCH}"
+            [ "$GOOS" = "windows" ] && name="${name}.exe"
+            echo "building ${name}"
+            GOOS=$GOOS GOARCH=$GOARCH go build -ldflags="${LDFLAGS}" -o "dist/${name}" ./cmd/frost
+          done
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
+          # FIPS binaries are Linux-only: GOFIPS140 selects the certified module
+          # and the release only claims the platforms it is built and run on.
+          for platform in linux/amd64 linux/arm64; do
+            GOOS="${platform%/*}"
+            GOARCH="${platform#*/}"
+            name="frost-fips-${VERSION}-${GOOS}-${GOARCH}"
+            echo "building ${name}"
+            GOFIPS140=latest GOOS=$GOOS GOARCH=$GOARCH go build -ldflags="${LDFLAGS}" -o "dist/${name}" ./cmd/frost
+          done
 
-    # ghcr.io on GitHub, Gitea's own registry (same host and port as its web
-    # UI) on the internal network — derived, never hardcoded (devops.md §2).
-    # ghcr.io simply does not exist on the internal network, so a release built
-    # there had nowhere to push (lessons.md).
-    - name: Resolve registry
-      id: registry
-      run: |
-        if [ "${{ github.server_url }}" = "https://github.com" ]; then
-          echo "host=ghcr.io" >> $GITHUB_OUTPUT
-        else
-          echo "host=$(echo '${{ github.server_url }}' | sed -E 's#^https?://##')" >> $GITHUB_OUTPUT
-        fi
+      # cgo, so linux/amd64 only -- cross-compiling a c-shared object needs a
+      # cross toolchain this job does not install.
+      - name: Build libraries
+        run: |
+          make build-lib
+          mv dist/libfrost.so dist/libfrost-${VERSION}-linux-amd64.so
+          mv dist/libfrost.a  dist/libfrost-${VERSION}-linux-amd64.a
+          mv dist/libfrost.h  dist/libfrost-${VERSION}.h
 
-    - name: Log in to the container registry
-      uses: docker/login-action@v3
-      with:
-        registry: ${{ steps.registry.outputs.host }}
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
+          make build-lib-fips
+          mv dist/fips/libfrost-fips.so dist/libfrost-fips-${VERSION}-linux-amd64.so
+          mv dist/fips/libfrost-fips.a  dist/libfrost-fips-${VERSION}-linux-amd64.a
+          mv dist/fips/libfrost-fips.h  dist/libfrost-fips-${VERSION}.h
+          rmdir dist/fips 2>/dev/null || true
 
-    - name: Extract Docker metadata
-      id: meta
-      uses: docker/metadata-action@v5
-      with:
-        images: ${{ steps.registry.outputs.host }}/${{ github.repository_owner }}/frost
-        tags: |
-          type=semver,pattern={{version}}
-          type=semver,pattern={{major}}.{{minor}}
-          type=semver,pattern={{major}}
-          type=raw,value=latest
+      - name: Generate checksums
+        run: |
+          cd dist
+          find . -maxdepth 1 -type f ! -name checksums.txt -printf '%f\n' | sort | xargs sha256sum > checksums.txt
+          cat checksums.txt
 
-    - name: Build and push Docker image
-      uses: docker/build-push-action@v6
-      with:
-        context: .
-        target: production
-        platforms: linux/amd64,linux/arm64
-        push: true
-        tags: ${{ steps.meta.outputs.tags }}
-        labels: ${{ steps.meta.outputs.labels }}
-        build-args: |
-          VERSION=${{ steps.get_version.outputs.VERSION }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
+      - name: Create GitHub Release
+        if: github.server_url == 'https://github.com'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          files: dist/*
+          generate_release_notes: true
 
-    - name: Create Release
-      uses: softprops/action-gh-release@v2
-      with:
-        files: |
-          dist/*
-        body: |
-          ## FROST Threshold Signature Scheme v${{ steps.get_version.outputs.VERSION }}
+      # Gitea does not serve the GitHub Releases API -- softprops gets HTTP 405
+      # (go-truststrap#12, go-frost#16). Its own /api/v1 releases endpoint is
+      # GitHub-shaped, so plain curl is enough and nothing needs to be reachable
+      # on github.com at release time.
+      - name: Create Gitea Release
+        if: github.server_url != 'https://github.com'
+        env:
+          GITEA_TOKEN: ${{ secrets.AGENT_TOKEN }}
+        run: bash .github/scripts/gitea-release.sh
 
-          RFC 9591 Implementation - Production Ready
+  # Separate job, and deliberately NOT a dependency of the release: an image
+  # that cannot be published must not cost the release its binaries.
+  docker:
+    name: Container image
+    runs-on: ubuntu-latest
+    needs: [validate]
+    env:
+      TAG: ${{ needs.validate.outputs.tag }}
+      VERSION: ${{ needs.validate.outputs.version }}
 
-          ### Changes
-          See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details.
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.validate.outputs.tag }}
 
-          ### Downloads
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
 
-          #### CLI Binaries
-          | Platform | Standard | FIPS 140 |
-          |----------|----------|----------|
-          | Linux (AMD64) | `frost-${{ steps.get_version.outputs.VERSION }}-linux-amd64` | `frost-fips-${{ steps.get_version.outputs.VERSION }}-linux-amd64` |
-          | Linux (ARM64) | `frost-${{ steps.get_version.outputs.VERSION }}-linux-arm64` | `frost-fips-${{ steps.get_version.outputs.VERSION }}-linux-arm64` |
-          | macOS (Intel) | `frost-${{ steps.get_version.outputs.VERSION }}-darwin-amd64` | - |
-          | macOS (Apple Silicon) | `frost-${{ steps.get_version.outputs.VERSION }}-darwin-arm64` | - |
-          | Windows (AMD64) | `frost-${{ steps.get_version.outputs.VERSION }}-windows-amd64.exe` | - |
-          | Windows (ARM64) | `frost-${{ steps.get_version.outputs.VERSION }}-windows-arm64.exe` | - |
+      # ghcr.io on GitHub, Gitea's own registry (same host and port as its web
+      # UI) on the internal network -- derived, never hardcoded (devops.md §2).
+      # ghcr.io does not exist on the internal network, so a release built there
+      # had nowhere to push (lessons.md).
+      - name: Resolve registry
+        id: registry
+        run: |
+          if [ "${{ github.server_url }}" = "https://github.com" ]; then
+            echo "host=ghcr.io" >> $GITHUB_OUTPUT
+          else
+            echo "host=$(echo '${{ github.server_url }}' | sed -E 's#^https?://##')" >> $GITHUB_OUTPUT
+          fi
 
-          #### Libraries (Linux AMD64)
-          | Type | Standard | FIPS 140 |
-          |------|----------|----------|
-          | Shared (.so) | `libfrost-${{ steps.get_version.outputs.VERSION }}-linux-amd64.so` | `libfrost-fips-${{ steps.get_version.outputs.VERSION }}-linux-amd64.so` |
-          | Static (.a) | `libfrost-${{ steps.get_version.outputs.VERSION }}-linux-amd64.a` | `libfrost-fips-${{ steps.get_version.outputs.VERSION }}-linux-amd64.a` |
-          | Header | `libfrost-${{ steps.get_version.outputs.VERSION }}.h` | `libfrost-fips-${{ steps.get_version.outputs.VERSION }}.h` |
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.registry.outputs.host }}/${{ github.repository_owner }}/frost
+          tags: |
+            type=semver,pattern={{version}},value=${{ env.TAG }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ env.TAG }},enable=${{ !contains(env.TAG, '-') }}
+            type=semver,pattern={{major}},value=${{ env.TAG }},enable=${{ !contains(env.TAG, '-') }}
+            type=raw,value=latest,enable=${{ !contains(env.TAG, '-') }}
 
-          #### Docker
-          ```bash
-          docker pull ${{ steps.registry.outputs.host }}/${{ github.repository_owner }}/frost:${{ steps.get_version.outputs.VERSION }}
-          docker run ${{ steps.registry.outputs.host }}/${{ github.repository_owner }}/frost:${{ steps.get_version.outputs.VERSION }} version
-          ```
+      # devops.md §8: every image is gated on CRITICAL/HIGH before it can reach
+      # a registry. Build the amd64 leg locally, scan it, then publish the
+      # multi-arch manifest from the same layer cache.
+      - name: Build image for scanning
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: production
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: go-frost:scan
+          build-args: |
+            VERSION=${{ env.VERSION }}
+          cache-from: type=gha
 
-          ### Using the Library
+      - name: Install trivy CLI
+        run: curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
 
-          **C/C++ Integration:**
-          ```c
-          #include "libfrost.h"
+      # --ignore-unfixed on the OS layer (devops.md §8): base images carry
+      # unfixable advisories at any moment, so a raw gate would be permanently
+      # red and would train people to ignore it. This gate means "a rebuild
+      # fixes this" -- actionable, so enforceable.
+      - name: Trivy image gate (fail on CRITICAL/HIGH)
+        run: trivy image --scanners vuln --severity CRITICAL,HIGH --ignore-unfixed --exit-code 1 go-frost:scan
 
-          // Generate 2-of-3 threshold keys
-          char *keys;
-          size_t keys_len;
-          uint8_t *pubkey;
-          size_t pubkey_len;
+      # Everything above is a hard gate. Only publication is tolerant, and it is
+      # tolerant deliberately: the ephemeral Actions token carries repository
+      # scopes, not write:package, so the internal registry rejects it until a
+      # scoped token is provisioned (company decision 2c). The internal registry
+      # is also plain HTTP, which needs insecure-registries on every daemon that
+      # pushes or pulls.
+      - name: Log in to the container registry
+        id: login
+        continue-on-error: true
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ steps.registry.outputs.host }}
+          username: ${{ github.actor }}
+          password: ${{ github.server_url == 'https://github.com' && secrets.GITHUB_TOKEN || secrets.AGENT_TOKEN }}
 
-          frost_error_t err = frost_generate_keys(
-              FROST_CIPHERSUITE_RISTRETTO255_SHA512,
-              2, 3,
-              &keys, &keys_len,
-              &pubkey, &pubkey_len
-          );
-          ```
+      - name: Build and push
+        id: push
+        continue-on-error: true
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: production
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ env.VERSION }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-          **Link with:**
-          ```bash
-          # Shared library
-          gcc -o myapp myapp.c -L. -lfrost -Wl,-rpath,.
-
-          # Static library
-          gcc -o myapp myapp.c libfrost.a -lpthread -lm
-          ```
-
-          ### Checksums
-          Verify your download with SHA256 checksums in `checksums.txt`.
-
-          ### Security
-          - All ciphersuites are constant-time compliant
-          - FIPS 140 builds use Go 1.24+ GOFIPS140=latest mode
-        draft: false
-        prerelease: false
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # A tolerated failure is silent in the run summary, and a release that
+      # quietly ships no image is the state #16 was filed about.
+      - name: Report image publication
+        run: |
+          if [ "${{ steps.push.outcome }}" = "success" ]; then
+            echo "::notice::published ${{ steps.registry.outputs.host }}/${{ github.repository_owner }}/frost:${{ env.VERSION }}"
+          else
+            echo "::warning::image NOT published (login=${{ steps.login.outcome }}, push=${{ steps.push.outcome }}); the binaries and Release object are unaffected"
+          fi
