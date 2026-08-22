@@ -86,6 +86,18 @@ jobs:
           ref: ${{ needs.validate.outputs.tag }}
           fetch-depth: 0
 
+      # The tag's tree is what gets built and released, but it does not
+      # necessarily contain this workflow's own release tooling: dispatching for
+      # a tag cut BEFORE the tooling existed checks out a tree with no
+      # .github/scripts/ at all, which is how the first attempt at republishing
+      # v0.3.0-alpha failed. Check the workflow's own ref out alongside it and
+      # run the script from there, leaving the build tree as the working
+      # directory so CHANGELOG.md and dist/ still resolve to the release.
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          path: .release-tooling
+
       - uses: actions/setup-go@v6
         with:
           go-version-file: 'go.mod'
@@ -162,7 +174,7 @@ jobs:
         if: github.server_url != 'https://github.com'
         env:
           GITEA_TOKEN: ${{ secrets.AGENT_TOKEN }}
-        run: bash .github/scripts/gitea-release.sh
+        run: bash .release-tooling/.github/scripts/gitea-release.sh
 
   # Separate job, and deliberately NOT a dependency of the release: an image
   # that cannot be published must not cost the release its binaries.
@@ -222,8 +234,32 @@ jobs:
             VERSION=${{ env.VERSION }}
           cache-from: type=gha
 
+      # The upstream install.sh resolves its version through the unauthenticated
+      # GitHub API, which rate-limits when the whole portfolio builds at once --
+      # it timed out here (curl exit 28) and took the job with it. Fetching the
+      # pinned release asset avoids the API entirely and keeps the version
+      # visible in this file rather than resolved at run time. The checksum is
+      # verified because an unverified binary fetched over the network is then
+      # handed an entire image to scan. Same shape as go-xkms#43.
+      #
+      # Bump TRIVY_VERSION deliberately; `curl -sI
+      # https://github.com/aquasecurity/trivy/releases/latest` shows the current
+      # tag without an API call.
       - name: Install trivy CLI
-        run: curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+        env:
+          TRIVY_VERSION: '0.74.0'
+        run: |
+          set -euo pipefail
+          base="https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}"
+          tarball="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          tmp="$(mktemp -d)"
+          curl -sfL --retry 3 --retry-delay 5 -o "$tmp/$tarball" "$base/$tarball"
+          curl -sfL --retry 3 --retry-delay 5 -o "$tmp/checksums.txt" "$base/trivy_${TRIVY_VERSION}_checksums.txt"
+          (cd "$tmp" && grep " ${tarball}\$" checksums.txt | sha256sum -c -)
+          tar -xzf "$tmp/$tarball" -C "$tmp" trivy
+          install -m 0755 "$tmp/trivy" /usr/local/bin/trivy
+          rm -rf "$tmp"
+          trivy --version
 
       # --ignore-unfixed on the OS layer (devops.md §8): base images carry
       # unfixable advisories at any moment, so a raw gate would be permanently
