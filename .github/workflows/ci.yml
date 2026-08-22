@@ -189,12 +189,18 @@ jobs:
     - name: Download dependencies
       run: go mod download
 
+    # ./cmd/... joined ./pkg/... on 2026-08-21: the CLI and the C shim carry
+    # security-relevant selection logic (fail-closed ciphersuite resolution,
+    # the FIPS policy result a C caller sees) and had no test ever run by any
+    # workflow. The dark suites under test/ stay excluded -- test/rfc's timing
+    # tests flake on shared runners (company task #49) and test/transport is
+    # the build-tagged integration job below.
     - name: Run unit tests
-      run: go test -v -race -timeout 5m ./pkg/...
+      run: go test -v -race -timeout 5m ./pkg/... ./cmd/...
 
     - name: Generate coverage report
       run: |
-        go list -f '{{if .TestGoFiles}}{{.ImportPath}}{{end}}' ./pkg/... | \
+        go list -f '{{if .TestGoFiles}}{{.ImportPath}}{{end}}' ./pkg/... ./cmd/... | \
           xargs go test -coverprofile=coverage.out -covermode=atomic
 
     - name: Upload coverage to Codecov
@@ -280,12 +286,34 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: 'go.mod'
+          cache: true
+
+      - name: Download dependencies
+        run: go mod download
 
       - name: Build all packages (FIPS mode)
         run: go build ./...
 
+      # Mirrors the Unit Tests job's invocation exactly -- same package scope
+      # (./pkg/... ./cmd/...), same build tags (none), same exclusions -- so
+      # the FIPS env above is the only thing that differs between the two jobs
+      # (issue #7). Keep the two invocations identical when either moves.
+      #
+      # The previous ./... scope was the one place in any workflow that ran
+      # test/rfc, whose RFC 9591 section 7 side-channel tests call a leak at an
+      # 8ns delta and report it as noise on a CPU-capped shared runner. That
+      # suite is deliberately dark (company task #49) and wiring it in is a
+      # separate decision, so this job stops doing it as a side effect.
+      #
+      # FROST(P-256, SHA-256) -- the only suite this library will hand out under
+      # FIPS enforcement (not an approval; FROST is not an approved scheme, see
+      # issue #14) -- is covered by pkg/frost/ciphersuite/suites, which runs the
+      # RFC 9591 Appendix E.4 known-answer check and a keygen/sign/verify through
+      # the selection API, and asserts that the non-selectable suites are
+      # refused with a typed error under fips140=only (issue #12). cmd/frost
+      # and cmd/libfrost assert the same refusal at their own boundaries.
       - name: Unit tests (FIPS mode)
-        run: go test -count=1 -timeout=900s ./...
+        run: go test -v -race -timeout 5m ./pkg/... ./cmd/...
 
   # The single required check (devops.md §1). Every job above appears in BOTH
   # the needs list and the results check -- a gate that can pass vacuously is

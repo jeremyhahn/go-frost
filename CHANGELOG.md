@@ -7,6 +7,88 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`pkg/frost/ciphersuite/suites`** - resolves a ciphersuite from an
+  identifier or a name, which the library previously had no exported way to do.
+  Every consumer had grown its own name-to-suite switch, and they had drifted
+  - `Get(CiphersuiteID)`, `ByName(string)`, `Parse(string)`, `List()`,
+    `ShortName(CiphersuiteID)`, `UsesApprovedAlgorithms(CiphersuiteID)`, `Default()`
+  - Names match case-insensitively and accept the short name (`p256`), the long
+    name (`p256-sha256`) and the RFC 9591 context string
+    (`FROST-P256-SHA256-v1`). RFC 9591 spells the secp256k1 context string in
+    lower case and the other four in upper, so a consumer that upper-cased them
+    uniformly used to name a suite that did not exist
+  - The selectable set is closed to the five RFC 9591 suites, so nothing can be
+    registered past the FIPS policy below
+- **`ciphersuite.ErrUnknownCiphersuite`, `ciphersuite.ErrNotFIPSSelectable`
+  and `ciphersuite.LookupError`** - the typed vocabulary for a failed selection
+- **FIPS 140-3 ciphersuite selection policy** (owner ruling 2026-08-20) -
+  while FIPS enforcement is active the library hands out only
+  FROST(P-256, SHA-256), because P-256 and SHA-256 are the only underlying
+  primitives FIPS approves at all; the other four suites are built on
+  Curve25519, Ed448 or secp256k1, which are not approved curves in any scheme
+  - `Default()` returns P-256 whenever the module is active
+    (`GODEBUG=fips140=on` or `fips140=only`), so a ceremony started under FIPS
+    does not mint shares on the less defensible curve. ristretto255 remains the
+    default everywhere else and existing shares are unaffected
+  - `Get` refuses a non-selectable suite with `ErrNotFIPSSelectable` under
+    `GODEBUG=fips140=only`. Under `fips140=on` an explicit choice is still
+    honored, matching what the Go runtime itself enforces
+  - **`FIPSSelectable` claims nothing beyond selection, deliberately.**
+    Nothing go-frost produces is FIPS-compliant, for two independent reasons:
+    FROST is **not a FIPS-approved signature scheme** (FIPS 186-5 approves
+    ECDSA, EdDSA and RSA; NIST's threshold work, the NISTIR 8214 series, is a
+    project rather than a standard), and go-frost is not a validated module
+    (P-256 point arithmetic is `crypto/elliptic`, but scalar arithmetic runs
+    through `filippo.io/bigmod`, outside the boundary). Earlier drafts of this
+    change named the predicate `FIPSApproved`, then `UsesApprovedAlgorithms`;
+    both over-claimed. Whether the library should run under `fips140=only` at
+    all is open for the owner as **#14**
+  - Coverage runs in the `fips` CI job: the RFC 9591 Appendix E.4 known-answer
+    check and a full P-256 keygen/sign/verify through the selection API
+
+### Changed
+- **BREAKING (CLI): an unrecognized `--ciphersuite` value now exits 1.** It
+  printed a warning, substituted ristretto255 and exited 0, so a typo produced
+  key material on a curve the operator never asked for
+- **BREAKING (CLI): `--ciphersuite` now defaults to the empty string**, meaning
+  "the library default" — ristretto255, or P-256 under FIPS. It was pinned to
+  the literal `ristretto255`, which no FIPS runtime could shift
+- The `--help` ciphersuite list is generated from the library's own table
+  rather than restated, and marks the approved and default suites
+- **BREAKING (libfrost): an unrecognized `frost_ciphersuite_t` now returns
+  `FROST_ERR_INVALID_PARAMS`** instead of silently signing with ristretto255
+- **libfrost**: new `FROST_ERR_CIPHERSUITE_NOT_ALLOWED = 7`, returned when FIPS
+  enforcement excludes the requested suite
+- **libfrost**: the package-level `services` map is gone. A service is a thin
+  wrapper over a ciphersuite, and the map was unsynchronized — a data race for
+  C callers on more than one thread
+
+- **`cmd/frost` and `cmd/libfrost` have tests, and CI runs them.** Neither had
+  a single test, and no workflow compiled one — while both carry the
+  security-relevant selection logic above
+  - `cmd/libfrost`: the enum-to-suite mapping and its status codes moved out of
+    the cgo file into `suite.go`, because a cgo file cannot be tested (a test
+    file gets its own preamble and cannot see the enums). `libfrost.go` now
+    pins the Go mirrors to the C enums with compile-time assertions, so a
+    renumbered `frost_ciphersuite_t` or `frost_error_t` stops the build instead
+    of silently resolving the wrong curve
+  - `cmd/frost`: the `--ciphersuite` flag is declared once in
+    `addCiphersuiteFlag` rather than six times, and a guard test fails if a
+    seventh declaration appears. The `os.Exit` paths are asserted from a
+    re-executed child process, including the FIPS refusal under
+    `GODEBUG=fips140=only`
+
+### Fixed
+- The `fips` CI job now mirrors the Unit Tests job's package scope and build
+  tags exactly, differing only in the FIPS environment. Its `./...` scope was
+  the one place in any workflow that ran `test/rfc`, whose RFC 9591 §7
+  side-channel tests report an 8ns delta as a leak on a CPU-capped shared
+  runner (go-frost#7)
+- Both jobs now cover `./cmd/...` alongside `./pkg/...`. The dark suites under
+  `test/` stay excluded: `test/rfc` for the reason above (company task #49),
+  `test/transport` because it is the build-tagged integration job
+
 ## [0.2.0-alpha] - 2026-08-19
 
 ### Changed

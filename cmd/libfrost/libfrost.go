@@ -16,6 +16,11 @@ typedef enum {
     FROST_ERR_VERIFY_FAILED = 4,
     FROST_ERR_SERIALIZE_FAILED = 5,
     FROST_ERR_DESERIALIZE_FAILED = 6,
+    // The requested ciphersuite exists but is not permitted in this runtime,
+    // which today means it is built on algorithms FIPS 140-3 does not approve
+    // while the module is enforcing approved-only operation
+    // (GODEBUG=fips140=only).
+    FROST_ERR_CIPHERSUITE_NOT_ALLOWED = 7,
     FROST_ERR_INTERNAL = 99
 } frost_error_t;
 
@@ -35,43 +40,48 @@ import (
 
 	"github.com/jeremyhahn/go-frost/pkg/frost"
 	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite"
-	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite/ed25519_sha512"
-	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite/ed448_shake256"
-	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite/p256_sha256"
-	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite/ristretto255_sha512"
-	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite/secp256k1_sha256"
 	"github.com/jeremyhahn/go-frost/pkg/frost/service"
 	"github.com/jeremyhahn/go-frost/pkg/secmem"
 )
 
-// Global service instances per ciphersuite
-var services = make(map[C.frost_ciphersuite_t]service.FrostService)
+// The mirrors in suite.go must track the C enums above, or the shim would
+// resolve the wrong ciphersuite while every Go-level test still passed. Each
+// pair is pinned in both directions: converting a negative untyped constant to
+// uint is a compile error, so a divergence stops the build rather than
+// shipping.
+const (
+	_ = uint(C.FROST_OK - statusOK)
+	_ = uint(statusOK - C.FROST_OK)
+	_ = uint(C.FROST_ERR_INVALID_PARAMS - statusInvalidParams)
+	_ = uint(statusInvalidParams - C.FROST_ERR_INVALID_PARAMS)
+	_ = uint(C.FROST_ERR_CIPHERSUITE_NOT_ALLOWED - statusCiphersuiteNotAllowed)
+	_ = uint(statusCiphersuiteNotAllowed - C.FROST_ERR_CIPHERSUITE_NOT_ALLOWED)
 
-func getCiphersuite(cs C.frost_ciphersuite_t) ciphersuite.Ciphersuite {
-	switch cs {
-	case C.FROST_CIPHERSUITE_RISTRETTO255_SHA512:
-		return ristretto255_sha512.New()
-	case C.FROST_CIPHERSUITE_ED25519_SHA512:
-		return ed25519_sha512.New()
-	case C.FROST_CIPHERSUITE_ED448_SHAKE256:
-		return ed448_shake256.New()
-	case C.FROST_CIPHERSUITE_P256_SHA256:
-		return p256_sha256.New()
-	case C.FROST_CIPHERSUITE_SECP256K1_SHA256:
-		return secp256k1_sha256.New()
-	default:
-		return ristretto255_sha512.New()
-	}
+	_ = uint(C.FROST_CIPHERSUITE_RISTRETTO255_SHA512 - suiteRistretto255SHA512)
+	_ = uint(suiteRistretto255SHA512 - C.FROST_CIPHERSUITE_RISTRETTO255_SHA512)
+	_ = uint(C.FROST_CIPHERSUITE_ED25519_SHA512 - suiteEd25519SHA512)
+	_ = uint(suiteEd25519SHA512 - C.FROST_CIPHERSUITE_ED25519_SHA512)
+	_ = uint(C.FROST_CIPHERSUITE_ED448_SHAKE256 - suiteEd448SHAKE256)
+	_ = uint(suiteEd448SHAKE256 - C.FROST_CIPHERSUITE_ED448_SHAKE256)
+	_ = uint(C.FROST_CIPHERSUITE_P256_SHA256 - suiteP256SHA256)
+	_ = uint(suiteP256SHA256 - C.FROST_CIPHERSUITE_P256_SHA256)
+	_ = uint(C.FROST_CIPHERSUITE_SECP256K1_SHA256 - suiteSecp256k1SHA256)
+	_ = uint(suiteSecp256k1SHA256 - C.FROST_CIPHERSUITE_SECP256K1_SHA256)
+)
+
+// getCiphersuite resolves a C enum value to a ciphersuite and the status code
+// to return to the caller. The logic lives in resolveSuite so it can be tested
+// without cgo.
+func getCiphersuite(cs C.frost_ciphersuite_t) (ciphersuite.Ciphersuite, C.frost_error_t) {
+	suite, status := resolveSuite(int(cs))
+	return suite, C.frost_error_t(status)
 }
 
-func getService(cs C.frost_ciphersuite_t) service.FrostService {
-	if svc, ok := services[cs]; ok {
-		return svc
-	}
-	suite := getCiphersuite(cs)
-	svc := service.NewFrostService(suite)
-	services[cs] = svc
-	return svc
+// getService resolves a C enum value to a FROST service and the status code to
+// return to the caller.
+func getService(cs C.frost_ciphersuite_t) (service.FrostService, C.frost_error_t) {
+	svc, status := resolveService(int(cs))
+	return svc, C.frost_error_t(status)
 }
 
 //export frost_version
@@ -103,8 +113,11 @@ func frost_generate_keys(
 		return C.FROST_ERR_INVALID_PARAMS
 	}
 
-	svc := getService(cs)
-	suite := getCiphersuite(cs)
+	suite, rc := getCiphersuite(cs)
+	if rc != C.FROST_OK {
+		return rc
+	}
+	svc := service.NewFrostService(suite)
 
 	config := frost.Configuration{
 		MinSigners: uint32(minSigners),
@@ -159,7 +172,10 @@ func frost_sign(
 		return C.FROST_ERR_INVALID_PARAMS
 	}
 
-	svc := getService(cs)
+	svc, rc := getService(cs)
+	if rc != C.FROST_OK {
+		return rc
+	}
 
 	// Parse key packages
 	keysData := C.GoBytes(unsafe.Pointer(keysJSON), C.int(keysJSONLen))
@@ -192,14 +208,12 @@ func frost_sign(
 	}
 
 	// Serialize signature
-	suite := getCiphersuite(cs)
 	sigBytes := append(signature.R.Bytes(), signature.Z.Bytes()...)
 
 	*signatureOutLen = C.size_t(len(sigBytes))
 	*signatureOut = (*C.uint8_t)(C.malloc(C.size_t(len(sigBytes))))
 	copy(unsafe.Slice((*byte)(unsafe.Pointer(*signatureOut)), len(sigBytes)), sigBytes)
 
-	_ = suite // Suppress unused warning
 	return C.FROST_OK
 }
 
@@ -217,8 +231,11 @@ func frost_verify(
 		return C.FROST_ERR_INVALID_PARAMS
 	}
 
-	svc := getService(cs)
-	suite := getCiphersuite(cs)
+	suite, rc := getCiphersuite(cs)
+	if rc != C.FROST_OK {
+		return rc
+	}
+	svc := service.NewFrostService(suite)
 	grp := suite.Group()
 
 	// Parse message

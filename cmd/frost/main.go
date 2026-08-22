@@ -13,11 +13,7 @@ import (
 
 	"github.com/jeremyhahn/go-frost/pkg/frost"
 	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite"
-	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite/ed25519_sha512"
-	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite/ed448_shake256"
-	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite/p256_sha256"
-	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite/ristretto255_sha512"
-	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite/secp256k1_sha256"
+	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite/suites"
 	"github.com/jeremyhahn/go-frost/pkg/frost/keygen"
 	"github.com/jeremyhahn/go-frost/pkg/frost/signing"
 	"github.com/jeremyhahn/go-frost/pkg/secmem"
@@ -32,33 +28,49 @@ var (
 	BuildDate = "unknown"
 )
 
-// getCiphersuite returns the ciphersuite based on the given name.
-// Defaults to ristretto255 if name is empty or invalid.
-func getCiphersuite(name string) ciphersuite.Ciphersuite {
-	switch strings.ToLower(name) {
-	case "ed25519", "ed25519-sha512":
-		return ed25519_sha512.New()
-	case "p256", "p256-sha256":
-		return p256_sha256.New()
-	case "secp256k1", "secp256k1-sha256":
-		return secp256k1_sha256.New()
-	case "ed448", "ed448-shake256":
-		return ed448_shake256.New()
-	case "ristretto255", "ristretto255-sha512", "":
-		return ristretto255_sha512.New()
-	default:
-		fmt.Fprintf(os.Stderr, "Warning: unknown ciphersuite '%s', using ristretto255-sha512\n", name)
-		return ristretto255_sha512.New()
-	}
+// addCiphersuiteFlag declares --ciphersuite on a subcommand. Every subcommand
+// that takes one goes through here: the flag was declared independently six
+// times, which is six places for one to keep an old default when the policy
+// moves — and the default did move, from the literal "ristretto255" to the
+// empty string meaning "whatever the runtime's default is".
+func addCiphersuiteFlag(fs *flag.FlagSet) *string {
+	return fs.String("ciphersuite", "", "Ciphersuite to use (default ristretto255, or p256 under FIPS 140-3 mode)")
 }
 
-// getSupportedCiphersuites returns a string listing all supported ciphersuites
+// getCiphersuite resolves the --ciphersuite flag, or exits with the reason.
+// An unrecognized name is fatal rather than a warning: substituting
+// ristretto255 for a typo produced key material on a curve the operator never
+// asked for and still exited 0. An empty name selects the library default,
+// which is P-256 when FIPS 140-3 mode is active.
+func getCiphersuite(name string) ciphersuite.Ciphersuite {
+	suite, err := suites.ByName(name)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n\nSupported ciphersuites:\n%s\n", err, getSupportedCiphersuites())
+		os.Exit(1)
+	}
+	return suite
+}
+
+// getSupportedCiphersuites lists the supported ciphersuites for --help. It is
+// built from the library's own table so the help text cannot drift away from
+// what the flag actually accepts, and it marks the default for the runtime it
+// is printed in.
 func getSupportedCiphersuites() string {
-	return `  ristretto255 - FROST(ristretto255, SHA-512) [default, recommended]
-  ed25519      - FROST(Ed25519, SHA-512)
-  p256         - FROST(P-256, SHA-256) [NIST]
-  secp256k1    - FROST(secp256k1, SHA-256) [Bitcoin curve]
-  ed448        - FROST(Ed448, SHAKE256) [highest security]`
+	defaultID := suites.Default()
+	ids := suites.List()
+
+	lines := make([]string, 0, len(ids))
+	for _, id := range ids {
+		line := fmt.Sprintf("  %-13s - %s", suites.ShortName(id), id)
+		if suites.FIPSSelectable(id) {
+			line += " [FIPS-selectable]"
+		}
+		if id == defaultID {
+			line += " [default]"
+		}
+		lines = append(lines, line)
+	}
+	return strings.Join(lines, "\n")
 }
 
 // safeUintToUint32 converts uint to uint32 with bounds check.
@@ -180,7 +192,7 @@ func keygenCommand() {
 	minSigners := fs.Uint("min", 2, "Minimum number of signers (threshold)")
 	maxSigners := fs.Uint("max", 3, "Maximum number of signers (total participants)")
 	output := fs.String("output", "frost-keys.json", "Output file for key packages")
-	ciphersuiteFlag := fs.String("ciphersuite", "ristretto255", "Ciphersuite to use")
+	ciphersuiteFlag := addCiphersuiteFlag(fs)
 
 	fs.Usage = func() {
 		fmt.Println("Usage: frost keygen [options]")
@@ -303,7 +315,7 @@ func signCommand() {
 	message := fs.String("message", "", "Message to sign")
 	signers := fs.String("signers", "1,2", "Comma-separated list of signer identifiers (e.g., 1,2)")
 	output := fs.String("output", "frost-signature.json", "Output file for signature")
-	ciphersuiteFlag := fs.String("ciphersuite", "ristretto255", "Ciphersuite to use")
+	ciphersuiteFlag := addCiphersuiteFlag(fs)
 
 	fs.Usage = func() {
 		fmt.Println("Usage: frost sign [options]")
@@ -502,7 +514,7 @@ func commitCommand() {
 	participantID := fs.Uint("id", 0, "Participant identifier")
 	outputCommitment := fs.String("output", "", "Output file for commitment (default: commitment-{id}.json)")
 	outputNonces := fs.String("nonces", "", "Output file for private nonces (default: nonces-{id}.json)")
-	ciphersuiteFlag := fs.String("ciphersuite", "ristretto255", "Ciphersuite to use")
+	ciphersuiteFlag := addCiphersuiteFlag(fs)
 
 	fs.Usage = func() {
 		fmt.Println("Usage: frost commit [options]")
@@ -684,7 +696,7 @@ func signShareCommand() {
 	commitmentsFile := fs.String("commitments", "commitments.json", "Input file containing all commitments")
 	message := fs.String("message", "", "Message to sign")
 	output := fs.String("output", "", "Output file for signature share (default: share-{id}.json)")
-	ciphersuiteFlag := fs.String("ciphersuite", "ristretto255", "Ciphersuite to use")
+	ciphersuiteFlag := addCiphersuiteFlag(fs)
 
 	fs.Usage = func() {
 		fmt.Println("Usage: frost sign-share [options]")
@@ -940,7 +952,7 @@ func aggregateCommand() {
 	sharesFile := fs.String("shares", "shares.json", "Input file containing all signature shares")
 	message := fs.String("message", "", "Message that was signed")
 	output := fs.String("output", "frost-signature.json", "Output file for final signature")
-	ciphersuiteFlag := fs.String("ciphersuite", "ristretto255", "Ciphersuite to use")
+	ciphersuiteFlag := addCiphersuiteFlag(fs)
 
 	fs.Usage = func() {
 		fmt.Println("Usage: frost aggregate [options]")
@@ -1133,7 +1145,7 @@ func aggregateCommand() {
 func verifyCommand() {
 	fs := flag.NewFlagSet("verify", flag.ExitOnError)
 	sigFile := fs.String("signature", "frost-signature.json", "Input file containing signature")
-	ciphersuiteFlag := fs.String("ciphersuite", "ristretto255", "Ciphersuite to use")
+	ciphersuiteFlag := addCiphersuiteFlag(fs)
 
 	fs.Usage = func() {
 		fmt.Println("Usage: frost verify [options]")

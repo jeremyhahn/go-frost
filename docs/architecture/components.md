@@ -34,12 +34,17 @@ Architecture for the RFC 9591 FROST (Flexible Round-Optimized Schnorr Threshold)
 **Key Components**:
 - `Ciphersuite` interface: Combines group with domain-separated hash functions
 - Five standard ciphersuite IDs (Ed25519, ristretto255, Ed448, P-256, secp256k1)
-- `Registry` interface: Ciphersuite discovery and registration
+- `suites` subpackage: resolves an identifier or name to a ciphersuite, and is
+  where FIPS 140-3 selection policy is applied
 
 **Design Decisions**:
 - H1-H5 domain-separated hash functions as RFC 9591 requires
-- Pluggable architecture for adding new ciphersuites
 - HashToCurve support for advanced operations
+- The selectable set is closed to exactly the five RFC 9591 suites. An
+  extensible registry would admit a suite the FIPS policy table knows nothing
+  about, and `suites.Get` would then pass it. Code needing a non-standard suite
+  constructs it directly and passes the `Ciphersuite` value along; it does not
+  become selectable by name
 
 ### Layer 3: Helpers (`pkg/frost/helpers/`)
 

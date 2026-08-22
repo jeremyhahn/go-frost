@@ -31,6 +31,65 @@ All 5 RFC 9591 ciphersuites are implemented:
 
 All ciphersuites: 95%+ test coverage, benchmarks, table-driven integration tests
 
+### Selecting a ciphersuite
+
+Import a ciphersuite package directly when the suite is fixed at compile time.
+When it arrives at run time instead — from a flag, a config file, or a peer's
+session information — resolve it through
+`pkg/frost/ciphersuite/suites`:
+
+```go
+suite, err := suites.ByName("p256")           // or the RFC context string,
+                                              // or "" for the default
+suite, err := suites.Get(ciphersuite.P256SHA256)
+```
+
+Names are matched case-insensitively and accept three spellings: the short
+name (`p256`), the long name (`p256-sha256`), and the RFC 9591 context string
+(`FROST-P256-SHA256-v1`). An unrecognized name is an error — `ErrUnknownCiphersuite`
+— never a silent substitution.
+
+### FIPS 140-3
+
+> **Nothing go-frost produces is FIPS-compliant, and the library does not
+> claim otherwise.** Two independent reasons, either one sufficient:
+>
+> 1. **FROST is not a FIPS-approved signature scheme.** FIPS 186-5 approves
+>    ECDSA, EdDSA and RSA. FROST is threshold Schnorr, which is none of them,
+>    and NIST's threshold cryptography work (the NISTIR 8214 series) is a
+>    project rather than an approved standard. Choosing P-256 does not make a
+>    FROST signature compliant.
+> 2. **go-frost is not a validated cryptographic module.** Even for P-256,
+>    point arithmetic comes from `crypto/elliptic` but scalar field arithmetic
+>    runs through `filippo.io/bigmod` — a re-export of Go's internal
+>    `fips140/bigmod`, and outside the validated boundary all the same.
+
+What the library offers is a selection *policy*, `suites.FIPSSelectable`:
+while FIPS enforcement is active it hands out only FROST(P-256, SHA-256),
+because P-256 and SHA-256 are the only underlying primitives FIPS approves at
+all — the other four suites are built on Curve25519, Ed448 or secp256k1, which
+are not approved curves in any scheme. That is a comparative choice among
+non-approved options, not an approval.
+
+Selection follows the runtime:
+
+| Runtime | `suites.Default()` | `suites.Get` on a non-selectable suite |
+|---|---|---|
+| no FIPS | ristretto255 | resolves |
+| `GODEBUG=fips140=on` | **P-256** | resolves |
+| `GODEBUG=fips140=only` | **P-256** | `ErrNotFIPSSelectable` |
+
+A ceremony started under FIPS defaults to P-256 because shares outlive the
+ceremony that produced them, and shares on a non-approved curve are the less
+defensible of two non-approved options. ristretto255 remains the default
+everywhere else, so existing shares are unaffected.
+
+Whether this library should run under `fips140=only` at all is an open
+question for the owner — see issue #14.
+
+Import a ciphersuite package directly to bypass this policy — the gate is on
+selection by name, not on the implementations.
+
 ## Quick Start
 
 ```go
