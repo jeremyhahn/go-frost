@@ -82,7 +82,7 @@ jobs:
     - name: Install and run gosec
       run: |
         go install github.com/securego/gosec/v2/cmd/gosec@latest
-        gosec -quiet -exclude=G101,G104,G115,G304,G306,G404 ./...
+        gosec -concurrency 4 -quiet -exclude=G101,G104,G115,G304,G306,G404 ./...
 
     - name: Run govulncheck
       run: |
