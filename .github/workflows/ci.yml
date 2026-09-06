@@ -17,6 +17,42 @@ on:
   # build exposes no rerun API (devops.md §5).
   workflow_dispatch:
 
+# Supersession control (#21). A newer head on the same ref cancels the older
+# CI run instead of both occupying the shared runner's capacity. Portfolio-wide,
+# 73% of runs were superseded but still running, and queue latency (median 46
+# min, p90 94 min) was the single biggest constraint on landing work.
+#
+# MEASURED on Gitea 1.27.1 (2026-09-06). This CORRECTS the three `needs:`
+# comments below, which asserted cancellation was impossible here:
+#   - Workflow level, keyed on the REF, `cancel-in-progress: true` -> Gitea
+#     cancels the OLDER run and the NEWEST completes. Observed live on
+#     go-netmon (run 12242 cancelled, 12269 survived) and go-recountly
+#     (12261 flipped queued -> cancelled).
+#   - This repo's own commit 6e48db0 ("ci: drop concurrency from task-worker")
+#     is NOT evidence against it. That block was JOB level, keyed
+#     `task-worker-${{ github.repository }}` with NO ref component -- so every
+#     task worker in the repo shared ONE group -- and `cancel-in-progress:
+#     false`. Gitea cannot QUEUE, so the false path cancels: those workers were
+#     saturated by their siblings, not cancelled from an unoccupied group. It
+#     says nothing about a ref-keyed `cancel-in-progress: true`.
+#   - Task #90 still holds and is WHY this is the only available mechanism:
+#     1.27.1 publishes no `cancel` REST route at any path, so nothing can shed
+#     a superseded run from OUTSIDE. `concurrency:` sheds it from inside.
+#   - `cancel-in-progress` does NOT evaluate expressions on 1.27.1 -- any
+#     non-empty value is truthy, so a `${{ }}` rendering "false" would still
+#     cancel. Write the literal. (Group-key expressions DO evaluate.)
+#   - The group is per-REF, so a PR's runs and main's push runs never cancel
+#     each other and two PRs never cancel each other; a cancelled run only ever
+#     writes `failure` to a SUPERSEDED sha, which branch protection has already
+#     moved off. The key leads with `github.workflow`, so this `CI` group
+#     structurally cannot reach the separate `Code Review` workflow that is the
+#     other required check.
+#   - release.yml deliberately does NOT get this: cancelling a release
+#     mid-publish is destructive. Nor do the review workflows.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
   security-events: write
@@ -64,7 +100,7 @@ jobs:
   security:
     name: Security Scan
     runs-on: ubuntu-latest
-    needs: [lint, test]  # v1.9 staged fail-fast: expensive tier gates on the fast tier (no cancel API — task #90)
+    needs: [lint, test]  # v1.9 staged fail-fast: expensive tier gates on the fast tier. Complements, does not replace, the supersession cancellation above (#21).
 
     steps:
     - name: Checkout code
@@ -92,7 +128,7 @@ jobs:
   trivy:
     name: Trivy
     runs-on: ubuntu-latest
-    needs: [lint, test]  # v1.9 staged fail-fast: expensive tier gates on the fast tier (no cancel API — task #90)
+    needs: [lint, test]  # v1.9 staged fail-fast: expensive tier gates on the fast tier. Complements, does not replace, the supersession cancellation above (#21).
 
     steps:
     - name: Checkout code
@@ -166,7 +202,7 @@ jobs:
   trivy-image:
     name: Trivy Image
     runs-on: ubuntu-latest
-    needs: [lint, test]  # v1.9 staged fail-fast: expensive tier gates on the fast tier (no cancel API — task #90)
+    needs: [lint, test]  # v1.9 staged fail-fast: expensive tier gates on the fast tier. Complements, does not replace, the supersession cancellation above (#21).
 
     steps:
     - name: Checkout code
