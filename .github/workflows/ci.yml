@@ -108,6 +108,11 @@ jobs:
     - name: Test baked-tool guard
       run: bash .github/scripts/verify-baked-tool_test.sh
 
+    # make release-alpha (issue #17) publishes immutable tags, so its guards
+    # are regression-tested on every change against a temporary remote.
+    - name: Test release-alpha recipe
+      run: make test-release-alpha
+
     - name: Verify baked golangci-lint
       env:
         GOLANGCI_LINT_VERSION: 'v2.13.2'

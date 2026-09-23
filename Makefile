@@ -35,11 +35,13 @@ COVERAGE_HTML=$(COVERAGE_DIR)/coverage.html
 DOCKER_IMAGE=go-frost
 DOCKER_TAG=latest
 
-# Version info
-VERSION ?= $(shell cat VERSION 2>/dev/null || echo "dev")
+# Version info. The build version is BUILD_VERSION, not VERSION: VERSION is the
+# explicit argument of `make release-alpha VERSION=vX.Y.Z-alpha`, and a build
+# definition under that name would shadow it (release-alpha template v2.3.6(b)).
+BUILD_VERSION ?= $(shell cat VERSION 2>/dev/null || echo "dev")
 GIT_COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "none")
 BUILD_DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
-LDFLAGS = -s -w -X main.Version=$(VERSION) -X main.GitCommit=$(GIT_COMMIT) -X main.BuildDate=$(BUILD_DATE)
+LDFLAGS = -s -w -X main.Version=$(BUILD_VERSION) -X main.GitCommit=$(GIT_COMMIT) -X main.BuildDate=$(BUILD_DATE)
 
 .PHONY: all
 all: test build build-lib
@@ -56,7 +58,7 @@ build:
 build-release:
 	@echo "Building release binaries..."
 	CGO_ENABLED=0 $(GOBUILD) -ldflags="$(LDFLAGS)" -o $(BINARY_NAME) $(BINARY_PATH)
-	@echo "Built $(BINARY_NAME) version $(VERSION)"
+	@echo "Built $(BINARY_NAME) version $(BUILD_VERSION)"
 
 .PHONY: build-lib
 ## build-lib: Build both shared and static libraries
@@ -373,20 +375,72 @@ export GOWORK=off
 
 # ---- dependency-resolution.md targets (2026-08-13 cutover) ----
 # SUBMODULE_TAGS lists nested modules tagged in lockstep with the root
-# (release-versioning.md P2). deps-latest runs before compiling in a
-# consumer repo; release-alpha publishes this repo's next -alpha tag to dev.
-# deps-latest picks the highest tag INCLUDING -alpha prereleases — bare
-# 'go get @latest' ignores prereleases and would downgrade to legacy v0.0.0.
+# (release-versioning.md P2); go-frost has none. deps-latest runs before
+# compiling in a consumer repo; it picks the highest tag INCLUDING -alpha
+# prereleases — bare 'go get @latest' ignores prereleases and would downgrade
+# to legacy v0.0.0.
+#
+# release-alpha is the company template v2.3.9, vendored verbatim in
+# make/release-alpha.mk: `make release-alpha VERSION=vX.Y.Z-alpha`.
+#
+# Its inputs are defined BEFORE the include: the template reads them in
+# target-specific `:=` assignments, which expand at parse time.
+#
+# AGENT_GIT is resolved from PATH, never a baked absolute path (template
+# v2.3.6(a)); an unresolved wrapper leaves it empty and the recipe's -x guard
+# fails before VERSION is written. It is resolved to a plain value because the
+# recipe reads its inputs with $(value ...), which would not expand a deferred
+# reference. It is resolved with $(wildcard ...), NOT $(shell command -v ...):
+# GNU Make 4.4 builds an exported environment for every $(shell), and building
+# it expands each command-line variable — a parse-time $(shell) here, ahead of
+# the template's `unexport` line, made
+# `make release-alpha 'RELEASE_REMOTE=$(shell cmd)origin'` run cmd (measured on
+# GNU Make 4.4.1 while adopting v2.3.9). $(wildcard) runs no process.
+ifeq ($(origin AGENT_GIT),undefined)
+AGENT_GIT := $(firstword $(wildcard $(addsuffix /agent-git.sh,$(subst :, ,$(PATH)))))
+endif
+REPO_NAME ?= go-frost
+RELEASE_REMOTE ?= origin
 
-.PHONY: release-alpha deps-latest
+include make/release-alpha.mk
 
-release-alpha:
-	@V=$$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || echo v0.0.0-alpha); \
-	NEXT=$$(echo $$V | awk -F'[.-]' '{printf "v%s.%s.%d-alpha", substr($$1,2), $$2, $$3+1}'); \
-	echo $${NEXT#v} > VERSION && git add VERSION && git commit -q -m "chore(release): $$NEXT" || true; \
-	git tag $$NEXT; \
-	for s in $(SUBMODULE_TAGS); do git tag "$$s/$$NEXT"; done; \
-	git push dev HEAD --tags && echo "Tagged $$NEXT"
+# CHANGELOG fragments (release-versioning.md §5): a PR adds
+# changelog.d/<issue>-<slug>.md instead of editing CHANGELOG.md, and assembly
+# is a COMMITTED step before tagging. The release is two commands:
+#
+#   make changelog-assemble VERSION=vX.Y.Z-alpha   # folds [Unreleased] + fragments
+#   make release-alpha      VERSION=vX.Y.Z-alpha   # into "## [X.Y.Z-alpha] - date"
+#
+# release-alpha refuses while any fragment remains, so entries can never be
+# stranded in changelog.d/ behind a published tag. The vendored template is
+# untouched: the refusal is a repo-specific prerequisite, as the template
+# provides for lockstep checks.
+#
+# changelog-assemble takes its inputs exactly as the template does, and for the
+# same reason: once, via override + export of $(value ...), with every name
+# (public and internal) unexported, so a $(shell ...) in a command-line value
+# arrives as text instead of running. VERSION, REPO_NAME and AGENT_GIT are
+# already unexported by make/release-alpha.mk.
+.PHONY: changelog-assemble check-changelog-fragments
+unexport CL_VERSION CL_REPO CL_AGENT_GIT
+## changelog-assemble: Fold [Unreleased] and changelog.d/ into a release section and commit (VERSION=vX.Y.Z-alpha)
+changelog-assemble: override export CL_VERSION   := $(value VERSION)
+changelog-assemble: override export CL_REPO      := $(value REPO_NAME)
+changelog-assemble: override export CL_AGENT_GIT := $(value AGENT_GIT)
+changelog-assemble:
+	@sh make/changelog-assemble.sh
+
+release-alpha: check-changelog-fragments
+
+check-changelog-fragments:
+	@test -z "$$(find changelog.d -mindepth 1 -maxdepth 1 -type f ! -name .gitkeep 2>/dev/null)" || { echo 'ERROR: changelog.d/ still holds fragments. Run make changelog-assemble VERSION=vX.Y.Z-alpha first: it folds them into the release section of CHANGELOG.md and commits that, so no entry is left behind a published tag'; exit 1; }
+
+.PHONY: test-release-alpha
+## test-release-alpha: Regression-test make release-alpha and changelog-assemble against a temporary remote
+test-release-alpha:
+	bash make/release-alpha_test.sh
+
+.PHONY: deps-latest
 
 deps-latest:
 	@GOWORK=off sh -c ' \
