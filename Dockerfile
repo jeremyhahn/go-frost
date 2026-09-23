@@ -2,7 +2,7 @@
 # Multi-stage build for minimal production image
 
 # Build stage
-FROM --platform=$BUILDPLATFORM golang:1.26.7-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.27.0-alpine AS builder
 
 # Install build dependencies
 RUN apk add --no-cache git make ca-certificates

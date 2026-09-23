@@ -87,10 +87,34 @@ jobs:
     - name: Run go vet
       run: go vet ./...
 
-    - name: Install and run golangci-lint
-      run: |
-        go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2  # PINNED (devops.md §9, documented): v2.13.0 (2026-08-19) ships honnef.co/go/tools v0.8.0-rc.1 whose nilness pass panics ("unhandled builtin recover", crashes on sentry-go) — red gate with zero findings. Unpin when golangci-lint ships a non-rc staticcheck that passes on main.
-        golangci-lint run --timeout=5m
+    # Baked, not installed (issue #19). The ci-runner image bakes golangci-lint
+    # and records it in /etc/ci-runner-tools.txt; a `go install` here would
+    # overwrite that copy at run time with whatever this file names, which is
+    # how a v2.12.2 pin (cannot lint Go 1.27) undid the image's v2.13.2.
+    #
+    # PINNED (devops.md §9, "a pin that is specifically documented, in place,
+    # with the reason"): v2.13.2 moves in the same change as `go 1.27.0` —
+    # v2.12.2 cannot lint Go 1.27, and v2.13.0 panicked on Go 1.26 ("nilness:
+    # internal error: unhandled builtin recover"). Raise it together with the
+    # image and the go directive.
+    #
+    # Fail closed, never fall back to a network install: a missing tool or a
+    # version mismatch means the image is wrong, and installing over it would
+    # hide exactly that.
+    #
+    # The guard lives in .github/scripts/verify-baked-tool.sh (shared with the
+    # Security Scan job) and is regression-tested with stub tools by the step
+    # below, before any baked tool is trusted.
+    - name: Test baked-tool guard
+      run: bash .github/scripts/verify-baked-tool_test.sh
+
+    - name: Verify baked golangci-lint
+      env:
+        GOLANGCI_LINT_VERSION: 'v2.13.2'
+      run: bash .github/scripts/verify-baked-tool.sh golangci-lint github.com/golangci/golangci-lint/v2 "$GOLANGCI_LINT_VERSION"
+
+    - name: Run golangci-lint (baked)
+      run: golangci-lint run --timeout=5m
 
     - name: Install and run staticcheck
       run: |
@@ -115,15 +139,33 @@ jobs:
     - name: Verify module integrity
       run: go mod verify
 
-    - name: Install and run gosec
+    # Baked, not installed (issue #19) — same rule as golangci-lint in the
+    # Lint job. An `@latest` install here was a network dependency that could
+    # fail and skip the analysers (a red check with no verdict on the code),
+    # and it scanned the same commit with different analyser versions on
+    # different days.
+    #
+    # PINNED (devops.md §9, documented in place): the versions the ci-runner
+    # image bakes and records in /etc/ci-runner-tools.txt. Raise them together
+    # with the image. The version is read from the binary's embedded build
+    # info (`go version -m`), not from `gosec --version`: a `go install`ed
+    # gosec prints "dev" whatever version was built, so its own output cannot
+    # prove which version ran.
+    #
+    # Fail closed, never fall back to a network install.
+    - name: Verify baked security scanners
+      env:
+        GOSEC_VERSION: 'v2.29.0'
+        GOVULNCHECK_VERSION: 'v1.7.0'
       run: |
-        go install github.com/securego/gosec/v2/cmd/gosec@latest
-        gosec -concurrency 4 -quiet -exclude=G101,G104,G115,G304,G306,G404 ./...
+        bash .github/scripts/verify-baked-tool.sh gosec github.com/securego/gosec/v2 "$GOSEC_VERSION"
+        bash .github/scripts/verify-baked-tool.sh govulncheck golang.org/x/vuln "$GOVULNCHECK_VERSION"
 
-    - name: Run govulncheck
-      run: |
-        go install golang.org/x/vuln/cmd/govulncheck@latest
-        govulncheck ./...
+    - name: Run gosec (baked)
+      run: gosec -concurrency 4 -quiet -exclude=G101,G104,G115,G304,G306,G404 ./...
+
+    - name: Run govulncheck (baked)
+      run: govulncheck ./...
 
   trivy:
     name: Trivy
