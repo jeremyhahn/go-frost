@@ -252,7 +252,7 @@ Before considering a component complete:
 - [ ] Benchmarks added
 - [ ] Godoc comments complete
 - [ ] Error handling comprehensive
-- [ ] No unaudited unsafe operations (note: `secmem` uses audited `unsafe` for secure memory handling)
+- [ ] No unaudited unsafe operations (note: only the `cmd/libfrost` C bindings use `unsafe`)
 - [ ] Constants extracted (no magic numbers)
 - [ ] Edge cases tested
 - [ ] RFC test vectors pass (if applicable)
@@ -284,7 +284,7 @@ if subtle.ConstantTimeCompare(a, b) == 1 {
 
 ### Secret Clearing
 
-The project provides `secmem.ZeroBytes()` and `secmem.ZeroString()` for constant-time zeroing of sensitive data, and `secmem.SecretBytes` for encrypted-at-rest storage via memguard. Prefer these over manual loops:
+The project provides `secmem.ZeroBytes()` for constant-time zeroing of sensitive byte slices, and `secmem.SecretBytes` for encrypted-at-rest storage via memguard. Prefer these over manual loops:
 
 ```go
 for i := range secretBytes {
@@ -292,7 +292,7 @@ for i := range secretBytes {
 }
 ```
 
-Use `secmem.SecretBytes` when key material must persist in memory, and call `secmem.ZeroBytes()` or `secmem.ZeroString()` for cleanup of temporary buffers.
+Use `secmem.SecretBytes` when key material must persist in memory, and call `secmem.ZeroBytes()` for cleanup of temporary buffers. Hold secret material as `[]byte` the code owns, never as a `string`: Go strings are immutable, so there is no sound way to scrub one — writing through a literal's read-only backing array faults the process, and writing through a heap string silently mutates every alias of it, including map keys.
 
 ### Error Handling
 

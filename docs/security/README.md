@@ -26,8 +26,7 @@ This implementation follows cryptographic best practices:
 - **Nonce reuse prevention** with comprehensive tracking
 - **Input validation** at all API boundaries
 - **Typed errors** for proper error handling without information leakage
-- **Audited unsafe usage** limited to secure memory zeroing (secmem package)
-- **Secure memory management** via memguard in the `pkg/secmem` package: mlock'd memory protected from swap, encrypted-at-rest storage via Enclave (XSalsa20-Poly1305), guard pages for sensitive byte slices, constant-time zeroing of byte slices and string backing memory, and automatic cleanup on process termination signals
+- **Secure memory management** via memguard in the `pkg/secmem` package: mlock'd memory protected from swap, encrypted-at-rest storage via Enclave (XSalsa20-Poly1305), guard pages for sensitive byte slices, constant-time zeroing of byte slices, and automatic cleanup on process termination signals
 
 ## Production Deployment Checklist
 

@@ -17,7 +17,7 @@ FROST is a threshold signature scheme that enables a threshold number of partici
 - Constant-time operations, nonce reuse prevention, and side-channel protection
 - Service layer abstraction with typed errors and clear interfaces
 - Lock-free algorithms, optimized for low latency and high throughput
-- Type safe: minimal, audited unsafe usage limited to secure memory zeroing
+- Type safe: no `unsafe` in the library packages; it is confined to the C bindings in `cmd/libfrost`
 
 ### Supported Ciphersuites
 
@@ -308,7 +308,6 @@ This implementation prioritizes security:
 - Nonce reuse prevention: tracking prevents catastrophic key exposure
 - Input validation: all inputs validated at API boundaries
 - Constant-time operations: timing attack mitigation where applicable
-- Unsafe usage is limited to the `pkg/secmem` package for zeroing secret string backing memory, with gosec annotations
 - Secure memory via memguard: the `pkg/secmem` package provides mlock'd memory (protected from swap), encrypted-at-rest storage via Enclave (XSalsa20-Poly1305), and guard pages for sensitive byte slices
 - Identifiable abort: malicious participants can be identified
 - Error sanitization: prevents information leakage

@@ -23,7 +23,7 @@ Architecture for the RFC 9591 FROST (Flexible Round-Optimized Schnorr Threshold)
 
 **Design Decisions**:
 - Interface-based design allows multiple group implementations (Ed25519, ristretto255, P-256, etc.)
-- Minimal audited unsafe usage (secmem package only)
+- No `unsafe` in the library packages (only the `cmd/libfrost` C bindings use it)
 - Immutable value semantics for thread safety
 - Fixed-length serialization for each group
 
@@ -195,7 +195,7 @@ Architecture for the RFC 9591 FROST (Flexible Round-Optimized Schnorr Threshold)
 ### Security
 - Constant-time operations (where feasible)
 - Secure random number generation
-- Audited unsafe usage limited to secmem package for secure memory zeroing
+- No `unsafe` in the library packages; secret zeroing is `secmem.ZeroBytes` on owned byte slices
 - Nonce reuse protection
 - Input validation at all layers
 
@@ -261,7 +261,7 @@ go-frost/
 │   ├── security/           # Security utilities
 │   ├── serialization/      # Serialization support
 │   └── service/            # Service layer
-├── pkg/secmem/             # Secure memory (audited unsafe usage)
+├── pkg/secmem/             # Secure memory (memguard enclaves, byte-slice zeroing)
 ├── pkg/signer/             # Signer abstraction
 ├── pkg/storage/            # Storage backends
 ├── docs/                   # Documentation

@@ -172,29 +172,6 @@ func TestZeroBytes(t *testing.T) {
 	ZeroBytes(nil)
 }
 
-func TestZeroString(t *testing.T) {
-	// Create a string with known content
-	s := string([]byte{0x41, 0x42, 0x43, 0x44}) // "ABCD"
-	assert.Equal(t, "ABCD", s)
-
-	ZeroString(&s)
-
-	// The backing bytes should now be zeroed
-	assert.Equal(t, "\x00\x00\x00\x00", s)
-	assert.Equal(t, 4, len(s))
-}
-
-func TestZeroString_Empty(t *testing.T) {
-	s := ""
-	ZeroString(&s)
-	assert.Equal(t, "", s)
-}
-
-func TestZeroString_Nil(t *testing.T) {
-	// Should not panic
-	ZeroString(nil)
-}
-
 func TestSecretBytes_ConcurrentAccess(t *testing.T) {
 	Init()
 

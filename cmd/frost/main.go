@@ -273,7 +273,7 @@ func keygenCommand() {
 		secretShareBytes := pkg.SecretShare.Bytes()
 		outputData.KeyPackages[i] = KeyPackageExport{
 			Identifier:  safeUint32ToUint16(uint32(pkg.Identifier)),
-			SecretShare: hex.EncodeToString(secretShareBytes),
+			SecretShare: newSecretHex(secretShareBytes),
 			PublicKey:   hex.EncodeToString(pkg.GroupPublicKey.Bytes()),
 		}
 		secmem.ZeroBytes(secretShareBytes)
@@ -293,9 +293,9 @@ func keygenCommand() {
 	}
 	secmem.ZeroBytes(data)
 
-	// Zero the hex-encoded secret share strings in the output struct
+	// Scrub the hex-encoded secret shares held by the output struct
 	for i := range outputData.KeyPackages {
-		secmem.ZeroString(&outputData.KeyPackages[i].SecretShare)
+		outputData.KeyPackages[i].SecretShare.zero()
 	}
 
 	fmt.Printf("Generated %d key packages (%d-of-%d threshold)\n", *maxSigners, *minSigners, *maxSigners)
@@ -304,9 +304,9 @@ func keygenCommand() {
 }
 
 type KeyPackageExport struct {
-	Identifier  uint16 `json:"identifier"`
-	SecretShare string `json:"secret_share"`
-	PublicKey   string `json:"public_key"`
+	Identifier  uint16    `json:"identifier"`
+	SecretShare secretHex `json:"secret_share"`
+	PublicKey   string    `json:"public_key"`
 }
 
 func signCommand() {
@@ -400,7 +400,7 @@ func signCommand() {
 		found := false
 		for _, pkg := range keysInput.KeyPackages {
 			if pkg.Identifier == safeIntToUint16(signerID) {
-				secretBytes, err := hex.DecodeString(pkg.SecretShare)
+				secretBytes, err := pkg.SecretShare.decode()
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "Error decoding secret share: %v\n", err)
 					os.Exit(1)
@@ -497,9 +497,9 @@ func signCommand() {
 		os.Exit(1)
 	}
 
-	// Zero the hex-encoded secret share strings from parsed keys input
+	// Scrub the hex-encoded secret shares held by the parsed keys input
 	for i := range keysInput.KeyPackages {
-		secmem.ZeroString(&keysInput.KeyPackages[i].SecretShare)
+		keysInput.KeyPackages[i].SecretShare.zero()
 	}
 
 	fmt.Printf("Signature created successfully\n")
@@ -579,7 +579,7 @@ func commitCommand() {
 	var keyPackage *frost.KeyPackage
 	for _, pkg := range keysInput.KeyPackages {
 		if pkg.Identifier == safeUintToUint16(*participantID) {
-			secretBytes, err := hex.DecodeString(pkg.SecretShare)
+			secretBytes, err := pkg.SecretShare.decode()
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Error decoding secret share: %v\n", err)
 				os.Exit(1)
@@ -650,13 +650,13 @@ func commitCommand() {
 	hidingNonceBytes := nonces.HidingNonce.Bytes()
 	bindingNonceBytes := nonces.BindingNonce.Bytes()
 	noncesOutput := struct {
-		Identifier   uint16 `json:"identifier"`
-		HidingNonce  string `json:"hiding_nonce"`
-		BindingNonce string `json:"binding_nonce"`
+		Identifier   uint16    `json:"identifier"`
+		HidingNonce  secretHex `json:"hiding_nonce"`
+		BindingNonce secretHex `json:"binding_nonce"`
 	}{
 		Identifier:   safeUintToUint16(*participantID),
-		HidingNonce:  hex.EncodeToString(hidingNonceBytes),
-		BindingNonce: hex.EncodeToString(bindingNonceBytes),
+		HidingNonce:  newSecretHex(hidingNonceBytes),
+		BindingNonce: newSecretHex(bindingNonceBytes),
 	}
 	secmem.ZeroBytes(hidingNonceBytes)
 	secmem.ZeroBytes(bindingNonceBytes)
@@ -674,13 +674,13 @@ func commitCommand() {
 	}
 	secmem.ZeroBytes(noncesData)
 
-	// Zero the hex-encoded nonce strings in the output struct
-	secmem.ZeroString(&noncesOutput.HidingNonce)
-	secmem.ZeroString(&noncesOutput.BindingNonce)
+	// Scrub the hex-encoded nonces held by the output struct
+	noncesOutput.HidingNonce.zero()
+	noncesOutput.BindingNonce.zero()
 
-	// Zero the hex-encoded secret share strings from parsed keys input
+	// Scrub the hex-encoded secret shares held by the parsed keys input
 	for i := range keysInput.KeyPackages {
-		secmem.ZeroString(&keysInput.KeyPackages[i].SecretShare)
+		keysInput.KeyPackages[i].SecretShare.zero()
 	}
 
 	fmt.Printf("Round 1 completed for participant %d\n", *participantID)
@@ -767,7 +767,7 @@ func signShareCommand() {
 	var keyPackage *frost.KeyPackage
 	for _, pkg := range keysInput.KeyPackages {
 		if pkg.Identifier == safeUintToUint16(*participantID) {
-			secretBytes, err := hex.DecodeString(pkg.SecretShare)
+			secretBytes, err := pkg.SecretShare.decode()
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Error decoding secret share: %v\n", err)
 				os.Exit(1)
@@ -812,9 +812,9 @@ func signShareCommand() {
 	}
 
 	var noncesInput struct {
-		Identifier   uint16 `json:"identifier"`
-		HidingNonce  string `json:"hiding_nonce"`
-		BindingNonce string `json:"binding_nonce"`
+		Identifier   uint16    `json:"identifier"`
+		HidingNonce  secretHex `json:"hiding_nonce"`
+		BindingNonce secretHex `json:"binding_nonce"`
 	}
 
 	if err := json.Unmarshal(noncesData, &noncesInput); err != nil {
@@ -824,7 +824,7 @@ func signShareCommand() {
 	}
 	secmem.ZeroBytes(noncesData)
 
-	hidingNonceBytes, err := hex.DecodeString(noncesInput.HidingNonce)
+	hidingNonceBytes, err := noncesInput.HidingNonce.decode()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error decoding hiding nonce: %v\n", err)
 		os.Exit(1)
@@ -836,7 +836,7 @@ func signShareCommand() {
 		os.Exit(1)
 	}
 
-	bindingNonceBytes, err := hex.DecodeString(noncesInput.BindingNonce)
+	bindingNonceBytes, err := noncesInput.BindingNonce.decode()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error decoding binding nonce: %v\n", err)
 		os.Exit(1)
@@ -932,14 +932,14 @@ func signShareCommand() {
 		os.Exit(1)
 	}
 
-	// Zero the hex-encoded secret share strings from parsed keys input
+	// Scrub the hex-encoded secret shares held by the parsed keys input
 	for i := range keysInput.KeyPackages {
-		secmem.ZeroString(&keysInput.KeyPackages[i].SecretShare)
+		keysInput.KeyPackages[i].SecretShare.zero()
 	}
 
-	// Zero the hex-encoded nonce strings from parsed nonces input
-	secmem.ZeroString(&noncesInput.HidingNonce)
-	secmem.ZeroString(&noncesInput.BindingNonce)
+	// Scrub the hex-encoded nonces held by the parsed nonces input
+	noncesInput.HidingNonce.zero()
+	noncesInput.BindingNonce.zero()
 
 	fmt.Printf("Round 2 completed for participant %d\n", *participantID)
 	fmt.Printf("Signature share saved to: %s\n", *output)

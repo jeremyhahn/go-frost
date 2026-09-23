@@ -5,7 +5,7 @@
 The go-frost implementation follows these core principles:
 
 - Clear separation between layers with well-defined interfaces
-- Type safety: Strongly typed interfaces, minimal audited unsafe usage in secmem
+- Type safety: Strongly typed interfaces, no `unsafe` in the library packages (only the `cmd/libfrost` C bindings use it)
 - Lock-free algorithms and efficient data structures
 - Comprehensive test coverage with TDD approach
 - Strict adherence to RFC 9591 specification

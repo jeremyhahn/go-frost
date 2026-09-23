@@ -12,7 +12,6 @@ import (
 	"crypto/subtle"
 	"errors"
 	"sync"
-	"unsafe"
 
 	"github.com/awnumar/memguard"
 )
@@ -294,28 +293,6 @@ func ZeroBytes(b []byte) {
 	// Use subtle.ConstantTimeCopy to zero: copy zeros over b
 	zeros := make([]byte, len(b))
 	subtle.ConstantTimeCopy(1, b, zeros)
-}
-
-// ZeroString overwrites the backing bytes of a Go string with zeros.
-// Go strings are nominally immutable, so this uses unsafe to access the
-// underlying byte array. This is a best-effort operation: the GC may have
-// already copied the string data elsewhere. Use this to zero sensitive
-// strings (e.g., hex-encoded secrets) as soon as they are no longer needed.
-//
-//go:nosplit
-func ZeroString(s *string) {
-	if s == nil || len(*s) == 0 {
-		return
-	}
-	// A Go string header is {Data unsafe.Pointer, Len int}.
-	// We reinterpret it to get the underlying byte pointer.
-	type stringHeader struct {
-		Data unsafe.Pointer
-		Len  int
-	}
-	hdr := (*stringHeader)(unsafe.Pointer(s))     // #nosec G103 -- intentional: zeroing secret string backing memory
-	b := unsafe.Slice((*byte)(hdr.Data), hdr.Len) // #nosec G103 -- intentional: zeroing secret string backing memory
-	ZeroBytes(b)
 }
 
 // Clone returns an independent copy of a SecretBytes. The plaintext is copied

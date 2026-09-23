@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+- **`secmem.ZeroString`** (breaking; owner ruling 2026-08-23, #15) - it wrote
+  zeros through a Go string's backing array, which is unsound either way:
+  on a string literal the array is read-only and the process dies with
+  SIGSEGV (a fault, so no `recover`); on a heap string it silently mutates
+  every alias, including substrings' parents and map keys, leaving map
+  entries unreachable. Hold secret material as owned `[]byte` (or
+  `secmem.SecretBytes`) and scrub it with `secmem.ZeroBytes`. `pkg/secmem`
+  no longer imports `unsafe`
+
+### Changed
+- **`cmd/frost`** holds secret shares and signing nonces read from or written
+  to its JSON files as owned byte buffers instead of Go strings, and scrubs
+  them with `secmem.ZeroBytes`. The file format is unchanged: JSON escapes
+  in a secret field are decoded exactly as before, directly into the owned
+  buffer, so the secret never passes through a string
+
 ## [0.3.0-alpha] - 2026-08-22
 
 Minor rather than patch: the change is additive for library consumers (the new
