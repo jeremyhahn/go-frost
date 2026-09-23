@@ -19,7 +19,7 @@
 # Required environment:
 #   GITEA_TOKEN         token with write access to the repository
 #   TAG                 e.g. v0.2.0-alpha
-#   GITHUB_SERVER_URL   the Gitea instance, e.g. http://198.51.100.91:3001
+#   GITHUB_SERVER_URL   the Gitea instance, e.g. http://<gitea-host>:3001
 #   GITHUB_REPOSITORY   owner/name
 set -euo pipefail
 
