@@ -2,7 +2,7 @@
 
 A production-ready Go implementation of the FROST (Flexible Round-Optimized Schnorr Threshold) signature scheme as specified in [RFC 9591](https://www.rfc-editor.org/rfc/rfc9591.html).
 
-[![Go Version](https://img.shields.io/badge/go-%3E%3D1.26.1-blue.svg)](https://golang.org/dl/)
+[![Go Version](https://img.shields.io/badge/go-%3E%3D1.27.0-blue.svg)](https://golang.org/dl/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![RFC 9591](https://img.shields.io/badge/RFC-9591-green.svg)](https://www.rfc-editor.org/rfc/rfc9591.html)
 
@@ -181,7 +181,7 @@ go get github.com/jeremyhahn/go-frost
 
 ### Requirements
 
-- Go 1.26.1 or higher
+- Go 1.27.0 or higher
 - No external dependencies for core library
 - Optional: go-xkms or go-objstore for advanced storage backends
 - Optional: HSM/TPM libraries if using hardware-backed keys
