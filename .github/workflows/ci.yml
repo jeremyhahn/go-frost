@@ -1,4 +1,4 @@
-# ci-template: v1 (customized)
+# ci-template: v1.15 (customized)
 # Reconciled against software/templates/github-actions/ci.yml in the
 # automatethethings repo (devops.md §1/§8/§9). Divergence outside the
 # repo-specific blocks below is a defect.
@@ -7,9 +7,11 @@ name: CI
 
 on:
   push:
-    branches: [ main, develop ]
+    # main is the only trunk. automerge.yml's merge trains are PRs from
+    # merge-train/* and get CI from pull_request (ci-template v1.15).
+    branches: [main]
   pull_request:
-    branches: [ main, develop ]
+    branches: [main]
   # Re-run by hand without an empty commit. Jobs here occasionally fail on
   # transient infrastructure rather than on the tree — the Trivy installer
   # resolves its version through the unauthenticated GitHub API, which is
@@ -22,8 +24,9 @@ on:
 # 73% of runs were superseded but still running, and queue latency (median 46
 # min, p90 94 min) was the single biggest constraint on landing work.
 #
-# MEASURED on Gitea 1.27.1 (2026-09-06). This CORRECTS the three `needs:`
-# comments below, which asserted cancellation was impossible here:
+# MEASURED on Gitea 1.27.1 (2026-09-06). This corrected the v1.9 `needs:`
+# comments (removed in v1.15 with the staging itself), which asserted
+# cancellation was impossible here:
 #   - Workflow level, keyed on the REF, `cancel-in-progress: true` -> Gitea
 #     cancels the OLDER run and the NEWEST completes. Observed live on
 #     go-netmon (run 12242 cancelled, 12269 survived) and go-recountly
@@ -64,6 +67,9 @@ permissions:
 env:
   TRIVY_VERSION: '0.74.0'
 
+# Every job starts at once (ci-template v1.14/v1.15): none waits on another,
+# and CI Gate, the one required check, needs them all and fails closed. Do not
+# reintroduce `needs:` ordering between jobs; each one builds what it uses.
 jobs:
   lint:
     name: Lint
@@ -129,7 +135,6 @@ jobs:
   security:
     name: Security Scan
     runs-on: ubuntu-latest
-    needs: [lint, test]  # v1.9 staged fail-fast: expensive tier gates on the fast tier. Complements, does not replace, the supersession cancellation above (#21).
 
     steps:
     - name: Checkout code
@@ -175,7 +180,6 @@ jobs:
   trivy:
     name: Trivy
     runs-on: ubuntu-latest
-    needs: [lint, test]  # v1.9 staged fail-fast: expensive tier gates on the fast tier. Complements, does not replace, the supersession cancellation above (#21).
 
     steps:
     - name: Checkout code
@@ -249,7 +253,6 @@ jobs:
   trivy-image:
     name: Trivy Image
     runs-on: ubuntu-latest
-    needs: [lint, test]  # v1.9 staged fail-fast: expensive tier gates on the fast tier. Complements, does not replace, the supersession cancellation above (#21).
 
     steps:
     - name: Checkout code
@@ -327,14 +330,13 @@ jobs:
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v5
       with:
-        file: ./coverage.out
+        files: ./coverage.out
         flags: unittests
         fail_ci_if_error: false
 
   integration:
     name: Integration Tests
     runs-on: ubuntu-latest
-    needs: [lint, test]
     timeout-minutes: 20
 
     steps:
@@ -359,7 +361,6 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
-    needs: [lint, security, test]
 
     steps:
     - name: Checkout code
@@ -396,7 +397,6 @@ jobs:
   fips:
     name: FIPS
     runs-on: ubuntu-latest
-    needs: [build]
     timeout-minutes: 30
     env:
       GOFIPS140: latest
