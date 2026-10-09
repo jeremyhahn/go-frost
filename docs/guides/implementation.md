@@ -1,6 +1,9 @@
 # FROST Implementation Guide
 
-This guide outlines the recommended implementation order and key considerations for completing the go-frost implementation.
+> **Status: REFERENCE** · Last verified: 2026-10-09
+> Implementation guidance for go-frost.
+
+This guide outlines the layered build order of go-frost and the key considerations at each layer. All five ciphersuites and every layer below are implemented; read the phases as the dependency order between packages, and as guidance for adding a new group or ciphersuite.
 
 ## Implementation Order
 
@@ -10,7 +13,7 @@ Start with one group implementation to validate the interface design.
 
 **Recommended: Start with ristretto255**
 - Well-documented
-- Good library support (filippo.io/edwards25519)
+- Good library support (`github.com/gtank/ristretto255`, which the `ristretto255` group uses)
 - Used in production systems
 
 **Tasks**:
@@ -30,10 +33,10 @@ Start with one group implementation to validate the interface design.
 ### Phase 2: Ciphersuite (ristretto255-SHA512)
 
 **Tasks**:
-1. Create `pkg/frost/ciphersuite/ristretto255sha512/` package
+1. Create `pkg/frost/ciphersuite/ristretto255_sha512/` package
 2. Implement domain-separated hash functions (H1-H5)
 3. Implement ciphersuite interface
-4. Create ciphersuite registry
+4. Register the ciphersuite in `pkg/frost/ciphersuite/suites/`
 5. Write unit tests
 6. Validate against RFC test vectors (Appendix E.3)
 
@@ -137,7 +140,7 @@ Implement in this order (dependencies flow):
 - Add input validation
 - Add comprehensive error handling
 
-**6.2 Session Management**
+**6.2 Session Management** (`service/session_manager.go`)
 - Implement session state machine
 - Add timeout handling
 - Add cancellation support
@@ -167,7 +170,7 @@ For each:
 - Test with fuzz testing where appropriate
 
 **8.2 Integration Tests**
-- Implement Docker-based E2E tests
+- End-to-end tests over real transports live in `test/transport/` (`make integration-test`, or `make test-transport` in Docker)
 - Test complete signing flows
 - Test with various threshold configurations
 - Test failure scenarios
@@ -284,12 +287,10 @@ if subtle.ConstantTimeCompare(a, b) == 1 {
 
 ### Secret Clearing
 
-The project provides `secmem.ZeroBytes()` for constant-time zeroing of sensitive byte slices, and `secmem.SecretBytes` for encrypted-at-rest storage via memguard. Prefer these over manual loops:
+The project provides `secmem.ZeroBytes()` for zeroing sensitive byte slices, and `secmem.SecretBytes` for encrypted-at-rest storage via memguard. Prefer these over manual loops:
 
 ```go
-for i := range secretBytes {
-    secretBytes[i] = 0
-}
+secmem.ZeroBytes(secretBytes)
 ```
 
 Use `secmem.SecretBytes` when key material must persist in memory, and call `secmem.ZeroBytes()` for cleanup of temporary buffers. Hold secret material as `[]byte` the code owns, never as a `string`: Go strings are immutable, so there is no sound way to scrub one — writing through a literal's read-only backing array faults the process, and writing through a heap string silently mutates every alias of it, including map keys.
@@ -372,13 +373,7 @@ func BenchmarkComponent_Operation(b *testing.B) {
 
 ## Performance Targets
 
-Rough performance targets (will vary by hardware):
-
-- **Key Generation**: < 10ms for 3-of-5 setup
-- **Round 1 (per participant)**: < 1ms
-- **Round 2 (per participant)**: < 2ms
-- **Aggregation**: < 5ms for 5 shares
-- **Verification**: < 5ms
+The project sets no performance targets. Measure on your own hardware with `make bench`.
 
 ## Common Pitfalls to Avoid
 
@@ -407,13 +402,11 @@ When stuck:
 3. Review existing implementations
 4. Consult with cryptography experts
 
-## Completion Checklist
+## Checklist for a New Ciphersuite
 
-- [ ] All 5 ciphersuites implemented
-- [ ] All RFC test vectors pass
-- [ ] 90%+ code coverage achieved
-- [ ] All benchmarks written
-- [ ] Documentation complete
-- [ ] Security review completed
-- [ ] Integration tests pass
-- [ ] Production ready
+- [ ] Group and ciphersuite implemented and registered in `suites`
+- [ ] RFC test vectors pass (`make test-rfc`)
+- [ ] Unit tests pass (`make test`)
+- [ ] Benchmarks written (`make bench`)
+- [ ] Integration tests pass (`make integration-test`)
+- [ ] Documentation updated

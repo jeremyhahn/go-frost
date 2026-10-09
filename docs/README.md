@@ -1,5 +1,8 @@
 # go-frost Documentation
 
+> **Status: REFERENCE** · Last verified: 2026-10-09
+> Index of the go-frost documentation. The contract lives in [API Reference](api/reference.md).
+
 Complete documentation for go-frost, a production-ready Go implementation of the FROST threshold signature scheme ([RFC 9591](https://www.rfc-editor.org/rfc/rfc9591.html)).
 
 ## Quick Navigation
@@ -40,8 +43,6 @@ Complete documentation for go-frost, a production-ready Go implementation of the
 ### RFC Compliance
 
 9. **[RFC 9591 Compliance](rfc-compliance/README.md)** - RFC compliance documentation
-   - [Compliance Status](rfc-compliance/status.md) - Detailed compliance tracking
-   - [Test Coverage](rfc-compliance/test-coverage.md) - RFC test vector coverage
 
 ## Documentation Structure
 
@@ -63,16 +64,17 @@ docs/
 
 ### Key Features
 
-- RFC 9591 compliant with full test vector coverage
-- 90%+ test coverage with comprehensive documentation
-- Constant-time operations, typed errors, secure memory management via memguard
+- RFC 9591 test vectors in `test/rfc` and `test/testvectors`
+- Typed errors and secure memory management via memguard (`pkg/secmem`)
 - Service layer with clear abstractions
-- Lock-free algorithms optimized for low latency
 
 ### Supported Ciphersuites
 
 - FROST(ristretto255, SHA-512)
-- Architecture supports: Ed25519, Ed448, P-256, secp256k1
+- FROST(Ed25519, SHA-512)
+- FROST(Ed448, SHAKE256)
+- FROST(P-256, SHA-256)
+- FROST(secp256k1, SHA-256)
 
 ## Quick Start
 
@@ -116,8 +118,8 @@ make build
 # Run tests
 make test
 
-# Run integration tests (Docker required)
-make test
+# Run integration tests
+make integration-test
 
 # Coverage report
 make coverage
@@ -147,7 +149,6 @@ See [Security Documentation](security/README.md) for complete security guidance.
 
 Contributions are welcome! Please ensure:
 - All tests pass
-- Code coverage remains at 90%+
 - Code follows [Go style guidelines](https://google.github.io/styleguide/go/guide)
 - Documentation is updated
 
@@ -165,4 +166,4 @@ See [LICENSE](../LICENSE) file for details.
 
 - [GitHub Issues](https://github.com/jeremyhahn/go-frost/issues)
 - [GitHub Discussions](https://github.com/jeremyhahn/go-frost/discussions)
-- [Security Policy](security/README.md#reporting-security-issues)
+- [Security Policy](security/README.md)

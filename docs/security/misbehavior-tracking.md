@@ -1,5 +1,8 @@
 # Misbehavior Tracking
 
+> **Status: NORMATIVE** · Scope: go-frost `pkg/frost/security` · Last verified: 2026-10-09
+> Conflicts with this document are defects. Fix them here first.
+
 This document describes the misbehavior tracking and reputation system in go-frost, which implements DoS prevention through participant reputation tracking (RFC 9591 Section 7).
 
 ## Overview
@@ -8,13 +11,19 @@ The misbehavior tracking system monitors participant behavior during FROST signi
 
 ## Features
 
-- **Automatic Exclusion**: Participants are automatically excluded after exceeding misbehavior thresholds
-- **Multiple Violation Types**: Tracks authentication failures, invalid shares, timeouts, nonce reuse, and invalid commitments
-- **Configurable Thresholds**: Each violation type has independent, configurable thresholds
-- **Manual Control**: Support for manual exclusion and reinstatement of participants
-- **History Tracking**: Maintains detailed misbehavior history for auditing and analysis
-- **Thread-Safe**: Safe for concurrent access in multi-threaded environments
-- **Automatic Cleanup**: Periodic cleanup of old records to prevent memory exhaustion
+- **Automatic Exclusion**: Participants are excluded once a violation counter reaches its threshold (`>=`)
+- **Multiple Violation Types**: The tracker counts authentication failures, invalid shares, timeouts, nonce reuse, and invalid commitments
+- **Configurable Thresholds**: Each violation type has an independent threshold; `0` disables automatic exclusion for that type
+- **Manual Control**: Manual exclusion and reinstatement of participants
+- **History Tracking**: Keeps a per-participant misbehavior history for auditing
+- **Thread-Safe**: `InMemoryReputationTracker` is guarded by a mutex
+- **Explicit Cleanup**: `CleanupOldRecords` removes old history records when the application calls it; nothing runs it automatically
+
+What the coordinator records on its own (`pkg/frost/signing/coordinator.go`):
+authentication failures (commitment and share), invalid shares, and
+`RoundOne` failures (as invalid commitments). It checks `IsExcluded` in
+`RequestCommitments`. **Timeouts and nonce reuse are never recorded by the
+library**; the application must call `RecordMisbehavior` for them.
 
 ## Architecture
 
@@ -61,7 +70,7 @@ The misbehavior tracking system monitors participant behavior during FROST signi
 
 **Type**: `MisbehaviorAuthenticationFailure`
 
-**Triggered when**:
+**Triggered when** (recorded by the coordinator when it has a tracker and an authenticator):
 - Participant fails commitment authentication
 - Participant fails signature share authentication
 - Invalid or missing authentication proof
@@ -74,9 +83,8 @@ The misbehavior tracking system monitors participant behavior during FROST signi
 
 **Type**: `MisbehaviorInvalidShare`
 
-**Triggered when**:
+**Triggered when** (recorded by the coordinator during aggregation):
 - Participant produces a signature share that fails verification
-- Malformed signature share data
 
 **Default Threshold**: 2 invalid shares
 
@@ -86,7 +94,7 @@ The misbehavior tracking system monitors participant behavior during FROST signi
 
 **Type**: `MisbehaviorTimeout`
 
-**Triggered when**:
+**Triggered when** (application-recorded; the library does not detect timeouts):
 - Participant fails to respond within session timeout
 - Participant causes protocol delays
 
@@ -98,7 +106,7 @@ The misbehavior tracking system monitors participant behavior during FROST signi
 
 **Type**: `MisbehaviorNonceReuse`
 
-**Triggered when**:
+**Triggered when** (application-recorded, e.g. after `FrostNonceTracker` returns `ErrCommitmentReused`):
 - Participant attempts to reuse a nonce commitment
 - Critical security violation
 
@@ -110,7 +118,7 @@ The misbehavior tracking system monitors participant behavior during FROST signi
 
 **Type**: `MisbehaviorInvalidCommitment`
 
-**Triggered when**:
+**Triggered when** (the coordinator records it when a participant's `RoundOne` returns an error):
 - Participant produces a malformed commitment
 - Commitment fails validation checks
 
@@ -170,9 +178,8 @@ import (
 reputationConfig := security.DefaultReputationConfig()
 reputationTracker := security.NewInMemoryReputationTracker(reputationConfig)
 
-// Create authenticator (optional but recommended)
-authenticator := security.NewEd25519Authenticator()
-// ... add participant public keys ...
+// Create authenticator (optional but recommended); the map holds participant public keys
+authenticator := security.NewEd25519Authenticator(participantPubKeys)
 
 // Create coordinator with both security features
 coordinator := signing.NewCoordinatorWithSecurity(
@@ -191,6 +198,7 @@ coordinator := signing.NewCoordinatorWithSecurity(
 
 ```go
 // Get detailed reputation for a participant
+// Returns ErrParticipantNotFound for a participant with no recorded activity
 rep, err := tracker.GetReputation(participantID)
 if err != nil {
     log.Printf("Failed to get reputation: %v", err)
@@ -241,7 +249,9 @@ log.Printf("Participant %d manually excluded", participantID)
 ### Reinstatement
 
 ```go
-// Reinstate a previously excluded participant
+// Reinstate a previously excluded participant (ErrParticipantNotFound if never tracked).
+// This clears the exclusion only; violation counters are NOT reset, so with
+// thresholds of >=, the next violation of the same type excludes the participant again.
 err := tracker.ReinstateParticipant(participantID)
 if err != nil {
     log.Printf("Failed to reinstate participant: %v", err)
@@ -254,7 +264,7 @@ log.Printf("Participant %d reinstated", participantID)
 ### Viewing Misbehavior History
 
 ```go
-// Get last 10 misbehavior records
+// Get last 10 misbehavior records (limit 0 = all; ErrParticipantNotFound if none recorded)
 history, err := tracker.GetMisbehaviorHistory(participantID, 10)
 if err != nil {
     log.Printf("Failed to get history: %v", err)
@@ -271,6 +281,11 @@ for _, record := range history {
 ```
 
 ### Periodic Cleanup
+
+`CleanupOldRecords` drops history records older than `maxAge` (it is a no-op for
+`maxAge <= 0`). It does not touch the violation counters or exclusion status, and
+the tracker never calls it by itself, nor does it read `RecordRetention`; pass that
+value in yourself.
 
 ```go
 // Run cleanup every 24 hours
@@ -295,9 +310,9 @@ for range ticker.C {
 1. **Misbehavior Detection**: Coordinator detects violation during signing
 2. **Record Violation**: `RecordMisbehavior()` is called with participant ID and type
 3. **Increment Counter**: Appropriate violation counter is incremented
-4. **Check Threshold**: If counter exceeds configured threshold
+4. **Check Threshold**: If the counter has reached the configured threshold (and the threshold is > 0)
 5. **Automatic Exclusion**: Participant is marked as excluded
-6. **Future Rejections**: Excluded participant is rejected from future signing sessions
+6. **Future Rejections**: `RequestCommitments` fails with `ErrParticipantExcluded` (wrapped in a participant error) for an excluded participant
 
 ### Example: Invalid Share Flow
 
@@ -324,6 +339,9 @@ Check: rep.InvalidShares >= config.MaxInvalidShares ?
 ```
 
 ## Integration Points
+
+Simplified from `pkg/frost/signing/coordinator.go`; the real code wraps errors with
+`frost.NewParticipantError` and ignores `RecordMisbehavior`'s return value (best effort).
 
 ### 1. Coordinator Request Commitments
 
@@ -390,9 +408,13 @@ config := security.ReputationConfig{
 
 ```go
 securityConfig := security.DefaultProductionConfig()
-// ReputationTracker is already enabled by default in production config
-// Customize if needed:
-securityConfig.ReputationConfig.MaxInvalidShares = 1  // Stricter
+// ReputationTracker is already set (an in-memory tracker built from the defaults).
+// Editing securityConfig.ReputationConfig afterwards does NOT change that tracker's
+// thresholds; build a new tracker from the config you want and assign it:
+repConfig := security.DefaultReputationConfig()
+repConfig.MaxInvalidShares = 1 // Stricter
+securityConfig.ReputationConfig = repConfig
+securityConfig.ReputationTracker = security.NewInMemoryReputationTracker(repConfig)
 ```
 
 ### Monitoring
@@ -487,7 +509,7 @@ Establish clear policies for participant reinstatement:
 
 ## Testing
 
-See `pkg/frost/security/reputation_test.go` for 19 comprehensive tests covering:
+See `pkg/frost/security/reputation_test.go` for tests covering:
 
 - Basic misbehavior recording
 - Automatic exclusion for all violation types
@@ -554,5 +576,5 @@ type ParticipantReputation struct {
 ## References
 
 - RFC 9591 Section 7: Security Considerations
-- [CHANNEL_SECURITY.md](CHANNEL_SECURITY.md): Participant authentication
-- [rfc-compliance.md](rfc-compliance.md): Overall RFC compliance status
+- [channel-security.md](channel-security.md): Participant authentication
+- [rfc-compliance](../rfc-compliance/README.md): Overall RFC compliance status

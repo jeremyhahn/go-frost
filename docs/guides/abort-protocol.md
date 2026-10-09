@@ -1,6 +1,25 @@
 # FROST Abort Protocol
 
+> **Status: REFERENCE** · Last verified: 2026-10-09
+> Abort and cleanup handling in go-frost.
+
 This document describes how to handle signing session aborts and cleanup in go-frost. It covers scenarios requiring abort, cleanup procedures, state management, and integration with identifiable abort for detecting malicious participants.
+
+## What the Library Provides
+
+go-frost supplies the building blocks for abort handling; the orchestration around them (timeouts, notifying peers, logging, metrics, retries) belongs to the application. Snippets below that use `log`, `metrics`, `c.notifyAbort`, `alertSecurityTeam` and similar helpers, or that define methods on your own `coordinator`/`participant` types, are illustrative application code, not library APIs.
+
+The library surface used in this guide:
+
+- `signing`: `Participant` (`RoundOne`, `RoundTwo`, `VerifySignatureShare`), `Aggregator` (`Aggregate`, `AggregateWithVerification`, `Verify`), `Coordinator` (`RequestCommitments`, `RequestSignatureShares`, `Sign`), and the constructors `NewParticipant`, `NewAggregator`, `NewCoordinator*`
+- `security`: `FrostNonceTracker` (`RecordSigningCommitments`, `CheckSigningCommitments`, `ClearSession`, `ClearParticipant`, `ClearExpired`), `ReputationTracker` (`RecordMisbehavior`, `IsExcluded`, `ExcludeParticipant`, `ReinstateParticipant`, ...), and `ErrCommitmentReused`
+- `service`: `SessionManager` (`CreateSession`, `GetSession`, `DeleteSession`, `ListSessions`) and `SigningSession` (`AddCommitment`, `GetCommitmentList`, `AddSignatureShare`, `GetSignature`, `IsComplete`, `Cancel`)
+- `frost`: typed errors (`ParticipantError`, `SignatureShareError`, `ErrInvalidNonce`, ...)
+
+Two behaviours to know before relying on them:
+
+- `Coordinator.Sign` aggregates with `Aggregator.Aggregate`, which does **not** verify each share. For identifiable abort, collect the shares yourself (`RequestCommitments`, `RequestSignatureShares`) and call `AggregateWithVerification`.
+- A coordinator built with `NewCoordinatorWithSecurity` records misbehavior to its `ReputationTracker` itself when a participant fails round one or round two, or when `AuthenticateCommitment`/`AuthenticateSignatureShare` fails.
 
 ## Table of Contents
 
@@ -45,16 +64,28 @@ The FROST signing protocol requires proper abort handling to maintain security a
 
 **Detection**:
 ```go
-// Coordinator-side timeout detection
+// Coordinator-side timeout detection. Participant.RoundOne takes no
+// context, so run it in a goroutine and bound the wait yourself.
 ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 defer cancel()
 
-commitment, err := participant.RoundOne()
-if err != nil {
-    if errors.Is(err, context.DeadlineExceeded) {
-        // Timeout detected
-        return handleTimeout(participantID)
-    }
+type round1 struct {
+    nonces      frost.SigningNonces
+    commitments frost.SigningCommitments
+    err         error
+}
+done := make(chan round1, 1)
+go func() {
+    n, c, err := participant.RoundOne()
+    done <- round1{n, c, err}
+}()
+
+select {
+case res := <-done:
+    // Use res.commitments; keep res.nonces for round two
+case <-ctx.Done():
+    // Timeout detected
+    return handleTimeout(participantID)
 }
 ```
 
@@ -191,7 +222,7 @@ if err != nil {
 
 **Response**:
 - **IMMEDIATELY** abort all sessions for this participant
-- Exclude participant permanently (threshold = 1)
+- Exclude participant permanently (`DefaultReputationConfig` sets `MaxNonceReuses` to 1, so a single `MisbehaviorNonceReuse` record excludes)
 - Alert system administrators
 - Audit all recent signatures from this participant
 - Consider this a critical security incident
@@ -431,8 +462,26 @@ func (p *participant) WithdrawFromSession(sessionID string, reason string) error
 
 ### Session Manager Cleanup
 
+`SigningSession.Cancel()` marks a session canceled (it returns an error if the session has already completed); `SessionManager.DeleteSession` removes it. The library has no `CancelSession` on the manager, and it does not expire sessions or run background cleanup: it keeps no session timestamps, so expiry is the application's job.
+
 ```go
-// Cancel a session and clean up all associated resources
+// Cancel a session and remove it
+func cancelSession(sm service.SessionManager, sessionID string) error {
+    session, err := sm.GetSession(sessionID)
+    if err != nil {
+        return err
+    }
+    if err := session.Cancel(); err != nil {
+        return err // already complete
+    }
+    return sm.DeleteSession(sessionID)
+}
+```
+
+The next two subsections show how an application can build expiry and shutdown on top of this; the types in them are the application's own.
+
+```go
+// Illustrative only: not part of the library
 func (m *sessionManagerImpl) CancelSession(sessionID string) error {
     m.mu.Lock()
     defer m.mu.Unlock()

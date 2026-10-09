@@ -43,7 +43,9 @@ if ! info="$(go version -m "$bin" 2>&1)"; then
   exit 1
 fi
 
-got="$(printf '%s\n' "$info" | awk -v m="$module" '$1 == "mod" && $2 == m { print $3; exit }')"
+# awk reads all of its input (no early exit) so a writer on a pipe can never get
+# SIGPIPE, which under pipefail failed this step with 141 on large build info.
+got="$(awk -v m="$module" '$1 == "mod" && $2 == m && !seen { print $3; seen = 1 }' <<<"$info")"
 if [ -z "$got" ]; then
   echo "$tool at $bin carries no build info for module $module; expected $want" >&2
   printf '%s\n' "$info" >&2

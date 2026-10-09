@@ -1,6 +1,9 @@
 # API Reference
 
-Complete API documentation for go-frost.
+> **Status: NORMATIVE** · Scope: go-frost public API · Last verified: 2026-10-09
+> Conflicts with this document are defects. Fix them here first.
+
+Public API of go-frost. Core types live in `pkg/frost`, the service layer in `pkg/frost/service`, signing in `pkg/frost/signing`, key generation in `pkg/frost/keygen`, helpers in `pkg/frost/helpers`, ciphersuites in `pkg/frost/ciphersuite`, and groups in `pkg/frost/group`.
 
 ## Table of Contents
 
@@ -48,6 +51,8 @@ type KeyPackage struct {
     SecretShare        group.Scalar        // Participant's secret key share
     GroupPublicKey     group.Element       // Group's public key
     VerificationShares []VerificationShare // All participants' verification shares
+    MinSigners         uint32              // Threshold
+    MaxSigners         uint32              // Number of participants in the group
 }
 ```
 
@@ -171,7 +176,7 @@ Sign(keyPackages []KeyPackage, msg []byte) (Signature, error)
 Generates a FROST threshold signature. Orchestrates the complete two-round signing protocol.
 
 **Parameters:**
-- `keyPackages`: Key packages for signing participants (length >= MinSigners)
+- `keyPackages`: Key packages for signing participants (at least 2, no duplicates, same group public key)
 - `msg`: The message to sign
 
 **Returns:**
@@ -295,6 +300,8 @@ type Ciphersuite interface {
     H3(data []byte) group.Scalar
     H4(msg []byte) []byte
     H5(data []byte) []byte
+    HDKG(data []byte) group.Scalar
+    HID(data []byte) group.Scalar
     HashToCurve(data []byte) (group.Element, error)
     Hash(data []byte) []byte
     VerifySignature(message []byte, signature []byte, publicKey group.Element) error
@@ -311,6 +318,8 @@ Defines the cryptographic primitives for a FROST instantiation.
 - **H3**: Domain-separated hash for nonce generation (maps to Scalar)
 - **H4**: Domain-separated hash for message hashing (maps to bytes)
 - **H5**: Domain-separated hash for commitment list hashing (maps to bytes)
+- **HDKG**: Domain-separated hash for the DKG proof-of-knowledge challenge (maps to Scalar)
+- **HID**: Domain-separated hash for deriving identifiers from byte strings (maps to Scalar)
 - **Hash**: Underlying cryptographic hash function
 - **HashToCurve**: Maps byte strings to group elements
 
@@ -380,7 +389,8 @@ suite := ed448_shake256.New()
 ```go
 type Group interface {
     Name() string
-    Order() *big.Int
+    Order() []byte
+    Cofactor() Scalar
     Generator() Element
     Identity() Element
     RandomScalar() (Scalar, error)
@@ -388,9 +398,13 @@ type Group interface {
     ElementLength() int
     NewScalar() Scalar
     NewElement() Element
-    ScalarBaseMult(s Scalar) Element
-    DeserializeScalar(data []byte) (Scalar, error)
+    ScalarMult(element Element, scalar Scalar) Element
+    ScalarBaseMult(scalar Scalar) Element
+    SerializeElement(element Element) ([]byte, error)
     DeserializeElement(data []byte) (Element, error)
+    SerializeScalar(scalar Scalar) []byte
+    DeserializeScalar(data []byte) (Scalar, error)
+    ByteOrder() ByteOrder
 }
 ```
 
@@ -408,6 +422,9 @@ type Scalar interface {
     Equal(other Scalar) bool
     IsZero() bool
     Bytes() []byte
+    Copy() Scalar
+    Compare(other Scalar) int
+    Zeroize()
 }
 ```
 
@@ -418,45 +435,53 @@ Represents a scalar in the group's field.
 ```go
 type Element interface {
     Add(other Element) Element
-    Sub(other Element) Element
-    Mul(scalar Scalar) Element
     Negate() Element
     Equal(other Element) bool
     IsIdentity() bool
     Bytes() []byte
+    Copy() Element
 }
 ```
 
-Represents an element in the prime-order group.
+Represents an element in the prime-order group. Scalar multiplication is `Group.ScalarMult`.
 
 ## Signing Components
 
 ### Participant
 
+Package `pkg/frost/signing`.
+
 ```go
 type Participant interface {
-    Identifier() Identifier
-    RoundOne() (SigningNonces, SigningCommitments, error)
-    RoundTwo(nonces SigningNonces, msg []byte, commitments CommitmentList) (SignatureShare, error)
+    Identifier() frost.Identifier
+    MinSigners() uint32
+    RoundOne() (frost.SigningNonces, frost.SigningCommitments, error)
+    RoundTwo(nonces frost.SigningNonces, msg []byte, commitmentList frost.CommitmentList) (frost.SignatureShare, error)
+    VerifySignatureShare(share frost.SignatureShare, msg []byte, commitmentList frost.CommitmentList) error
 }
 ```
 
 #### NewParticipant
 
 ```go
-func NewParticipant(keyPackage KeyPackage, suite ciphersuite.Ciphersuite) Participant
+func NewParticipant(keyPackage frost.KeyPackage, suite ciphersuite.Ciphersuite) Participant
 ```
 
 Creates a new signing participant.
 
 ### Aggregator
 
+Package `pkg/frost/signing`.
+
 ```go
 type Aggregator interface {
-    Aggregate(groupPublicKey group.Element, commitments CommitmentList, msg []byte, shares []SignatureShare) (Signature, error)
-    Verify(msg []byte, signature Signature, publicKey group.Element) error
+    Aggregate(groupPublicKey group.Element, commitmentList frost.CommitmentList, msg []byte, signatureShares []frost.SignatureShare) (frost.Signature, error)
+    AggregateWithVerification(groupPublicKey group.Element, commitmentList frost.CommitmentList, msg []byte, signatureShares []frost.SignatureShare, verificationShares []frost.VerificationShare) (frost.Signature, error)
+    Verify(msg []byte, signature frost.Signature, publicKey group.Element) error
 }
 ```
+
+`AggregateWithVerification` checks each share before aggregating, so an invalid share identifies its participant.
 
 #### NewAggregator
 
@@ -470,10 +495,13 @@ Creates a new signature aggregator.
 
 ### Dealer
 
+Package `pkg/frost/keygen`.
+
 ```go
 type Dealer interface {
-    GenerateShares(secret group.Scalar, minSigners, maxSigners uint32, participantIDs []Identifier) ([]KeyPackage, group.Element, error)
-    VerifyShare(identifier Identifier, share group.Scalar, verificationShares []VerificationShare) error
+    GenerateShares(secret group.Scalar, minSigners, maxSigners uint32, participantIDs []frost.Identifier) ([]frost.KeyPackage, group.Element, error)
+    VerifyShare(identifier frost.Identifier, secretShare group.Scalar, verificationShares []frost.VerificationShare) error
+    RecoverSecret(shares map[frost.Identifier]group.Scalar) (group.Scalar, error)
 }
 ```
 
@@ -498,11 +526,13 @@ keyPackages, groupPubKey, err := dealer.GenerateShares(
 
 ## Helper Functions
 
+These live in `pkg/frost/helpers`.
+
 ### Nonce Generation
 
 ```go
 type NonceGenerator interface {
-    Generate(secret group.Scalar, random []byte) (SigningNonces, error)
+    Generate(secret group.Scalar) (group.Scalar, error)
 }
 
 func NewNonceGenerator(suite ciphersuite.Ciphersuite) NonceGenerator
@@ -512,8 +542,9 @@ func NewNonceGenerator(suite ciphersuite.Ciphersuite) NonceGenerator
 
 ```go
 type PolynomialHelper interface {
-    Generate(degree uint32, constantTerm group.Scalar) (Polynomial, error)
-    Evaluate(poly Polynomial, x group.Scalar) group.Scalar
+    Evaluate(poly frost.Polynomial, x group.Scalar) group.Scalar
+    DeriveInterpolatingValue(xCoords []group.Scalar, xi group.Scalar) (group.Scalar, error)
+    Generate(constantTerm group.Scalar, degree uint32) (frost.Polynomial, error)
 }
 
 func NewPolynomialHelper(grp group.Group) PolynomialHelper
@@ -522,11 +553,11 @@ func NewPolynomialHelper(grp group.Group) PolynomialHelper
 ### Commitment Computation
 
 ```go
-type CommitmentComputer interface {
-    Compute(nonce SigningNonces) SigningCommitments
+type GroupCommitmentComputer interface {
+    Compute(commitmentList frost.CommitmentList, bindingFactors frost.BindingFactorList) (group.Element, error)
 }
 
-func NewCommitmentComputer(grp group.Group) CommitmentComputer
+func NewGroupCommitmentComputer(grp group.Group) GroupCommitmentComputer
 ```
 
 ### Binding Factor Computation
@@ -605,6 +636,8 @@ type ParticipantError struct {
 func NewParticipantError(identifier Identifier, reason string, err error) *ParticipantError
 ```
 
+Also in `pkg/frost/errors.go`: `SignatureShareError` (`NewSignatureShareError`), `ProofOfKnowledgeError` (`NewProofOfKnowledgeError`), `SecretShareError` (`NewSecretShareError`) and the `CulpritError` interface.
+
 #### VerificationError
 
 ```go
@@ -651,7 +684,7 @@ baseErr := errors.Unwrap(err)
 
 ## Thread Safety
 
-All service layer operations are thread-safe. Individual components (Participant, Aggregator) are designed for single-threaded use within a signing session.
+`SessionManager` guards its session state with a `sync.RWMutex` (`pkg/frost/service/session_manager.go`). Individual components (Participant, Aggregator) are designed for single-threaded use within a signing session.
 
 ## Performance Considerations
 
@@ -661,4 +694,4 @@ All service layer operations are thread-safe. Individual components (Participant
 - **Aggregation**: O(n) where n is number of signature shares
 - **Verification**: O(1)
 
-For benchmarks, see [Testing Guide](testing.md).
+For benchmarks, see [Testing Guide](../guides/testing.md).

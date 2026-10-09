@@ -1,5 +1,8 @@
 # FROST Protocol
 
+> **Status: REFERENCE** · Last verified: 2026-10-09
+> Explains the FROST scheme and how go-frost applies it.
+
 This document explains how the FROST (Flexible Round-Optimized Schnorr Threshold) signature scheme works.
 
 ## Table of Contents
@@ -52,9 +55,9 @@ In a traditional signature scheme, a single private key signs messages. In a thr
 
 ## Key Generation
 
-FROST supports two key generation methods. This implementation uses the Trusted Dealer approach.
+FROST supports two key generation methods. go-frost implements both: the trusted dealer (`pkg/frost/keygen`, `keygen.NewDealer`) and distributed key generation (`pkg/frost/keygen/dkg`).
 
-### Trusted Dealer (Implemented)
+### Trusted Dealer
 
 A trusted dealer generates all key material and distributes shares to participants.
 
@@ -100,7 +103,7 @@ sᵢ * G = Σⱼ (iʲ * Aⱼ)  for j = 0 to t-1
 
 ### Distributed Key Generation (DKG)
 
-Not yet implemented. In DKG, participants collectively generate the secret without a trusted dealer.
+Implemented in `pkg/frost/keygen/dkg` (three rounds, with a proof of knowledge of each participant's secret). In DKG, participants collectively generate the secret without a trusted dealer.
 
 **Advantages of DKG:**
 - No trusted dealer needed
@@ -108,8 +111,8 @@ Not yet implemented. In DKG, participants collectively generate the secret witho
 - More suitable for decentralized scenarios
 
 **Advantages of Trusted Dealer:**
-- Simpler implementation
-- Faster key generation
+- Simpler to run
+- Single party, no interaction between participants during key generation
 - Suitable when dealer trust is acceptable
 
 ## Two-Round Signing Protocol
@@ -159,10 +162,11 @@ For each participant i in the signing set:
    B = encode([(i₁, Dᵢ₁, Eᵢ₁), (i₂, Dᵢ₂, Eᵢ₂), ...])
    ```
 
-2. **Compute binding factor**: Using ciphersuite hash function H1
+2. **Compute binding factor**: Using ciphersuite hash functions H1, H4 and H5 (RFC 9591 §4.4)
    ```
-   ρᵢ = H1(iᵢ, msg, B)
+   ρᵢ = H1(Y || H4(msg) || H5(B) || iᵢ)
    ```
+   where Y is the encoded group public key
 
 Binding factors prevent rogue-key attacks and ensure each signature is unique.
 
@@ -306,8 +310,8 @@ FROST security relies on:
 
 **Mitigation**:
 - Use cryptographically secure randomness
-- Never reuse nonces (implementation ensures this)
-- Deterministic nonce generation (optional)
+- Never reuse nonces (the `security` package provides nonce-reuse tracking, enabled by `SecurityConfig.NonceReuseProtection`)
+- Nonces are derived as `H3(random_bytes || secret_share)` per RFC 9591
 
 #### Rogue Key Attack
 
@@ -415,8 +419,7 @@ Round 2:               │
 
 ### Randomness
 
-- Use cryptographically secure random number generator
-- Consider deterministic nonces (RFC 6979 style) for some use cases
+- Uses `crypto/rand` (mixed with the secret share via H3 for nonces)
 - Never reuse nonces across signing sessions
 
 ### State Management

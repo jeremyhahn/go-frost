@@ -1,17 +1,21 @@
 # FROST Keystore Integration
 
-The `keystore` package provides secure storage for FROST key material using the [go-xkms](https://github.com/jeremyhahn/go-xkms) library. This integration enables production-ready key management with proper security, access control, and lifecycle management.
+> **Status: REFERENCE** · Last verified: 2026-10-09
+> Guide to the `pkg/frost/keystore` package.
+
+The `keystore` package stores FROST key material behind a pluggable `StorageBackend`. The package ships a file backend (`NewFileStorage`) and an in-memory backend (`NewMemoryStorage`); applications may supply their own. `go-frost` has no dependency on go-xkms.
 
 ## Overview
 
 The keystore layer abstracts key storage operations and provides:
 
-- **Secure Storage**: Key packages stored with proper file permissions (0600 for keys, 0644 for public data)
-- **Thread-Safe Operations**: All operations are thread-safe using RWMutex
+- **Secure Storage**: Key packages are written with 0600 permissions, group public keys with 0644
+- **Protected Secret Shares**: Shares are held in protected memory (`secmem.SecretBytes`) and reach the backend through `PutSecret`/`GetSecret`
+- **Thread Safety**: Delegated to the storage backend; `KeychainStore` itself holds no lock (see [Thread Safety](#thread-safety))
 - **Serialization/Deserialization**: Automatic conversion between FROST types and storage format
 - **Metadata Management**: Track key creation time, updates, group membership, and custom tags
 - **Group Management**: Store and retrieve group public keys with threshold configuration
-- **Flexible Storage**: Built on go-xkms's storage abstraction (file-based, with future support for cloud KMS, HSM, etc.)
+- **Pluggable Storage**: Any `StorageBackend` implementation (file, memory, or your own DHT/cloud/HSM-backed store)
 
 ## Architecture
 
@@ -39,14 +43,14 @@ The keystore layer abstracts key storage operations and provides:
 │  - ListKeyPackages                                          │
 │  - StoreGroupPublicKey                                      │
 │  - GetGroupPublicKey                                        │
-│  - ...                                                      │
+│  - ListGroups, UpdateMetadata, Close, ...                   │
 └─────────────────┬───────────────────────────────────────────┘
                   │
                   │ implements
                   │
 ┌─────────────────▼───────────────────────────────────────────┐
 │                    KeychainStore                            │
-│  - Uses go-xkms for storage backend                    │
+│  - Uses the StorageBackend from Config.Storage             │
 │  - Handles serialization/deserialization                   │
 │  - Manages metadata and lifecycle                          │
 └─────────────────┬───────────────────────────────────────────┘
@@ -54,10 +58,10 @@ The keystore layer abstracts key storage operations and provides:
                   │ uses
                   │
 ┌─────────────────▼───────────────────────────────────────────┐
-│              go-xkms Storage Backend                    │
-│  - File-based storage with proper permissions              │
-│  - Thread-safe operations                                  │
-│  - Future: HSM, Cloud KMS support                          │
+│                    StorageBackend                           │
+│  - NewFileStorage: files with explicit permissions         │
+│  - NewMemoryStorage: protected in-memory store             │
+│  - Or an application-supplied implementation               │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -69,6 +73,8 @@ The keystore layer abstracts key storage operations and provides:
 package main
 
 import (
+	"fmt"
+
 	"github.com/jeremyhahn/go-frost/pkg/frost"
 	"github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite/ristretto255_sha512"
 	"github.com/jeremyhahn/go-frost/pkg/frost/keygen"
@@ -80,10 +86,16 @@ func main() {
 	cs := ristretto255_sha512.New()
 	group := cs.Group()
 
+	// Create the storage backend
+	storage, err := keystore.NewFileStorage("/var/lib/frost/keys")
+	if err != nil {
+		panic(err)
+	}
+
 	// Configure keystore
 	config := &keystore.Config{
-		Group:       group,
-		StoragePath: "/var/lib/frost/keys",
+		Group:   group,
+		Storage: storage,
 		Tags: map[string]string{
 			"environment": "production",
 			"application": "signing-service",
@@ -126,6 +138,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	_, _ = keyPackage, metadata
 
 	// Use key package for signing operations...
 }
@@ -134,25 +147,19 @@ func main() {
 ### Integration with FROST Service
 
 ```go
-// Create FROST service using keystore
-func createService(ks keystore.KeyStore, participantID frost.Identifier) (*service.FrostService, error) {
-	// Retrieve key package from keystore
-	keyID := fmt.Sprintf("participant-%d", participantID)
-	keyPackage, _, err := ks.GetKeyPackage(keyID)
-	if err != nil {
-		return nil, err
+// Sign with key packages loaded from the keystore
+func sign(ks keystore.KeyStore, ids []frost.Identifier, msg []byte) (frost.Signature, error) {
+	var packages []frost.KeyPackage
+	for _, id := range ids {
+		kp, _, err := ks.GetKeyPackage(fmt.Sprintf("participant-%d", id))
+		if err != nil {
+			return frost.Signature{}, err
+		}
+		packages = append(packages, *kp)
 	}
 
-	// Create ciphersuite
-	cs := ristretto255_sha512.New()
-
-	// Create service config
-	config := &service.FrostServiceConfig{
-		Ciphersuite: cs,
-		KeyPackage:  keyPackage,
-	}
-
-	return service.NewFrostService(config)
+	svc := service.NewFrostService(ristretto255_sha512.New())
+	return svc.Sign(packages, msg)
 }
 ```
 
@@ -412,16 +419,14 @@ Represents a stored group public key with metadata.
 
 ### File Permissions
 
-The keystore uses strict file permissions:
+`KeychainStore` requests these permissions from the backend; the file backend applies them:
 - **Key packages**: 0600 (owner read/write only)
 - **Group public keys**: 0644 (owner read/write, others read)
-- **Directories**: 0700 (owner access only)
+- **Directories** created by the file backend: 0700 (owner access only)
 
 ### Thread Safety
 
-All keystore operations are thread-safe using `sync.RWMutex`:
-- Read operations (Get, List, Exists) use `RLock()`
-- Write operations (Store, Delete, Update) use `Lock()`
+`KeychainStore` holds no lock of its own; it relies on the `StorageBackend`, which the `KeyStore` interface requires to be thread-safe. The file backend guards its operations with a `sync.RWMutex` and the memory backend with a `sync.Mutex`. Note that `StoreKeyPackage` and `StoreGroupPublicKey` check existence and then write as two backend calls, so two concurrent stores of the same ID can both pass the check.
 
 ### Key Material Handling
 
@@ -445,7 +450,7 @@ All keystore operations are thread-safe using `sync.RWMutex`:
   open/use/reseal cycle, so a concurrent `Destroy` cannot be undone by the
   reseal that follows it
 - No key material is logged or exposed in error messages
-- Keys are sanitized to prevent path traversal attacks
+- Key IDs and group IDs are sanitized to prevent path traversal (`/` and `..` become `_`), so IDs that differ only in those characters map to the same storage key
 
 Custom storage backends must implement `PutSecret` and `GetSecret` alongside
 the plain operations. `PutSecret` receives the payload in protected memory and
@@ -472,42 +477,21 @@ job, with 0600 permissions).
 
 ## Testing
 
-### Unit Tests
+There is no keystore-specific make target. The keystore tests run with the unit suite:
 
 ```bash
-make test-keystore
+make test
 ```
 
-### Coverage
+To run only this package: `go test -race ./pkg/frost/keystore/`. `make coverage` and `make bench` cover all packages.
 
-```bash
-make coverage-keystore
-```
+## Storage Backends
 
-Current coverage: **73.0%**
+`Config.Storage` is required (`NewKeychainStore` fails without it). The `StorageBackend` interface is defined in `pkg/frost/keystore/storage.go`:
 
-### Benchmarks
-
-```bash
-make bench-keystore
-```
-
-## Integration with go-xkms
-
-The keystore uses go-xkms's storage backend for:
-
-- **File-based storage**: Production-ready file storage with proper permissions
-- **Storage abstraction**: Clean interface for future backend implementations
-- **Thread safety**: Built-in concurrency control
-- **Error handling**: Consistent error types and handling
-
-### Future Backend Support
-
-The go-xkms library supports multiple backends, allowing future integration with:
-
-- **HSMs**: PKCS#11, TPM2, SmartCard-HSM
-- **Cloud KMS**: AWS KMS, GCP KMS, Azure Key Vault
-- **Enterprise**: HashiCorp Vault
+- **`NewFileStorage(path)`**: one file per key under `path`, written atomically with the requested permissions
+- **`NewMemoryStorage()`**: in-memory store for tests and ephemeral use
+- **Your own**: DHT, cloud or HSM-backed stores implement the same interface, including `PutSecret`/`GetSecret`
 
 ## Error Handling
 
@@ -526,6 +510,9 @@ Common errors:
 - `ErrInvalidKeyID`: Invalid or empty key ID
 - `ErrInvalidGroupID`: Invalid or empty group ID
 - `ErrInvalidKeyPackage`: Invalid or nil key package
+- `ErrInvalidMetadata`: Nil metadata passed to `UpdateMetadata`
+- `ErrMissingSecretShare`: Stored document carries no secret share
+- `ErrPlaintextSerialization`: `encoding/json` used on a `StoredKeyPackage`
 - `ErrStorageBackend`: Underlying storage operation failed
 
 Check for specific errors:
@@ -542,19 +529,10 @@ if keystore.IsAlreadyExistsError(err) {
 
 ## Examples
 
-See the integration test for a complete workflow example:
-- `/home/jhahn/sources/go-frost/test/integration/keystore_integration_test.go`
-
-This example demonstrates:
-1. Key generation with trusted dealer
-2. Storing key packages in keychain
-3. Retrieving keys for signing operations
-4. Performing threshold signatures
-5. Verifying signatures with stored group public key
-6. Key deletion and lifecycle management
+See the package tests for complete workflows:
+- `pkg/frost/keystore/keychain_store_test.go`
 
 ## References
 
-- [go-xkms](https://github.com/jeremyhahn/go-xkms) - Secure key management library
 - [RFC 9591](https://www.rfc-editor.org/rfc/rfc9591.html) - FROST specification
-- [go-frost README](../README.md) - Main project documentation
+- [go-frost README](../../README.md) - Main project documentation

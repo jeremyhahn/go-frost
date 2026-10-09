@@ -1,5 +1,8 @@
 # Getting Started
 
+> **Status: REFERENCE** · Last verified: 2026-10-09
+> Quick start for the go-frost service layer. The contract lives in [API Reference](../api/reference.md).
+
 Quick start guide for using go-frost in your application.
 
 ## Installation

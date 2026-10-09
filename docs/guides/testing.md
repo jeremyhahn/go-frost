@@ -1,6 +1,9 @@
 # Testing Guide
 
-Comprehensive testing guide for go-frost.
+> **Status: REFERENCE** · Last verified: 2026-10-09
+> How go-frost is tested.
+
+Testing guide for go-frost. The `make` targets named here are the ones in the repository `Makefile` (`make help` lists them). Snippets are illustrative unless they point at a file.
 
 ## Table of Contents
 
@@ -15,7 +18,7 @@ Comprehensive testing guide for go-frost.
 
 ## Overview
 
-go-frost follows Test-Driven Development (TDD) principles with a goal of 90%+ code coverage. All tests are meaningful and provide real value against regressions and bugs.
+go-frost follows Test-Driven Development (TDD) principles with a goal of 90%+ code coverage. All tests are meant to be meaningful and to give real protection against regressions and bugs. The 90% figure is a project goal: CI collects coverage and uploads it to Codecov, but it does not fail the build on a threshold, and this guide does not claim a measured number. Run `make coverage` for the current figures.
 
 ### Testing Principles
 
@@ -39,25 +42,13 @@ All features follow TDD workflow:
 
 ### Coverage Goals
 
-- **Minimum**: 90% code coverage per package
-- **Unit Tests**: 90%+ coverage
-- **Integration Tests**: 90%+ coverage
+- **Goal**: 90% code coverage per package (not enforced by CI)
 - **Edge Cases**: All error paths tested
-- **No Skip Guards**: All tests must run (no `-short` flags)
+- **No Skip Guards**: unit tests should not hide behind `-short`. The one exception is `test/rfc`, whose side-channel timing tests call `testing.Short()` and are skipped by `make test-rfc` (see [RFC Compliance Tests](#rfc-compliance-tests)).
 
 ### Test Pyramid
 
-```
-        /\
-       /  \    E2E (Integration)
-      /____\   10%
-     /      \
-    / Unit   \ 90%
-   /__________\
-```
-
-- **90% Unit Tests**: Fast, isolated, comprehensive
-- **10% Integration Tests**: End-to-end validation
+Most tests are fast unit tests next to the code; a small number of end-to-end tests sit on top (`test/transport`, `test/testvectors`, `test/rfc`). The proportions are a guideline, not a measured split.
 
 ## Test Types
 
@@ -70,8 +61,7 @@ Fast, in-memory tests for individual functions and components.
 - No network I/O
 - No file system modifications
 - No Docker required
-- Execute in < 30 seconds
-- 90%+ coverage required
+- `make test` gives each package a 60 second timeout (30 seconds for `internal/`)
 
 **Location**: Alongside source files (`*_test.go`)
 
@@ -100,15 +90,14 @@ func TestParticipant_RoundOne(t *testing.T) {
 End-to-end tests that validate complete protocol flows.
 
 **Characteristics**:
-- Run in Docker containers
-- Test all layers together
-- Use real service resources
-- Execute in < 5 minutes
-- 90%+ coverage required
+- `test/transport/` runs a real distributed FROST exchange over HTTP between in-process participant nodes
+- Guarded by the `integration` build tag, so plain `go test ./...` skips it
+- Nodes bind port 0, so concurrent runs on one host do not collide
+- `make integration-test` runs it directly; `make test-transport` runs it inside Docker
 
-**Location**: `test/integration/`
+**Location**: `test/transport/` (see `test/transport/README.md`)
 
-**Example**:
+**Example** (a generic end-to-end flow through `service.FrostService`, not a copy of a test in the repository):
 ```go
 func TestFROST_EndToEnd_2of3(t *testing.T) {
     // This test runs the complete FROST protocol
@@ -160,13 +149,23 @@ func TestRFC9591_Ristretto255SHA512_FullProtocol(t *testing.T) {
 }
 ```
 
+`test/testvectors/rfc9591_test.go` also has `TestRFC9591_AllCiphersuites_*` tests and a `FullProtocol` test per ciphersuite (Ed25519, Ed448, P-256, secp256k1).
+
+### RFC Compliance Tests
+
+`test/rfc/` holds per-section RFC 9591 tests (`section3_test.go` through `appendixe_test.go`; see `test/rfc/README.md`).
+
+- `make test-rfc` runs them with `-short`, which skips the timing-based side-channel tests in `section7_1_sidechannel_test.go`
+- `make test-rfc-full` runs everything, including those timing tests
+- `make coverage-rfc` generates coverage for the suite
+
+The side-channel tests measure nanosecond timing differences and can flake on a CPU-capped shared runner, so no CI workflow runs `test/rfc` or `test/testvectors`; run them locally.
+
 ### Benchmark Tests
 
-Performance tests for critical operations.
+Benchmarks for critical operations. They live alongside the source in several packages (for example `pkg/frost/signing/participant_test.go`, the `group` and `ciphersuite` packages, and `pkg/frost/helpers`).
 
-**Location**: Alongside source files (`*_test.go`)
-
-**Example**:
+**Example** (illustrative; `BenchmarkSign_2of3` is not a benchmark in the repository):
 ```go
 func BenchmarkSign_2of3(b *testing.B) {
     suite := ristretto255_sha512.New()
@@ -191,39 +190,39 @@ func BenchmarkSign_2of3(b *testing.B) {
 ### All Tests
 
 ```bash
-# Run all unit tests
+# Run all unit tests (./pkg/..., verbose, with the race detector)
 make test
-
-# Verbose output
-make test ARGS="-v"
 ```
 
 ### Package-Specific Tests
 
+There are no per-package `make test-*` targets; use `go test` directly:
+
 ```bash
 # Core frost package
-make test-frost
+go test -race ./pkg/frost/
 
 # Signing package
-make test-signing
+go test -race ./pkg/frost/signing/
 
-# Key generation package
-make test-keygen
+# Key generation packages
+go test -race ./pkg/frost/keygen/...
 
 # Ristretto255 group
-make test-ristretto255
+go test -race ./pkg/frost/group/ristretto255/
 
 # Ristretto255-SHA512 ciphersuite
-make test-ristretto255-sha512
+go test -race ./pkg/frost/ciphersuite/ristretto255_sha512/
 ```
 
 ### Integration Tests
 
 ```bash
-# Run integration tests (requires Docker)
-make test
+# Run the build-tagged transport suite directly (no Docker)
+make integration-test
 
-# This builds a Docker image and runs tests inside
+# Run the same suite inside a Docker container
+make test-transport
 ```
 
 ### Test Vector Validation
@@ -248,10 +247,10 @@ go test -v ./pkg/frost/... -run TestSign
 
 ### Race Detection
 
-All tests run with race detector enabled:
+`make test`, `make coverage`, `make integration-test` and the CI unit job all run with `-race`:
 
 ```bash
-# Race detection is enabled by default in Makefile
+# Race detection is enabled by default in the Makefile
 make test
 
 # Manually enable race detection
@@ -266,8 +265,8 @@ go test -race ./...
 # Generate coverage for all packages
 make coverage
 
-# Opens HTML report in browser
-# Report saved to: coverage/coverage.html
+# HTML report is written to coverage/coverage.html (it is not opened for you)
+# and a per-function summary plus the total is printed
 ```
 
 ### Package-Specific Coverage
@@ -288,29 +287,22 @@ make coverage-helpers
 # Group implementations
 make coverage-group
 
-# Ciphersuite implementations
+# Ciphersuite implementations (all suites)
 make coverage-ciphersuite
-make coverage-ristretto255-sha512
 
 # Service layer
 make coverage-service
+
+# RFC compliance tests
+make coverage-rfc
 ```
 
-### Coverage Output Example
+Each prints `go tool cover -func` output: one line per function with its coverage, then a `total:` line. Profiles are written under `coverage/`.
 
-```
-pkg/frost/signing/participant.go:42:    NewParticipant     100.0%
-pkg/frost/signing/participant.go:52:    Identifier         100.0%
-pkg/frost/signing/participant.go:57:    RoundOne           100.0%
-pkg/frost/signing/participant.go:75:    RoundTwo           100.0%
-pkg/frost/signing/participant.go:123:   computeChallenge   100.0%
-total:                                  (statements)        94.2%
-```
+### Coverage Goals
 
-### Coverage Requirements
-
-Each package must maintain:
-- **Minimum**: 90% statement coverage
+Each package should aim for:
+- **Statement coverage**: 90% (the project goal; not enforced by CI)
 - **Functions**: All public functions tested
 - **Error Paths**: All error conditions tested
 - **Edge Cases**: Boundary conditions tested
@@ -320,33 +312,16 @@ Each package must maintain:
 ### Run Benchmarks
 
 ```bash
-# Run all benchmarks
+# Run all benchmarks under ./pkg/... (go test -bench=. -benchmem)
 make bench
 
-# Package-specific benchmarks
-make bench-signing
-make bench-keygen
-make bench-ristretto255
-make bench-ristretto255-sha512
+# One package
+go test -bench=. -benchmem ./pkg/frost/signing/
 ```
 
-### Benchmark Output Example
+### Performance
 
-```
-BenchmarkSign_2of3-8              1000    1123456 ns/op    12345 B/op    123 allocs/op
-BenchmarkSign_3of5-8               500    2234567 ns/op    23456 B/op    234 allocs/op
-BenchmarkVerify-8                 2000     567890 ns/op     5678 B/op     56 allocs/op
-```
-
-### Performance Targets
-
-| Operation | Target | Notes |
-|-----------|--------|-------|
-| Key Generation (3 participants) | < 10ms | Per participant |
-| Round One | < 1ms | Per participant |
-| Round Two | < 5ms | Per participant |
-| Aggregation | < 5ms | For 5 participants |
-| Verification | < 2ms | Single verification |
+go-frost defines no performance targets and publishes no benchmark results. Timings depend on the ciphersuite, hardware and Go version; run `make bench` on the machine you care about.
 
 ## Writing Tests
 
@@ -443,10 +418,10 @@ func TestLagrangeCoefficient(t *testing.T) {
 
 ### Mock Objects
 
-Use mocks for testing interfaces:
+Use mocks for testing interfaces. The repository ships `MockGroup`, `MockElement` and `MockScalar` (`NewMockGroup`, `NewMockGroupWithName`) and a mock ciphersuite:
 
 ```go
-// Mock group for testing
+// Illustrative: a hand-rolled mock implements the group.Group interface
 type mockGroup struct {
     name string
     // ... other fields
@@ -456,7 +431,7 @@ func (m *mockGroup) Name() string { return m.name }
 // ... implement other interface methods
 ```
 
-**Location**: `pkg/frost/helpers/testutil/`
+**Location**: `pkg/frost/helpers/testutil/` (`mock_group.go`, `mock_ciphersuite.go`)
 
 ### Test Helpers
 
@@ -484,20 +459,29 @@ func createTestKeyPackage(id frost.Identifier, suite ciphersuite.Ciphersuite) fr
 pkg/frost/signing/
 ├── participant.go           # Implementation
 ├── participant_test.go      # Unit tests
-├── aggregator.go           # Implementation
-├── aggregator_test.go      # Unit tests
-└── coordinator_test.go     # Unit tests
+├── aggregator.go            # Implementation
+├── aggregator_test.go       # Unit tests
+├── coordinator.go           # Implementation
+└── coordinator_test.go      # Unit tests
 
 test/
-├── integration/
-│   ├── frost_integration_test.go
-│   └── Dockerfile
-└── testvectors/
-    ├── vectors.go
-    └── rfc9591_test.go
+├── rfc/                     # RFC 9591 section-by-section tests
+│   ├── section3_test.go ... appendixe_test.go
+│   └── README.md
+├── testvectors/             # RFC 9591 test vectors
+│   ├── vectors.go
+│   └── rfc9591_test.go
+└── transport/               # build-tagged distributed integration suite
+    ├── node.go
+    ├── coordinator.go
+    ├── transport_test.go
+    ├── Dockerfile
+    └── README.md
 ```
 
 ### Test Dependencies
+
+`github.com/stretchr/testify` is a dependency (see `go.mod`) and is used by some tests (for example `pkg/secmem` and `pkg/frost/keygen`); many packages, including `pkg/frost/signing` and `test/rfc`, use only the standard `testing` package. Either style is fine; match the package you are editing.
 
 ```go
 import (
@@ -533,18 +517,17 @@ make fmt
 
 ### CI Pipeline
 
-Automated testing runs on:
-- Every commit
-- Every pull request
-- Before merges
+The workflow is `.github/workflows/ci.yml`; `make ci` runs a similar set of checks locally.
 
-**Checks**:
-1. Unit tests pass
-2. Integration tests pass
-3. Coverage meets 90%+ threshold
-4. Linters pass
-5. Race detector clean
-6. Benchmarks don't regress
+**Checks** (see the workflow for the exact trigger rules):
+1. Unit tests pass (`go test -race ./pkg/... ./cmd/...`)
+2. Integration suite passes (`make integration-test`)
+3. Coverage is generated and uploaded to Codecov (no threshold gate)
+4. Linters and static analysis pass (`go vet`, golangci-lint, staticcheck)
+5. Security scans pass (gosec, govulncheck, `go mod verify`, trivy)
+6. The CLI and the C libraries build
+
+Benchmarks are not run or compared in CI, and neither are `test/rfc` or `test/testvectors`.
 
 ## Debugging Tests
 
@@ -564,8 +547,8 @@ go test -v ./... | grep -E '(PASS|FAIL)'
 # Run single test with verbose output
 go test -v ./pkg/frost/signing/ -run TestParticipant_RoundOne
 
-# With additional logging
-go test -v -args -debug ./pkg/frost/signing/ -run TestParticipant_RoundOne
+# Without the test cache
+go test -count=1 -v ./pkg/frost/signing/ -run TestParticipant_RoundOne
 ```
 
 ### Test Timeout
@@ -574,7 +557,7 @@ go test -v -args -debug ./pkg/frost/signing/ -run TestParticipant_RoundOne
 # Increase timeout for slow tests
 go test -timeout 5m ./...
 
-# Default timeout is 30s for unit tests
+# make test uses -timeout 60s per package; plain go test defaults to 10m
 ```
 
 ### Failed Test Analysis
@@ -602,7 +585,7 @@ When tests fail:
 
 ### DON'T
 
-- Use skip guards (-short flags)
+- Use skip guards (-short flags) to hide unit tests
 - Write tests just for coverage
 - Create interdependent tests
 - Modify host system in unit tests
@@ -641,14 +624,14 @@ make coverage
 ### Integration Tests Fail
 
 ```bash
-# Check Docker is running
+# Run the suite without Docker first
+make integration-test
+
+# For the containerized run, check Docker is running
 docker ps
 
-# Rebuild integration test image
-docker build -t go-frost-test:latest -f test/integration/Dockerfile .
-
-# Check logs
-docker logs <container-id>
+# Rebuild the transport test image
+make test-transport
 ```
 
 ## References
@@ -656,4 +639,4 @@ docker logs <container-id>
 - [Go Testing Documentation](https://pkg.go.dev/testing)
 - [Testify Framework](https://github.com/stretchr/testify)
 - [Table-Driven Tests](https://go.dev/wiki/TableDrivenTests)
-- [CLAUDE.md Testing Requirements](../CLAUDE.md)
+- [CLAUDE.md Testing Requirements](../../CLAUDE.md)

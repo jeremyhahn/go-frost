@@ -1,11 +1,9 @@
 # Security Documentation
 
-Security guidance for go-frost deployments.
+> **Status: NORMATIVE** · Scope: go-frost deployments · Last verified: 2026-10-09
+> Conflicts with this document are defects. Fix them here first.
 
-## Security Audit
-
-- All 5 ciphersuites constant-time compliant
-- RFC 9591 fully compliant
+Security guidance for go-frost deployments. The sibling documents in this folder carry their own status banners; this index is verified against `pkg/frost/security` and `pkg/secmem`.
 
 ## Critical Security Considerations
 

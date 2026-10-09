@@ -1,8 +1,11 @@
 # FROST Scalability Analysis
 
+> **Status: REFERENCE** · Last verified: 2026-10-09
+> Scalability considerations for go-frost deployments.
+
 ## Overview
 
-FROST (Flexible Round-Optimized Schnorr Threshold Signatures) is designed for **threshold signature schemes** with small-to-medium participant groups. While cryptographically sound at any scale, practical considerations limit the number of participants.
+FROST (Flexible Round-Optimized Schnorr Threshold Signatures) is designed for **threshold signature schemes** with small-to-medium participant groups. While cryptographically sound at any scale, practical considerations limit the number of participants. The complexity and size figures below are derived from the protocol and the ristretto255 encoding; go-frost publishes no measured timings, so no latency figures are given (run `make bench` for your hardware).
 
 ## Computational Complexity
 
@@ -24,7 +27,7 @@ FROST (Flexible Round-Optimized Schnorr Threshold Signatures) is designed for **
 
 ### Bandwidth Requirements (per signature)
 
-**Ristretto255 encoding sizes:**
+**Ristretto255 encoding sizes** (other ciphersuites differ, e.g. P-256 compressed points are 33 bytes):
 - Group element: 32 bytes
 - Scalar: 32 bytes
 
@@ -68,23 +71,25 @@ Coordinator outputs:
 
 ## Memory Requirements
 
+These are lower bounds on the serialized data a session holds, not measurements of Go heap usage.
+
 ### Coordinator State (per active session)
 
 | Component | Size | Formula |
 |-----------|------|---------|
-| Participant list | 8n bytes | n × uint64 identifiers |
+| Participant list | 4n bytes | n × `uint32` identifiers (`frost.Identifier`) |
 | Commitments | 64n bytes | n × 2 group elements |
 | Signature shares | 32n bytes | n × scalar |
-| Verification shares (if enabled) | 32n bytes | n × scalar |
+| Verification shares (if enabled) | 32n bytes | n × group element |
 | Binding factors | 32n bytes | n × scalar |
 | Lagrange coefficients | 32t bytes | t × scalar |
 
-**Total per session**: ~200n + 32t bytes
+**Total per session**: ~164n + 32t bytes
 
 **Examples:**
-- 10 participants (t=7): ~2.2 KB per session
-- 100 participants (t=67): ~20.2 KB per session
-- 1000 participants (t=667): ~201 KB per session
+- 10 participants (t=7): ~1.9 KB per session
+- 100 participants (t=67): ~18.5 KB per session
+- 1000 participants (t=667): ~185 KB per session
 
 ### Participant State (per session)
 
@@ -97,29 +102,26 @@ Coordinator outputs:
 
 ## Practical Limits
 
-### Recommended Deployment Sizes
+### Deployment Size Guidance
+
+These are design recommendations, not measured limits.
 
 #### Small Groups (3-20 participants)
 - **Use case**: Multisig wallets, small teams
-- **Performance**: Excellent (<100ms signature time)
 - **Latency**: Network-bound
 - **Recommendation**: ✅ **Optimal range**
 
 #### Medium Groups (20-100 participants)
 - **Use case**: Enterprise governance, DAOs
-- **Performance**: Good (100-500ms signature time)
 - **Latency**: Coordination-bound
 - **Recommendation**: ✅ **Well-supported**
 
 #### Large Groups (100-500 participants)
 - **Use case**: Large organizations, federated systems
-- **Performance**: Acceptable (0.5-2s signature time)
 - **Latency**: Significant coordination overhead
-- **Recommendation**: ⚠️ **Possible but requires tuning**
+- **Recommendation**: ⚠️ **Possible but requires tuning and your own load testing**
 
 #### Very Large Groups (500-1000+ participants)
-- **Use case**: ???
-- **Performance**: Poor (2s+ signature time)
 - **Latency**: Coordination becomes primary bottleneck
 - **Recommendation**: ❌ **Not practical**
 
@@ -151,13 +153,17 @@ If you need thousands of participants:
 
 ## SecurityConfig Limits
 
+`security.SecurityConfig.MaxSignersPerSession` (`uint32`) is set to 1000 by `DefaultProductionConfig()` and `DefaultDevelopmentConfig()`, and to 0 (no limit) by `InsecureConfig()`. `SecurityConfig.Validate()` rejects values above 10000.
+
+**Not enforced by the library:** no signing or service code reads this field today. Applications that want the cap must check the participant count themselves against `MaxSignersPerSession`.
+
 ### Current Defaults
 
 ```go
 MaxSignersPerSession: 1000  // DoS protection ceiling
 ```
 
-### Recommended Production Values
+### Suggested Values
 
 **For typical deployments:**
 ```go
@@ -181,18 +187,7 @@ MaxSignersPerSession: 1000  // Default (generous ceiling)
 
 ## Benchmark Data
 
-*Note: Benchmarks to be added based on actual performance testing*
-
-### Target Performance (estimated)
-
-| Participants | Commitment Round | Signing Round | Total |
-|--------------|------------------|---------------|-------|
-| 10 | 50ms | 30ms | 80ms |
-| 50 | 150ms | 100ms | 250ms |
-| 100 | 300ms | 200ms | 500ms |
-| 500 | 1.5s | 1s | 2.5s |
-
-*Assumes: 1ms network RTT, modern hardware, optimized implementation*
+No benchmark results are published. Run `make bench` to measure on your hardware.
 
 ## Recommendations
 
@@ -223,4 +218,4 @@ If you truly need >100 participants:
 
 FROST works well for 3-100 participants. Hundreds are possible but increasingly impractical. Thousands are not viable with the current protocol.
 
-The default `MaxSignersPerSession: 1000` is a security ceiling to prevent DoS attacks, not a performance target. Real-world deployments should use much smaller values based on actual requirements.
+The default `MaxSignersPerSession: 1000` is a configured ceiling meant to limit DoS exposure, not a performance target. Real-world deployments should use much smaller values based on actual requirements.

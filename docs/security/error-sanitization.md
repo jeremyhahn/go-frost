@@ -1,5 +1,18 @@
 # Application-Level Message Validation
 
+> **Status: REFERENCE** · Scope: go-frost deployments · Last verified: 2026-10-09
+> Conflicts with this document are defects. Fix them here first.
+
+Despite the file name, this guide is about message validation, not error
+sanitization. The library provides the `MessageValidator` interface and three
+implementations (`NoOpValidator`, `SizeValidator`, `CompositeValidator`) in
+`pkg/frost/security/validator.go`. **Nothing in the signing or service packages
+calls a validator**: `SecurityConfig.MessageValidator` is configuration the
+application reads and applies itself before calling `Sign` / `RoundTwo`. All other
+validators in this guide (JSON, financial, certificate, ...) are illustrative
+application code, not library types. For error sanitization see
+`ErrorSanitizationMode` in `pkg/frost/security/errors.go`.
+
 ## Table of Contents
 
 1. [Overview](#overview)
@@ -92,6 +105,9 @@ type MessageValidator interface {
 }
 ```
 
+Implementations should be stateless and thread-safe. Note that the built-in
+`SizeValidator.Validate` only checks size, and `NoOpValidator` accepts everything.
+
 ### Built-in Validators
 
 #### NoOpValidator
@@ -120,7 +136,9 @@ validator := security.NewSizeValidator(10 * 1024 * 1024)
 
 #### CompositeValidator
 
-Combines multiple validators for layered validation:
+Combines multiple validators for layered validation. Each method runs the matching
+method on every validator in order and stops at the first error; `Add` appends a
+validator later:
 
 ```go
 validator := security.NewCompositeValidator(
@@ -975,7 +993,7 @@ func (v *ResourceLimitValidator) Validate(msg []byte) error {
 ### Using Validators in FROST Service
 
 ```go
-// Create FROST service with validation
+// Create FROST service; it does not validate messages itself
 suite := ristretto255_sha512.New()
 frostService := service.NewFrostService(suite)
 
@@ -997,8 +1015,8 @@ func signTransaction(tx Transaction) error {
         return fmt.Errorf("validation failed: %w", err)
     }
 
-    // Now safe to sign
-    signature, err := frostService.Sign(signingPackages, msgBytes)
+    // Now safe to sign (Sign takes the []frost.KeyPackage and the message)
+    signature, err := frostService.Sign(keyPackages, msgBytes)
     if err != nil {
         return err
     }
@@ -1009,21 +1027,13 @@ func signTransaction(tx Transaction) error {
 
 ### Validator in Signing Sessions
 
+`service.SigningSession` is an interface that carries no message (commitments and
+shares only), so the message is validated where you hand it to participants:
+
 ```go
-type ValidatedSigningSession struct {
-    session   *service.SigningSession
-    validator security.MessageValidator
-}
-
-func (s *ValidatedSigningSession) Sign(msg []byte) error {
-    // Validate first
-    if err := s.validator.Validate(msg); err != nil {
-        log.WithError(err).Error("Message validation failed")
-        return err
-    }
-
-    // Proceed with signing
-    return s.session.Sign(msg)
+type ValidatedSigner struct {
+    participant signing.Participant
+    validator   security.MessageValidator
 }
 ```
 
@@ -1037,13 +1047,18 @@ type ValidatingParticipant struct {
     validator   security.MessageValidator
 }
 
-func (p *ValidatingParticipant) SignRound1(msg []byte) error {
+// RoundTwo is the first call that receives the message, so validate there.
+func (p *ValidatingParticipant) RoundTwo(
+    nonces frost.SigningNonces,
+    msg []byte,
+    commitmentList frost.CommitmentList,
+) (frost.SignatureShare, error) {
     // Each participant validates independently
     if err := p.validator.Validate(msg); err != nil {
-        return fmt.Errorf("participant validation failed: %w", err)
+        return frost.SignatureShare{}, fmt.Errorf("participant validation failed: %w", err)
     }
 
-    return p.participant.SignRound1(msg)
+    return p.participant.RoundTwo(nonces, msg, commitmentList)
 }
 ```
 
@@ -1052,6 +1067,6 @@ func (p *ValidatingParticipant) SignRound1(msg []byte) error {
 Application-level message validation is not optional. The FROST protocol will sign anything you ask it to -- it is the application's responsibility to ensure only appropriate messages are signed.
 
 For more information, see:
-- [Security Guide](CHANNEL_SECURITY.md)
-- [Misbehavior Tracking](MISBEHAVIOR_TRACKING.md)
-- [RFC 9591 Section 7: Security Considerations](../rfc0001.txt)
+- [Channel Security](channel-security.md)
+- [Misbehavior Tracking](misbehavior-tracking.md)
+- [RFC 9591 Section 7: Security Considerations](../rfc9591.txt)

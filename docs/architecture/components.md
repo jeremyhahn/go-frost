@@ -1,14 +1,11 @@
 # go-frost Architecture Design Summary
 
+> **Status: REFERENCE** · Last verified: 2026-10-09
+> As-built component summary of go-frost. Package paths are relative to the repository root.
+
 ## Overview
 
 Architecture for the RFC 9591 FROST (Flexible Round-Optimized Schnorr Threshold) signature scheme in Go. The design uses layered abstractions, typed errors, and a service-oriented structure.
-
-## Project Statistics
-
-- **Packages**: group, ciphersuite, helpers, signing, keygen, service, frost, secmem, signer, storage, and others
-- **Interfaces Defined**: 15+ interfaces
-- **Error Types**: 20+ typed errors with context wrapping
 
 ## Architecture Layers
 
@@ -17,14 +14,13 @@ Architecture for the RFC 9591 FROST (Flexible Round-Optimized Schnorr Threshold)
 **Purpose**: Abstract prime-order group operations
 
 **Key Components**:
-- `Element` interface: Group element operations (add, negate, equality)
-- `Scalar` interface: Scalar field operations (add, sub, mul, inv)
-- `Group` interface: Group operations (scalar mult, serialization, random generation)
+- `Element` interface: Group element operations (add, negate, equality, copy)
+- `Scalar` interface: Scalar field operations (add, sub, mul, inv, compare, zeroize)
+- `Group` interface: Group operations (scalar mult, serialization, random generation, cofactor)
 
 **Design Decisions**:
 - Interface-based design allows multiple group implementations (Ed25519, ristretto255, P-256, etc.)
 - No `unsafe` in the library packages (only the `cmd/libfrost` C bindings use it)
-- Immutable value semantics for thread safety
 - Fixed-length serialization for each group
 
 ### Layer 2: Ciphersuite Abstraction (`pkg/frost/ciphersuite/`)
@@ -38,7 +34,7 @@ Architecture for the RFC 9591 FROST (Flexible Round-Optimized Schnorr Threshold)
   where FIPS 140-3 selection policy is applied
 
 **Design Decisions**:
-- H1-H5 domain-separated hash functions as RFC 9591 requires
+- H1-H5 domain-separated hash functions as RFC 9591 requires, plus `HDKG` and `HID`
 - HashToCurve support for advanced operations
 - The selectable set is closed to exactly the five RFC 9591 suites. An
   extensible registry would admit a suite the FIPS policy table knows nothing
@@ -60,7 +56,6 @@ Architecture for the RFC 9591 FROST (Flexible Round-Optimized Schnorr Threshold)
 
 **Design Decisions**:
 - Each helper has dedicated interface for testability
-- No global state, all operations are pure functions
 - Clear separation of concerns
 
 ### Layer 4: Key Generation (`pkg/frost/keygen/`)
@@ -76,7 +71,7 @@ Architecture for the RFC 9591 FROST (Flexible Round-Optimized Schnorr Threshold)
 - Implements RFC 9591 Appendix C (Trusted Dealer)
 - VSS for share verification
 - Polynomial-based secret sharing (Shamir)
-- Future extension point for DKG (Distributed Key Generation)
+- DKG, key refresh and repairable threshold live in `keygen/dkg`, `keygen/refresh` and `keygen/repairable`
 
 ### Layer 5: Signing Protocol (`pkg/frost/signing/`)
 
@@ -111,7 +106,7 @@ Architecture for the RFC 9591 FROST (Flexible Round-Optimized Schnorr Threshold)
 ## Core Type Definitions (`pkg/frost/types.go`)
 
 **Key Types**:
-- `Identifier`: Participant identifier (NonZeroScalar)
+- `Identifier`: Participant identifier (`uint32`, non-zero)
 - `SigningCommitments`: Round 1 commitments (hiding + binding)
 - `SigningNonces`: Secret nonces from round 1
 - `SignatureShare`: Participant's signature contribution
@@ -123,12 +118,10 @@ Architecture for the RFC 9591 FROST (Flexible Round-Optimized Schnorr Threshold)
 **Design Philosophy**:
 - Strongly typed (no generic interfaces or any types)
 - Self-documenting with clear naming
-- Immutable where possible
-- Zero dependencies on external libraries
 
 ## Error Handling (`pkg/frost/errors.go`)
 
-**Base Errors** (20+ typed errors):
+**Base Errors**:
 - `ErrInvalidParameters`, `ErrInvalidParticipant`
 - `ErrInvalidCommitment`, `ErrInvalidSignatureShare`
 - `ErrInvalidThreshold`, `ErrInsufficientParticipants`
@@ -141,7 +134,6 @@ Architecture for the RFC 9591 FROST (Flexible Round-Optimized Schnorr Threshold)
 - `VerificationError`: Verification failure context
 
 **Design Philosophy**:
-- NO `fmt.Errorf` usage (all errors are typed)
 - Error wrapping with `Unwrap()` support
 - Rich context for debugging
 - Testable error conditions
@@ -149,21 +141,16 @@ Architecture for the RFC 9591 FROST (Flexible Round-Optimized Schnorr Threshold)
 ## Build System (Makefile)
 
 **Targets**:
-- `make test`: Run all unit tests
-- `make test`: Run integration tests
+- `make test`: Run unit tests
+- `make integration-test`: Run integration tests
+- `make test-transport`: Run transport tests
+- `make test-rfc`: Run RFC test vectors
 - `make coverage`: Generate coverage reports
-- `make coverage-<package>`: Per-package coverage
+- `make coverage-<package>`: Per-package coverage (frost, group, ciphersuite, helpers, signing, keygen, service, rfc)
 - `make bench`: Run benchmarks
-- `make bench-<package>`: Per-package benchmarks
 - `make lint`: Run golangci-lint
 - `make fmt`: Format code
-- `make docker-build/test/run`: Docker operations
-
-**Philosophy**:
-- Package-specific targets for development velocity
-- No skip guards or -short flags (explicit test separation)
-- Coverage targets for each package
-- Docker integration for E2E testing
+- `make docker-build`, `docker-test`, `docker-run`: Docker operations
 
 ## Design Principles Applied
 
@@ -186,11 +173,7 @@ Architecture for the RFC 9591 FROST (Flexible Round-Optimized Schnorr Threshold)
 - Comprehensive godoc comments
 
 ### Performance
-- Lock-free algorithm design
-- Immutable data structures
-- Efficient scalar/element operations
-- Pre-allocated buffers where appropriate
-- Benchmark suite for critical paths
+- Benchmark suite for critical paths (`make bench`)
 
 ### Security
 - Constant-time operations (where feasible)
@@ -215,7 +198,6 @@ The architecture implements all required components:
 
 ### Unit Tests
 - Fast, in-memory tests
-- 90%+ coverage target
 - No host system modifications
 - Mock external dependencies
 

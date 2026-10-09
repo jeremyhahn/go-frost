@@ -1,5 +1,8 @@
 # Implementation Guides
 
+> **Status: REFERENCE** · Last verified: 2026-10-09
+> Index of the guides in this folder. Each guide carries its own banner.
+
 Comprehensive guides for implementing and deploying go-frost.
 
 ## Available Guides

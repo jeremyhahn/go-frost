@@ -1,6 +1,12 @@
 # Pre-Hashing Guidance for FROST
 
+> **Status: REFERENCE** · Last verified: 2026-10-09
+> Pre-hashing guidance for callers of go-frost.
+
 ## Overview
+
+> **Library scope**: go-frost has no pre-hashing API. `service.FrostService.Sign` and `Verify` take the bytes you give them and sign or verify exactly those bytes. Pre-hashing is an application-side step done before calling them, and every snippet in this guide that defines a `prehash` package, helper, or `Config` is illustrative application code, not part of go-frost. Snippets that use bare `Sign(...)`, `Verify(...)`, `SHA256(...)` or `GenerateNonces()` are pseudocode. The library pieces they lean on are `ciphersuite.Ciphersuite.ContextString()` and `.Hash()`, `service.FrostService`, and `frost.Signature`.
+> The RFC 9591 §7.6 text is in [`docs/rfc9591.txt`](../rfc9591.txt).
 
 This document provides comprehensive guidance on when and how to use pre-hashing with the FROST threshold signature scheme. Pre-hashing is the practice of hashing a message before passing it to the signing protocol, rather than signing the message directly.
 
@@ -59,7 +65,7 @@ signature := Sign(hash)
 - Enables streaming processing of large data
 - Reduces network bandwidth when message is transmitted to signers
 
-**Threshold**: Consider pre-hashing for messages > 1MB
+**Rule of thumb** (a guideline, not a library limit): consider pre-hashing for messages around 1 MB and up
 
 ### 2. Streaming Data
 
@@ -225,39 +231,29 @@ When you pre-hash, signature security depends on collision resistance of the has
 
 **Mitigation**:
 - **REQUIRED**: Use collision-resistant hash with security level ≥ signature scheme
-- Recommended: SHA-256 minimum, SHA-512 preferred
+- Recommended: the ciphersuite's own hash (SHA-512 for Ed25519 and ristretto255, SHA-256 for P-256 and secp256k1, SHAKE256 for Ed448)
 - Avoid: MD5, SHA-1, or any deprecated hash functions
 
 ### Security Level Matching
 
-Hash function security must match or exceed the ciphersuite security level:
+RFC 9591 §7.6 requires a collision-resistant hash "with a security level commensurate with the security inherent to the ciphersuite chosen". The simplest way to meet that is to use the hash the ciphersuite itself uses (see [Ciphersuite Hash Functions](#ciphersuite-hash-functions)), which is also what the RFC recommends. go-frost does not compute or publish per-suite security levels, so this guide does not either.
 
-| Ciphersuite | Group Security Bits | Minimum Hash |
-|------------|---------------------|--------------|
-| FROST(Ed25519, SHA-512) | 126 bits | SHA-256 (128 bits) |
-| FROST(ristretto255, SHA-512) | 126 bits | SHA-256 (128 bits) |
-| FROST(Ed448, SHAKE256) | 223 bits | SHA-512 (256 bits) |
-| FROST(P-256, SHA-256) | 128 bits | SHA-256 (128 bits) |
-| FROST(secp256k1, SHA-256) | 128 bits | SHA-256 (128 bits) |
-
-**Rule**: `Hash_Security_Bits ≥ Group_Security_Bits`
+**Rule**: the pre-hash's collision resistance must not be weaker than the ciphersuite's own hash.
 
 ### Domain Separation
 
-Pre-hashing MUST use domain separation to prevent cross-protocol attacks.
+Pre-hashing should use domain separation to prevent cross-protocol attacks. RFC 9591 makes this a SHOULD, and this guide treats it as required practice.
 
 **From RFC 9591 Section 7.6**:
 > "In particular, a different prefix SHOULD be used to differentiate this pre-hash from H4."
 
-**Implementation**:
+**Implementation** (pseudocode; `contextString` is `suite.ContextString()`, for example `FROST-RISTRETTO255-SHA512-v1`):
 ```go
 // ❌ WRONG - No domain separation
-preHash := SHA256(message)
+preHash := H(message)
 
-// ✅ CORRECT - With domain separation
-contextString := "FROST-v1-ristretto255-SHA-512"
-prefix := "pre-hash"
-preHash := SHA256(contextString || prefix || message)
+// ✅ CORRECT - With domain separation, H being the ciphersuite hash
+preHash := H(contextString || "pre-hash" || message)
 ```
 
 **Why it matters**:
@@ -308,10 +304,10 @@ sig2 := Sign(hash, nonces2)
 Consider committing to the original message in the signature context.
 
 ```go
-// Include message digest in context for auditability
-messageDigest := SHA256(message)
-signingContext := append(contextString, messageDigest...)
-preHash := SHA256(signingContext || message)
+// Pseudocode: include message digest in context for auditability
+messageDigest := H(message)
+signingContext := contextString || messageDigest
+preHash := H(signingContext || message)
 ```
 
 **Benefits**:
@@ -325,42 +321,30 @@ preHash := SHA256(signingContext || message)
 
 ### Recommended Pre-Hashing Pattern
 
+Compute `H(contextString || "pre-hash" || message)` with the ciphersuite's own hash. `Ciphersuite.ContextString()` returns the suite's domain-separation string (for example `FROST-RISTRETTO255-SHA512-v1`) and `Ciphersuite.Hash()` is its underlying hash (SHA-512 for the Ed25519 and ristretto255 suites).
+
 ```go
+// Illustrative application code: not part of go-frost
 package prehash
 
 import (
-    "crypto/sha256"
-    "crypto/sha512"
-
     "github.com/jeremyhahn/go-frost/pkg/frost"
+    "github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite"
+    "github.com/jeremyhahn/go-frost/pkg/frost/group"
     "github.com/jeremyhahn/go-frost/pkg/frost/service"
 )
 
-// PreHashMessage applies pre-hashing with proper domain separation
-func PreHashMessage(suite string, message []byte) []byte {
-    // 1. Build domain separation string
-    contextString := "FROST-v1-" + suite
-    prefix := "pre-hash"
+const prefix = "pre-hash"
 
-    // 2. Concatenate: contextString || prefix || message
-    data := make([]byte, 0, len(contextString)+len(prefix)+len(message))
-    data = append(data, []byte(contextString)...)
-    data = append(data, []byte(prefix)...)
+// PreHashMessage computes H(contextString || "pre-hash" || message)
+// using the ciphersuite's own hash.
+func PreHashMessage(suite ciphersuite.Ciphersuite, message []byte) []byte {
+    ctx := suite.ContextString()
+    data := make([]byte, 0, len(ctx)+len(prefix)+len(message))
+    data = append(data, ctx...)
+    data = append(data, prefix...)
     data = append(data, message...)
-
-    // 3. Hash based on suite
-    switch suite {
-    case "ristretto255-SHA-512", "Ed25519-SHA-512", "Ed448-SHAKE256":
-        hash := sha512.Sum512(data)
-        return hash[:]
-    case "P-256-SHA-256", "secp256k1-SHA-256":
-        hash := sha256.Sum256(data)
-        return hash[:]
-    default:
-        // Default to SHA-512 for maximum security
-        hash := sha512.Sum512(data)
-        return hash[:]
-    }
+    return suite.Hash(data)
 }
 
 // SignWithPreHash signs a message after applying pre-hashing
@@ -369,13 +353,7 @@ func SignWithPreHash(
     keyPackages []frost.KeyPackage,
     message []byte,
 ) (frost.Signature, error) {
-    // 1. Get ciphersuite name
-    suite := frostService.GetCiphersuite().Name()
-
-    // 2. Pre-hash the message
-    messageHash := PreHashMessage(suite, message)
-
-    // 3. Sign the hash
+    messageHash := PreHashMessage(frostService.GetCiphersuite(), message)
     return frostService.Sign(keyPackages, messageHash)
 }
 
@@ -386,84 +364,47 @@ func VerifyWithPreHash(
     signature frost.Signature,
     publicKey group.Element,
 ) error {
-    // 1. Get ciphersuite name
-    suite := frostService.GetCiphersuite().Name()
-
-    // 2. Pre-hash the message (same as signing)
-    messageHash := PreHashMessage(suite, message)
-
-    // 3. Verify signature on hash
+    messageHash := PreHashMessage(frostService.GetCiphersuite(), message)
     return frostService.Verify(messageHash, signature, publicKey)
 }
 ```
 
 ### Streaming Pre-Hash Pattern
 
-For large files or streaming data:
+`Ciphersuite.Hash` is one-shot (it takes the whole input), so it cannot stream. For large files or streaming data, use the standard-library hash that matches the ciphersuite, and feed it the same prefix bytes, so the result equals what `PreHashMessage` produces for the same message. The signer and every verifier must use the identical function.
 
 ```go
+// Illustrative application code: not part of go-frost
 package prehash
 
 import (
-    "crypto/sha256"
     "hash"
     "io"
+
+    "github.com/jeremyhahn/go-frost/pkg/frost"
+    "github.com/jeremyhahn/go-frost/pkg/frost/service"
 )
 
-// StreamingPreHash computes pre-hash for large data streams
-type StreamingPreHash struct {
-    hasher hash.Hash
-    suite  string
-}
-
-// NewStreamingPreHash creates a new streaming pre-hasher
-func NewStreamingPreHash(suite string) *StreamingPreHash {
-    h := &StreamingPreHash{
-        suite: suite,
-    }
-
-    // Initialize hasher with domain separation
-    h.hasher = sha256.New()
-
-    contextString := "FROST-v1-" + suite
-    prefix := "pre-hash"
-    h.hasher.Write([]byte(contextString))
-    h.hasher.Write([]byte(prefix))
-
-    return h
-}
-
-// Write implements io.Writer for streaming data
-func (h *StreamingPreHash) Write(data []byte) (int, error) {
-    return h.hasher.Write(data)
-}
-
-// Finalize returns the computed pre-hash
-func (h *StreamingPreHash) Finalize() []byte {
-    return h.hasher.Sum(nil)
-}
-
-// Example usage for large files
-func SignLargeFile(
+// SignStream pre-hashes r incrementally and signs the digest. h must be the
+// stdlib equivalent of the ciphersuite hash, for example sha512.New() for
+// the ristretto255 and Ed25519 suites.
+func SignStream(
     frostService service.FrostService,
     keyPackages []frost.KeyPackage,
-    reader io.Reader,
+    r io.Reader,
+    h hash.Hash,
 ) (frost.Signature, error) {
-    // 1. Create streaming hasher
-    suite := frostService.GetCiphersuite().Name()
-    hasher := NewStreamingPreHash(suite)
+    // 1. Domain separation prefix
+    h.Write([]byte(frostService.GetCiphersuite().ContextString()))
+    h.Write([]byte("pre-hash"))
 
-    // 2. Stream file through hasher
-    _, err := io.Copy(hasher, reader)
-    if err != nil {
+    // 2. Stream the data through the hasher
+    if _, err := io.Copy(h, r); err != nil {
         return frost.Signature{}, err
     }
 
-    // 3. Get final hash
-    messageHash := hasher.Finalize()
-
-    // 4. Sign the hash
-    return frostService.Sign(keyPackages, messageHash)
+    // 3. Sign the digest
+    return frostService.Sign(keyPackages, h.Sum(nil))
 }
 ```
 
@@ -480,8 +421,7 @@ Listed in order of preference:
 **Pros**:
 - 256-bit collision resistance
 - Well-studied and standardized
-- Faster than SHA-256 on 64-bit platforms
-- Compatible with most FROST ciphersuites
+- The hash of the Ed25519 and ristretto255 ciphersuites
 
 **Cons**:
 - Larger output (64 bytes vs 32 bytes)
@@ -490,7 +430,6 @@ Listed in order of preference:
 **Use for**:
 - FROST(Ed25519, SHA-512)
 - FROST(ristretto255, SHA-512)
-- FROST(Ed448, SHAKE256)
 - General purpose applications
 
 ```go
@@ -522,10 +461,11 @@ import "crypto/sha256"
 hash := sha256.Sum256(data)
 ```
 
-#### 3. BLAKE3 (Best for Performance)
+#### 3. BLAKE3 (Not a Ciphersuite Hash)
+
+BLAKE3 is not the hash of any go-frost ciphersuite, and the RFC recommends the ciphersuite's own hash. Use it only if you have a reason to and control both signer and verifier.
 
 **Pros**:
-- Fastest cryptographic hash function
 - Not vulnerable to length extension
 - 128-bit collision resistance
 - Supports parallel hashing
@@ -533,12 +473,11 @@ hash := sha256.Sum256(data)
 
 **Cons**:
 - Newer, less widely adopted
-- Not in Go standard library
+- Not in the Go standard library and not a go-frost dependency (you add it yourself)
 
 **Use for**:
-- High-performance requirements
-- Very large files
-- Streaming applications
+- Applications that already standardize on BLAKE3
+- Very large files, where its tree mode helps
 
 ```go
 import "github.com/zeebo/blake3"
@@ -555,8 +494,8 @@ hash := blake3.Sum256(data)
 - 128-bit collision resistance
 
 **Cons**:
-- Slower than SHA-256
-- Larger implementation
+- Not the hash of any go-frost ciphersuite
+- Not in `crypto/` before Go 1.24; `golang.org/x/crypto/sha3` provides it (go-frost already depends on `golang.org/x/crypto`)
 
 **Use for**:
 - Maximum security paranoia
@@ -585,23 +524,16 @@ hash := sha3.Sum256(data)
 
 Pre-hashing adds one additional hash computation to the signing and verification process.
 
-**Typical Hash Performance** (64-bit platform, 1MB message):
-
-| Hash Function | Throughput | Time for 1MB |
-|--------------|------------|--------------|
-| BLAKE3 | ~3 GB/s | 0.3 ms |
-| SHA-256 | ~500 MB/s | 2 ms |
-| SHA-512 | ~800 MB/s | 1.3 ms |
-| SHA3-256 | ~200 MB/s | 5 ms |
+Hash throughput varies by hash function, CPU, and implementation, and go-frost does not benchmark pre-hashing, so this guide gives no timing figures. Measure the candidate hash on your own hardware (`go test -bench` in your application).
 
 **Signing Time Breakdown**:
 ```
-Without pre-hash: FROST signing time only (~10-50ms)
+Without pre-hash: FROST signing time only
 With pre-hash:    Hash time + FROST signing time
 
-For small messages (<1KB): Adds ~0.01ms overhead
-For medium messages (1MB): Adds ~1-5ms overhead
-For large messages (1GB):  Saves overall time (streaming)
+For small messages: the extra hash is negligible but buys nothing
+For large messages: hashing is usually a small cost next to loading, storing,
+                    or transmitting the full message (streaming)
 ```
 
 ### Memory Usage
@@ -659,9 +591,9 @@ The RFC imposes specific requirements when pre-hashing is used:
 
 #### 1. Collision Resistance (REQUIRED)
 
-> "Pre-hashing MUST use a collision-resistant hash function with a security level commensurate with the security inherent to the ciphersuite chosen."
+> "In such cases, pre-hashing MUST use a collision-resistant hash function with a security level commensurate with the security inherent to the ciphersuite chosen."
 
-**Implementation**: Always use SHA-256 or stronger.
+**Implementation**: Use the ciphersuite's own hash, or one at least as collision-resistant. Never use SHA-1 or MD5.
 
 #### 2. Domain Separation (RECOMMENDED)
 
@@ -669,17 +601,19 @@ The RFC imposes specific requirements when pre-hashing is used:
 
 **Implementation**: Include context string and unique prefix.
 
-**Example from RFC**:
+**Example from RFC** (a fictional protocol "Quux"):
 ```
 H(contextString || "Quux-pre-hash" || m)
 ```
 
-**Our implementation**:
+**This guide's convention** (an application choice; the RFC leaves the prefix to you):
 ```go
-contextString := "FROST-v1-ristretto255-SHA-512"
+contextString := suite.ContextString() // e.g. "FROST-RISTRETTO255-SHA512-v1"
 prefix := "pre-hash"
-H(contextString || prefix || message)
+suite.Hash(contextString || prefix || message)
 ```
+
+The repository's own test of this property is `TestSection7_6_PreHashDomainSeparation` in `test/rfc/section7_6_input_message_hashing_test.go`. It checks only that a prefixed SHA-512 differs from an unprefixed one; it does not exercise a go-frost pre-hash API, because there is none.
 
 ### Ciphersuite Hash Functions
 
@@ -689,7 +623,7 @@ Use the hash function that matches your ciphersuite for consistency:
 |------------|---------------|---------------------|
 | FROST(Ed25519, SHA-512) | SHA-512 | SHA-512 |
 | FROST(ristretto255, SHA-512) | SHA-512 | SHA-512 |
-| FROST(Ed448, SHAKE256) | SHAKE256 | SHAKE256 or SHA-512 |
+| FROST(Ed448, SHAKE256) | SHAKE256 | SHAKE256 (the RFC recommends the ciphersuite's H) |
 | FROST(P-256, SHA-256) | SHA-256 | SHA-256 |
 | FROST(secp256k1, SHA-256) | SHA-256 | SHA-256 |
 
@@ -719,7 +653,6 @@ valid := Verify(preHash, signature, publicKey)
 package main
 
 import (
-    "crypto/sha512"
     "fmt"
     "log"
 
@@ -750,14 +683,10 @@ func main() {
     // Large message
     largeMessage := make([]byte, 10*1024*1024) // 10MB
 
-    // Pre-hash the message
-    contextString := "FROST-v1-" + suite.Name()
-    prefix := "pre-hash"
-    data := append([]byte(contextString), []byte(prefix)...)
+    // Pre-hash with the ciphersuite hash and domain separation
+    data := append([]byte(suite.ContextString()), "pre-hash"...)
     data = append(data, largeMessage...)
-
-    hash := sha512.Sum512(data)
-    messageHash := hash[:]
+    messageHash := suite.Hash(data)
 
     // Sign the hash instead of the full message
     signature, err := frostService.Sign(
@@ -780,13 +709,14 @@ func main() {
 
 ### Example 2: Streaming File Signing
 
+This is [`SignStream`](#streaming-pre-hash-pattern) applied to a file. The ristretto255 and Ed25519 suites hash with SHA-512, so the stream uses `sha512.New()`.
+
 ```go
 package main
 
 import (
-    "crypto/sha256"
+    "crypto/sha512"
     "fmt"
-    "io"
     "log"
     "os"
 
@@ -794,39 +724,6 @@ import (
     "github.com/jeremyhahn/go-frost/pkg/frost/ciphersuite/ristretto255_sha512"
     "github.com/jeremyhahn/go-frost/pkg/frost/service"
 )
-
-func SignFile(
-    frostService service.FrostService,
-    keyPackages []frost.KeyPackage,
-    filePath string,
-) (frost.Signature, error) {
-    // Open file
-    file, err := os.Open(filePath)
-    if err != nil {
-        return frost.Signature{}, err
-    }
-    defer file.Close()
-
-    // Create hasher with domain separation
-    hasher := sha256.New()
-    suite := frostService.GetCiphersuite().Name()
-    contextString := "FROST-v1-" + suite
-    prefix := "pre-hash"
-    hasher.Write([]byte(contextString))
-    hasher.Write([]byte(prefix))
-
-    // Stream file through hasher (constant memory usage)
-    _, err = io.Copy(hasher, file)
-    if err != nil {
-        return frost.Signature{}, err
-    }
-
-    // Get hash
-    messageHash := hasher.Sum(nil)
-
-    // Sign hash
-    return frostService.Sign(keyPackages, messageHash)
-}
 
 func main() {
     suite := ristretto255_sha512.New()
@@ -838,102 +735,34 @@ func main() {
         Group:      suite.Group(),
     }
 
-    keyPackages, _, _ := frostService.GenerateKeys(
+    keyPackages, _, err := frostService.GenerateKeys(
         config,
         []frost.Identifier{1, 2, 3},
     )
+    if err != nil {
+        log.Fatalf("Key generation failed: %v", err)
+    }
 
-    // Sign large file without loading into memory
-    signature, err := SignFile(
+    // Sign a large file without loading it into memory
+    file, err := os.Open("large-file.bin")
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer file.Close()
+
+    // SignStream is the function from the Streaming Pre-Hash Pattern above,
+    // copied into this package
+    signature, err := SignStream(
         frostService,
         []frost.KeyPackage{keyPackages[0], keyPackages[1]},
-        "/path/to/large/file.bin",
+        file,
+        sha512.New(),
     )
     if err != nil {
         log.Fatalf("File signing failed: %v", err)
     }
 
     fmt.Printf("File signed successfully: %v\n", signature)
-}
-```
-
-### Example 3: Pre-Hash Helper Library
-
-```go
-package prehash
-
-import (
-    "crypto/sha256"
-    "crypto/sha512"
-    "hash"
-
-    "github.com/jeremyhahn/go-frost/pkg/frost"
-    "github.com/jeremyhahn/go-frost/pkg/frost/group"
-    "github.com/jeremyhahn/go-frost/pkg/frost/service"
-)
-
-// Config holds pre-hashing configuration
-type Config struct {
-    Suite      string
-    HashFunc   func() hash.Hash
-    ContextStr string
-}
-
-// GetDefaultConfig returns recommended config for a ciphersuite
-func GetDefaultConfig(ciphersuiteName string) Config {
-    switch ciphersuiteName {
-    case "FROST(ristretto255, SHA-512)", "FROST(Ed25519, SHA-512)":
-        return Config{
-            Suite:      ciphersuiteName,
-            HashFunc:   sha512.New,
-            ContextStr: "FROST-v1-" + ciphersuiteName,
-        }
-    case "FROST(P-256, SHA-256)", "FROST(secp256k1, SHA-256)":
-        return Config{
-            Suite:      ciphersuiteName,
-            HashFunc:   sha256.New,
-            ContextStr: "FROST-v1-" + ciphersuiteName,
-        }
-    default:
-        // Default to SHA-512 for maximum security
-        return Config{
-            Suite:      ciphersuiteName,
-            HashFunc:   sha512.New,
-            ContextStr: "FROST-v1-" + ciphersuiteName,
-        }
-    }
-}
-
-// Hash computes pre-hash with domain separation
-func (c Config) Hash(message []byte) []byte {
-    hasher := c.HashFunc()
-    hasher.Write([]byte(c.ContextStr))
-    hasher.Write([]byte("pre-hash"))
-    hasher.Write(message)
-    return hasher.Sum(nil)
-}
-
-// SignWithPreHash is a convenience wrapper
-func SignWithPreHash(
-    frostService service.FrostService,
-    keyPackages []frost.KeyPackage,
-    message []byte,
-) (frost.Signature, error) {
-    config := GetDefaultConfig(frostService.GetCiphersuite().Name())
-    hash := config.Hash(message)
-    return frostService.Sign(keyPackages, hash)
-}
-
-// VerifyWithPreHash is a convenience wrapper
-func VerifyWithPreHash(
-    frostService service.FrostService,
-    message []byte,
-    signature frost.Signature,
-    publicKey group.Element,
-) error {
-    config := GetDefaultConfig(frostService.GetCiphersuite().Name())
-    hash := config.Hash(message)
-    return frostService.Verify(hash, signature, publicKey)
 }
 ```
 
@@ -946,18 +775,17 @@ func VerifyWithPreHash(
 **Problem**:
 ```go
 // ❌ WRONG - No domain separation
-hash := sha256.Sum256(message)
-signature := Sign(hash[:])
+hash := suite.Hash(message)
+signature := Sign(hash)
 ```
 
 **Solution**:
 ```go
 // ✅ CORRECT - Proper domain separation
-contextString := "FROST-v1-" + suite.Name()
-data := append([]byte(contextString), []byte("pre-hash")...)
+data := append([]byte(suite.ContextString()), "pre-hash"...)
 data = append(data, message...)
-hash := sha256.Sum256(data)
-signature := Sign(hash[:])
+hash := suite.Hash(data)
+signature := Sign(hash)
 ```
 
 ### Pitfall 2: Using Weak Hash Functions
@@ -1015,17 +843,15 @@ signature := Sign(message)
 
 **Problem**:
 ```go
-// ❌ WRONG - Hash too weak for ciphersuite
-// Ed448 has 223-bit security, SHA-256 only has 128-bit
-suite := Ed448()
-hash := SHA256(message)  // Insufficient!
+// ❌ WRONG - Hash weaker than the ciphersuite's own hash
+// FROST(Ed448, SHAKE256) hashes with SHAKE256, but this uses SHA-1
+hash := SHA1(message)  // Insufficient!
 ```
 
 **Solution**:
 ```go
-// ✅ CORRECT - Hash matches security level
-suite := Ed448()
-hash := SHA512(message)  // 256-bit collision resistance
+// ✅ CORRECT - Use the ciphersuite's own hash (RFC 9591 Section 7.6)
+hash := suite.Hash(contextString || "pre-hash" || message)
 ```
 
 ---
@@ -1061,7 +887,7 @@ Is message > 1MB?
 1. **Pre-hashing is optional** - FROST doesn't require it
 2. **Use for large messages** - Primary benefit is memory/bandwidth savings
 3. **Collision resistance is critical** - Use SHA-256 or better
-4. **Domain separation required** - Prevent cross-protocol attacks
+4. **Domain separation recommended** - RFC 9591 says SHOULD; it prevents cross-protocol attacks
 5. **Consistency essential** - Sign and verify must use same pre-hash
 6. **Don't overuse** - Short messages should be signed directly
 
@@ -1080,6 +906,7 @@ Is message > 1MB?
   - https://csrc.nist.gov/publications/detail/fips/180/4/final
 
 - **go-frost Documentation**:
-  - API Reference: `/docs/api-reference.md`
-  - Examples: `/docs/examples.md`
-  - Security Considerations: `/docs/rfc-compliance.md`
+  - API Reference: [`docs/api/reference.md`](../api/reference.md)
+  - Examples: [`docs/examples/README.md`](../examples/README.md)
+  - RFC compliance: [`docs/rfc-compliance/README.md`](../rfc-compliance/README.md)
+  - RFC 9591 text: [`docs/rfc9591.txt`](../rfc9591.txt)

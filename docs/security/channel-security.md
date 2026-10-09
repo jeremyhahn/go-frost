@@ -1,5 +1,14 @@
 # Channel Security Guide
 
+> **Status: REFERENCE** · Scope: go-frost deployments · Last verified: 2026-10-09
+> Conflicts with this document are defects. Fix them here first.
+
+go-frost does not open network connections. It provides message authentication
+(`pkg/frost/security`: `ParticipantAuthenticator`, `Ed25519Authenticator`) and
+commitment tracking (`CommitmentTracker`, `FrostNonceTracker`). TLS, sequence
+numbers, session envelopes and rate limiting are the **deployer's** job; the code
+samples for them in this guide are illustrative and are not part of the library.
+
 ## Overview
 
 RFC 9591 Section 7.2 requires that communication between participants and the coordinator occurs over **authenticated and confidential channels**. This guide provides concrete recommendations and implementation patterns for securing FROST protocol communication in production deployments.
@@ -32,9 +41,9 @@ Without secure channels, FROST implementations are vulnerable to:
 |-------------------|----------------|-----------------|
 | **Confidentiality** | TLS 1.3+ | REQUIRED |
 | **Integrity** | TLS + Message Authentication | REQUIRED |
-| **Authentication** | Participant authenticators | REQUIRED |
-| **Replay Protection** | Sequence numbers + Timestamps | RECOMMENDED |
-| **Nonce Reuse Prevention** | Commitment tracking | REQUIRED |
+| **Authentication** | Participant authenticators (library: `Ed25519Authenticator`) | REQUIRED |
+| **Replay Protection** | Sequence numbers + Timestamps (deployer-provided) | RECOMMENDED |
+| **Nonce Reuse Prevention** | Commitment tracking (library: `FrostNonceTracker`, called by the application) | REQUIRED |
 
 ---
 
@@ -61,7 +70,8 @@ TLS Configuration:
 
   Session Resumption:
     - Disable TLS session tickets (prevents replay)
-    - Use session IDs with server-side storage only
+    - TLS 1.3 has no session IDs; resumption is ticket-based, so disabling
+      tickets means a full handshake per connection
 ```
 
 ### Why TLS 1.3?
@@ -83,7 +93,7 @@ import (
     "crypto/tls"
     "crypto/x509"
     "fmt"
-    "io/ioutil"
+    "os"
 )
 
 // NewProductionTLSConfig creates a TLS 1.3+ configuration for FROST communication
@@ -95,7 +105,7 @@ func NewProductionTLSConfig(certFile, keyFile, caFile string) (*tls.Config, erro
     }
 
     // Load CA certificate for client verification
-    caCert, err := ioutil.ReadFile(caFile)
+    caCert, err := os.ReadFile(caFile)
     if err != nil {
         return nil, fmt.Errorf("failed to load CA certificate: %w", err)
     }
@@ -117,23 +127,12 @@ func NewProductionTLSConfig(certFile, keyFile, caFile string) (*tls.Config, erro
         ClientAuth: tls.RequireAndVerifyClientCert,
         ClientCAs:  caCertPool,
 
-        // Prefer server cipher suite order
-        PreferServerCipherSuites: true,
-
-        // Explicitly set cipher suites (TLS 1.3 only)
-        CipherSuites: []uint16{
-            tls.TLS_AES_256_GCM_SHA384,
-            tls.TLS_CHACHA20_POLY1305_SHA256,
-            tls.TLS_AES_128_GCM_SHA256,
-        },
+        // Note: crypto/tls ignores CipherSuites for TLS 1.3 (the suite set is
+        // fixed by the Go runtime) and PreferServerCipherSuites is deprecated,
+        // so neither is set here. Restrict suites by pinning MinVersion.
 
         // Disable session tickets (prevents replay attacks)
         SessionTicketsDisabled: true,
-
-        // Enable client session cache for performance
-        // (coordinator only, one session per participant)
-        ClientSessionCache: nil, // Disable for maximum security
-
     }, nil
 }
 
@@ -144,7 +143,7 @@ func NewClientTLSConfig(certFile, keyFile, caFile, serverName string) (*tls.Conf
         return nil, fmt.Errorf("failed to load client certificate: %w", err)
     }
 
-    caCert, err := ioutil.ReadFile(caFile)
+    caCert, err := os.ReadFile(caFile)
     if err != nil {
         return nil, fmt.Errorf("failed to load CA certificate: %w", err)
     }
@@ -188,13 +187,8 @@ import (
 
 // Setup authenticator with participant public keys
 func SetupAuthentication(participantPubKeys map[frost.Identifier]ed25519.PublicKey) *security.Ed25519Authenticator {
-    auth := security.NewEd25519Authenticator()
-
-    for id, pubKey := range participantPubKeys {
-        auth.AddPublicKey(id, pubKey)
-    }
-
-    return auth
+    // The constructor takes the key map; AddPublicKey/RemovePublicKey update it later.
+    return security.NewEd25519Authenticator(participantPubKeys)
 }
 
 // Participant: Sign commitment before sending
@@ -219,17 +213,21 @@ func VerifyCommitment(
 
 ### Message Format
 
-Authenticated messages use the following format:
+`Ed25519Authenticator` verifies a detached signature over a canonical message
+(see `serializeCommitment` / `serializeSignatureShare` in
+`pkg/frost/security/authenticator.go`):
 
 ```
-Message = ParticipantID || ProtocolData
-Signature = Ed25519.Sign(PrivateKey, Message)
-
-Wire Format:
-  [4 bytes: ParticipantID (little-endian)]
-  [N bytes: ProtocolData (commitment or share)]
-  [64 bytes: Ed25519 Signature]
+Commitment message = ParticipantID(4 bytes, little-endian) || hiding_commitment || binding_commitment
+Share message      = ParticipantID(4 bytes, little-endian) || signature_share_bytes
+Proof              = Ed25519.Sign(PrivateKey, message)    // 64 bytes, passed as `proof`
 ```
+
+The library defines no wire format; the proof travels beside the protocol data
+in whatever framing the deployer chooses. Helpers: `SignCommitment`,
+`SignSignatureShare`, and the `crypto.Signer` variants `SignCommitmentWithSigner`
+and `SignSignatureShareWithSigner` (HSM/TPM-backed keys). Unknown participants
+and bad signatures both fail with `ErrAuthenticationFailed`.
 
 ---
 
@@ -247,7 +245,8 @@ Result: If C is accepted, nonce k is reused → private key recovery
 
 ### Defense 1: Message Sequence Numbers
 
-Include monotonically increasing sequence numbers in protocol messages:
+go-frost has no sequence-number or envelope type. The following is an illustrative
+design for the transport layer you build (imports abbreviated):
 
 ```go
 package transport
@@ -325,7 +324,8 @@ func (st *SequenceTracker) ValidateEnvelope(env *MessageEnvelope) error {
 
 ### Defense 2: Session Identifiers
 
-Generate unique session IDs for each signing operation:
+Generate unique session IDs for each signing operation (illustrative; the library's
+`service.SessionManager` in `pkg/frost/service` is a separate, different facility):
 
 ```go
 package signing
@@ -368,42 +368,41 @@ func (s *Session) IsExpired() bool {
 }
 ```
 
-### Defense 3: Commitment Tracking (Already Implemented)
+### Defense 3: Commitment Tracking
 
-go-frost implements `FrostNonceTracker` to prevent nonce reuse:
+go-frost provides `FrostNonceTracker` (over a `CommitmentTracker`) to detect nonce reuse.
+The signing package does not call it for you; the application calls it:
 
 ```go
-package security
+cfg := security.DefaultProductionConfig() // NonceReuseProtection: true
+tracker := cfg.GetOrCreateNonceTracker()  // in-memory unless cfg.NonceTracker is set
 
-import (
-    "github.com/jeremyhahn/go-frost/pkg/frost/security"
-)
-
-// Production coordinator setup with nonce tracking
-func NewSecureCoordinator(config security.SecurityConfig) *signing.Coordinator {
-    // Nonce tracking is enabled by default in production config
-    if config.NonceReuseProtection {
-        nonceTracker := config.GetOrCreateNonceTracker()
-
-        // The tracker automatically prevents commitment reuse
-        // No additional action needed - integrated into participant.RoundOne()
-    }
-
-    return coordinator
-}
+// when a commitment arrives (or is generated) for a session:
+err := tracker.RecordSigningCommitments(ctx, sessionID, participantID, commitments)
+// err wraps ErrCommitmentReused if the hiding or binding commitment was seen before
 ```
 
 **How it works:**
-1. Participant generates commitment C = (hiding, binding)
-2. Tracker stores hash(C) with timestamp
-3. If C is seen again → ERROR: nonce reuse detected
-4. Old commitments expire after configured TTL (default: 24 hours)
+1. The hiding and binding commitments are each recorded per session and participant
+2. Recording a commitment already seen returns an error wrapping `ErrCommitmentReused`;
+   a failed binding record rolls back the hiding record
+3. `CheckSigningCommitments` tests for reuse without recording
+4. `ClearSession`, `ClearParticipant` and `ClearExpired` release entries;
+   `DefaultProductionConfig` sets `CommitmentExpiration` to 24 hours, which the
+   application must apply by calling `ClearExpired`
+5. The default tracker is in-memory; supply a persistent `CommitmentTracker`
+   in `SecurityConfig.NonceTracker` for production
 
 ---
 
 ## 4. Production Deployment Example
 
 ### Complete Secure FROST Coordinator
+
+Illustrative composition. `SequenceTracker`, `SessionManager` and `MessageEnvelope`
+are the application-side types sketched above (not library types); only
+`signing.NewCoordinatorWithAuthenticator`, `security.NewEd25519Authenticator`,
+`security.DefaultProductionConfig` and `Coordinator.AuthenticateCommitment` are go-frost API.
 
 ```go
 package main
@@ -449,13 +448,10 @@ func NewProductionCoordinator(
     }
 
     // 2. Setup participant authentication
-    authenticator := security.NewEd25519Authenticator()
-    for id, pubKey := range participantPubKeys {
-        authenticator.AddPublicKey(id, pubKey)
-    }
+    authenticator := security.NewEd25519Authenticator(participantPubKeys)
 
     // 3. Setup sequence tracking (5 second max clock skew)
-    sequenceTracker := NewSequenceTracker(5 * time.Second)
+    sequenceTracker := NewSequenceTracker(int64(5 * time.Second))
 
     // 4. Setup session management
     sessionManager := NewSessionManager(1 * time.Hour) // 1 hour session TTL
@@ -684,12 +680,12 @@ func TestReplayAttackPrevention(t *testing.T) {
 
 | Requirement | Implementation | Status |
 |-------------|----------------|--------|
-| Authenticated channels | Ed25519 message signatures | ✅ |
-| Confidential channels | TLS 1.3+ | ✅ |
-| Prevent impersonation | ParticipantAuthenticator | ✅ |
-| Prevent MITM | TLS certificate validation | ✅ |
-| Prevent replay | Sequence numbers + timestamps | ✅ |
-| Nonce reuse protection | CommitmentTracker | ✅ |
+| Authenticated channels | Ed25519 message signatures | Library (`Ed25519Authenticator`) |
+| Confidential channels | TLS 1.3+ | Deployer-provided |
+| Prevent impersonation | `ParticipantAuthenticator` | Library |
+| Prevent MITM | TLS certificate validation | Deployer-provided |
+| Prevent replay | Sequence numbers + timestamps | Deployer-provided (not in the library) |
+| Nonce reuse protection | `FrostNonceTracker` / `CommitmentTracker` | Library type; application must call it |
 
 ### Audit Evidence
 
@@ -729,6 +725,6 @@ For security audits, maintain:
 
 For questions or security concerns:
 - GitHub Issues: https://github.com/jeremyhahn/go-frost/issues
-- Security Issues: See SECURITY.md for responsible disclosure
+- Security Issues: report privately to the maintainer rather than in a public issue (the repository has no SECURITY.md)
 
 This document is maintained as part of the go-frost project and updated as security best practices evolve.

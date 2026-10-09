@@ -134,6 +134,15 @@ d="$(new_case no-mod-line)"; stub_tool "$d" gosec
 stub_go "$d" info "$(printf 'gosec: go1.27.0\n\tpath\tcommand-line-arguments\n')"
 run_guard "$d" fail gosec "$mod" v2.29.0
 
+# Build info far over the 64 KiB pipe buffer with the module line early must
+# still pass under pipefail (an early-exiting reader on a pipe died of SIGPIPE).
+big="$(buildinfo gosec "$mod" v2.29.0)"
+for ((i = 0; i < 40000; i++)); do
+  big+=$'\n'"$(printf '\tdep\texample.com/padding/module%05d\tv1.0.0\th1:CCCCCCCCCCCCCCCCCCCCCCCCCCCC=' "$i")"
+done
+d="$(new_case large-buildinfo)"; stub_tool "$d" gosec; stub_go "$d" info "$big"
+run_guard "$d" pass gosec "$mod" v2.29.0
+
 # Empty build info fails.
 d="$(new_case empty-buildinfo)"; stub_tool "$d" gosec; stub_go "$d" info ""
 run_guard "$d" fail gosec "$mod" v2.29.0

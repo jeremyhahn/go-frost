@@ -1,5 +1,17 @@
 # Side-Channel Security in go-frost
 
+> **Status: REFERENCE** · Scope: go-frost constant-time requirements · Last verified: 2026-10-09
+> Conflicts with this document are defects. Fix them here first.
+
+Scope of verification: this guide describes the ristretto255-SHA512 suite
+(`pkg/frost/group/ristretto255`). Constant-time properties of the underlying
+arithmetic are inherited from `github.com/gtank/ristretto255` (see `go.mod` for the
+version) and are **not re-verified here**; where this guide describes upstream
+algorithms (Montgomery ladder, Fermat inversion, table use) that is background, not a
+statement checked against this repository. Source locations are given by symbol name
+because line numbers drift. The other suites (P-256, secp256k1, Ed25519, Ed448) are
+not analysed here.
+
 ## Table of Contents
 
 1. [Executive Summary](#executive-summary)
@@ -189,7 +201,7 @@ All scalar field operations execute in constant time regardless of input values.
 - `Scalar.Add(other)` - Scalar addition modulo group order
 - `Scalar.Sub(other)` - Scalar subtraction modulo group order
 
-**Implementation**: `pkg/frost/group/ristretto255/ristretto255.go:87-100`
+**Implementation**: `Scalar.Add` / `Scalar.Sub` in `pkg/frost/group/ristretto255/ristretto255.go`
 
 **Constant-Time Guarantee**: ✅ **YES**
 
@@ -211,7 +223,7 @@ sum := secretShare1.Add(secretShare2)    // CONSTANT TIME ✅
 
 **Operation**: `Scalar.Mul(other)` - Scalar multiplication modulo group order
 
-**Implementation**: `pkg/frost/group/ristretto255/ristretto255.go:103-109`
+**Implementation**: `pkg/frost/group/ristretto255/ristretto255.go` (`Scalar.Mul`)
 
 **Constant-Time Guarantee**: ✅ **YES**
 
@@ -233,7 +245,7 @@ product := lambda.Mul(secretShare)                   // CONSTANT TIME ✅
 
 **Operation**: `Scalar.Inv()` - Multiplicative inverse modulo group order
 
-**Implementation**: `pkg/frost/group/ristretto255/ristretto255.go:111-119`
+**Implementation**: `pkg/frost/group/ristretto255/ristretto255.go` (`Scalar.Inv`)
 
 **Constant-Time Guarantee**: ✅ **YES**
 
@@ -254,7 +266,7 @@ inverse, err := denominator.Inv()           // CONSTANT TIME ✅
 
 **Operation**: `Scalar.Negate()` - Additive inverse modulo group order
 
-**Implementation**: `pkg/frost/group/ristretto255/ristretto255.go:121-126`
+**Implementation**: `pkg/frost/group/ristretto255/ristretto255.go` (`Scalar.Negate`)
 
 **Constant-Time Guarantee**: ✅ **YES**
 
@@ -271,7 +283,7 @@ All elliptic curve point operations execute in constant time.
 
 **Operation**: `Group.ScalarMult(element, scalar)` - Point multiplication
 
-**Implementation**: `pkg/frost/group/ristretto255/ristretto255.go:236-245`
+**Implementation**: `pkg/frost/group/ristretto255/ristretto255.go` (`Group.ScalarMult`)
 
 **Constant-Time Guarantee**: ✅ **YES**
 
@@ -293,7 +305,7 @@ partialPublicKey := group.ScalarMult(publicKey, secretShare)  // CONSTANT TIME �
 
 **Operation**: `Group.ScalarBaseMult(scalar)` - Multiplication by generator
 
-**Implementation**: `pkg/frost/group/ristretto255/ristretto255.go:247-255`
+**Implementation**: `pkg/frost/group/ristretto255/ristretto255.go` (`Group.ScalarBaseMult`)
 
 **Constant-Time Guarantee**: ✅ **YES**
 
@@ -314,7 +326,7 @@ commitment := group.ScalarBaseMult(hidingNonce)  // CONSTANT TIME ✅
 
 **Operation**: `Element.Add(other)` - Elliptic curve point addition
 
-**Implementation**: `pkg/frost/group/ristretto255/ristretto255.go:43-49`
+**Implementation**: `pkg/frost/group/ristretto255/ristretto255.go` (`Element.Add`)
 
 **Constant-Time Guarantee**: ✅ **YES**
 
@@ -341,8 +353,8 @@ groupCommitment := commitment1.Add(commitment2)  // CONSTANT TIME ✅
 - `Element.Equal(other)` - Point equality
 
 **Implementation**:
-- Scalar: `pkg/frost/group/ristretto255/ristretto255.go:134-138`
-- Element: `pkg/frost/group/ristretto255/ristretto255.go:64-68`
+- Scalar: `pkg/frost/group/ristretto255/ristretto255.go` (`Scalar.Equal`)
+- Element: `pkg/frost/group/ristretto255/ristretto255.go` (`Element.Equal`)
 
 **Constant-Time Guarantee**: ✅ **YES**
 
@@ -365,12 +377,12 @@ if nonce.Equal(zeroScalar) {  // CONSTANT TIME ✅
 
 **Operation**: `Group.SerializeScalar(scalar)` - Encode scalar to bytes
 
-**Implementation**: `pkg/frost/group/ristretto255/ristretto255.go:289-295`
+**Implementation**: `pkg/frost/group/ristretto255/ristretto255.go` (`Group.SerializeScalar`)
 
 **Constant-Time Guarantee**: ✅ **YES**
 
 **Details**:
-- Uses `ristretto255.Scalar.Encode()`
+- Uses `ristretto255.Scalar.Bytes()`
 - Canonical little-endian encoding
 - No branches based on scalar value
 - Processes all bytes
@@ -386,13 +398,13 @@ bytes := group.SerializeScalar(secretShare)  // CONSTANT TIME ✅
 
 **Operation**: `Group.DeserializeScalar(data)` - Decode bytes to scalar
 
-**Implementation**: `pkg/frost/group/ristretto255/ristretto255.go:297-311`
+**Implementation**: `pkg/frost/group/ristretto255/ristretto255.go` (`Group.DeserializeScalar`)
 
 **Constant-Time Guarantee**: ✅ **YES** (with caveats)
 
 **Details**:
-- Uses `ristretto255.Scalar.Decode()`
-- Validates scalar is in range [0, p-1]
+- Checks the length is 32 bytes, then uses `ristretto255.Scalar.SetCanonicalBytes()`
+- Rejects non-canonical encodings (value >= group order)
 - Validation is constant-time
 - **Caveat**: Error path may differ in timing (acceptable for deserialization)
 
@@ -410,28 +422,28 @@ if err != nil {
 
 **Operation**: `Group.SerializeElement(element)` - Encode point to bytes
 
-**Implementation**: `pkg/frost/group/ristretto255/ristretto255.go:257-267`
+**Implementation**: `pkg/frost/group/ristretto255/ristretto255.go` (`Group.SerializeElement`)
 
 **Constant-Time Guarantee**: ✅ **YES**
 
 **Details**:
-- Uses `ristretto255.Element.Encode()`
+- Uses `ristretto255.Element.Bytes()`
 - Canonical encoding of Ristretto point
-- Checks for identity element (constant time check)
-- Returns error if identity (timing acceptable)
+- Checks for identity element (`IsIdentity` uses the constant-time `Equal`)
+- Returns `ErrIdentityElement` if identity (timing of that early return is acceptable)
 
 #### Element Deserialization
 
 **Operation**: `Group.DeserializeElement(data)` - Decode bytes to point
 
-**Implementation**: `pkg/frost/group/ristretto255/ristretto255.go:269-287`
+**Implementation**: `pkg/frost/group/ristretto255/ristretto255.go` (`Group.DeserializeElement`)
 
 **Constant-Time Guarantee**: ✅ **YES** (with caveats)
 
 **Details**:
-- Uses `ristretto255.Element.Decode()`
-- Validates point is on curve and in correct subgroup
-- Validation is constant-time
+- Checks the length is 32 bytes, then uses `ristretto255.Element.SetCanonicalBytes()`
+- Rejects invalid Ristretto encodings and the identity element (`ErrIdentityElement`)
+- Validation inside the upstream decoder is constant-time per upstream documentation
 - **Caveat**: Error path may differ in timing (acceptable for deserialization)
 
 ### Random Number Generation
@@ -440,13 +452,13 @@ if err != nil {
 
 **Operation**: `Group.RandomScalar()` - Generate cryptographically secure random scalar
 
-**Implementation**: `pkg/frost/group/ristretto255/ristretto255.go:220-234`
+**Implementation**: `pkg/frost/group/ristretto255/ristretto255.go` (`Group.RandomScalar`)
 
 **Constant-Time Guarantee**: ✅ **YES**
 
 **Details**:
 - Reads 64 bytes from `crypto/rand` (constant time)
-- Uses `ristretto255.Scalar.FromUniformBytes()` (wide reduction, constant time)
+- Uses `ristretto255.Scalar.SetUniformBytes()` (wide reduction, constant time)
 - No rejection sampling loops
 - No timing variation based on output
 
@@ -494,29 +506,24 @@ The following operations are NOT constant-time and should NOT be used with secre
 
 **Operation**: `Scalar.Compare(other)` - Lexicographic comparison returning -1, 0, or 1
 
-**Implementation**: `pkg/frost/group/ristretto255/ristretto255.go:152-176`
+**Implementation**: `pkg/frost/group/ristretto255/ristretto255.go` (`Scalar.Compare`)
 
 **Constant-Time Guarantee**: ❌ **NO**
 
-**Code**:
+**Code** (abridged):
 ```go
 func (s *Scalar) Compare(other group.Scalar) int {
-    otherScalar := other.(*Scalar)
-    sBytes := s.Bytes()
-    oBytes := otherScalar.Bytes()
-    sBig := new(big.Int).SetBytes(sBytes)
-    oBig := new(big.Int).SetBytes(oBytes)
+    // bytes are little-endian, so they are reversed before big.Int
+    sBig := new(big.Int).SetBytes(reverseBytes(s.Bytes()))
+    oBig := new(big.Int).SetBytes(reverseBytes(other.(*Scalar).Bytes()))
     return sBig.Cmp(oBig)  // ⚠️ NOT CONSTANT TIME
 }
 ```
 
 **Issue**: `big.Int.Cmp()` is not guaranteed constant-time. It may exit early when finding the first differing byte.
 
-**Current Usage Analysis**:
-```bash
-$ grep -r "\.Compare(" pkg/frost/
-# Currently unused in production code
-```
+**Current Usage Analysis**: a search of the non-test code under `pkg/` finds no
+call to `.Compare(` (the method exists to satisfy the `group.Scalar` interface).
 
 **Status**: ✅ **SAFE** - Not used with secret values in current implementation
 
@@ -532,40 +539,25 @@ $ grep -r "\.Compare(" pkg/frost/
 - Comparing nonces
 - Any operation where result reveals secret information
 
-**Recommendation**: Add code comment warning:
-```go
-// Compare compares this scalar with another scalar.
-// Returns -1 if this < other, 0 if equal, 1 if this > other.
-//
-// ⚠️ WARNING: This implementation is NOT constant-time for ordering (< or >).
-// It MUST NOT be used to compare secret scalar values in security-critical contexts.
-// For equality checks with secrets, use Equal() which is fully constant-time.
-```
+The method's doc comment already carries this warning: it is NOT constant-time for
+ordering, must not be used on secret scalars, and `Equal()` is the call for secret equality.
 
 ### Big Integer Operations
 
-**Context**: Polynomial operations and Lagrange interpolation use big.Int for certain calculations.
+**Context**: `Scalar.Compare` (above) is the one place the ristretto255 group uses
+`big.Int`. Polynomial and Lagrange code in `pkg/frost/helpers/polynomial.go` builds
+the constant scalar 1 with `scalarOne`, which deserializes a fixed byte string in the
+group's byte order:
 
-**Location**: `pkg/frost/helpers/polynomial.go`
-
-**Operations**:
-- Computing "one" scalar: Uses big.Int in `DeriveInterpolatingValue()`
-- May involve range checks and comparisons
-
-**Analysis**:
 ```go
-// Line 125-130: Creating scalar "1"
-oneBytes := make([]byte, p.group.ScalarLength())
-oneBytes[0] = 1 // Little-endian: LSB at index 0
-one, _ := p.group.DeserializeScalar(oneBytes)
+oneBytes := make([]byte, grp.ScalarLength())
+if grp.ByteOrder() == group.BigEndian { oneBytes[len(oneBytes)-1] = 1 } else { oneBytes[0] = 1 }
+one, _ := grp.DeserializeScalar(oneBytes)
 ```
 
-**Constant-Time Status**:
-- Deserialization: ✅ Constant-time
-- One construction: ✅ Constant-time (no secret data involved)
-- Final operations use scalar arithmetic: ✅ Constant-time
-
-**Verdict**: ✅ **SAFE** - big.Int not used with secret values
+**Constant-Time Status**: the constant involves no secret data, so its timing is not a
+concern. Other suites (P-256, secp256k1, Ed448) may use `big.Int` internally; they are
+outside this guide.
 
 ### Message Length Checks
 
@@ -607,7 +599,7 @@ if len(msg) > MaxMessageSize {
 2. **Fail-Stop Behavior**: FROST aborts on error, preventing oracle attacks
 3. **Public Inputs**: Most validated data is public (commitments, participant IDs)
 
-**Exception**: Signature share verification timing MUST NOT leak which participant produced invalid share. Current implementation returns generic error without timing correlation to specific participant.
+**Note**: the coordinator's errors for a bad share identify the participant (`frost.NewParticipantError`), because identifiable abort is the point of share verification. That identity is protocol-public, not secret.
 
 ### Memory Allocation
 
@@ -636,7 +628,7 @@ if len(msg) > MaxMessageSize {
 
 **Package**: `github.com/gtank/ristretto255`
 
-**Version**: v0.0.0-20210505022020-ab80011ffa70 (check `go.mod` for current version)
+**Version**: see `go.mod` (v0.2.0 at the time of verification)
 
 **Security Guarantees**:
 
@@ -662,7 +654,7 @@ if len(msg) > MaxMessageSize {
 
 **Upstream Source**: Based on `filippo.io/edwards25519` and Ristretto specification
 
-**Audits**: The underlying edwards25519 implementation has been reviewed by the Go security team and cryptography experts.
+**Audits**: not verified here; check the upstream project for its own audit statements.
 
 **Limitations**:
 - Does not protect against power analysis (requires physical access)
@@ -725,9 +717,9 @@ if len(msg) > MaxMessageSize {
 
 **Mechanism**: Network latency variations mask sub-millisecond timing differences.
 
-**Effectiveness**:
-- **Remote Attacks**: ✅ **HIGH** - Network jitter typically 1-100ms
-- **Local Attacks**: ❌ **LOW** - Local processes bypass network
+**Effectiveness** (general reasoning, not measured by this repository):
+- **Remote Attacks**: network jitter can mask small timing differences
+- **Local Attacks**: low - local processes bypass the network
 
 **Deployment Recommendation**:
 - Rely on network jitter for basic protection
@@ -758,15 +750,14 @@ func addRandomDelay() {
 **Implementation**:
 - ✅ All scalar arithmetic uses constant-time ristretto255
 - ✅ All point operations use constant-time ristretto255
-- ✅ All comparisons use constant-time equality
+- ✅ `Equal` on ristretto255 scalars and elements is constant-time
+- ⚠️ `Scalar.Compare` (ordering) uses `big.Int.Cmp` and is not constant-time; the
+  ed25519 and ed448 groups have the same pattern, and the P-256 `Element.Equal`
+  compares coordinates with `big.Int.Cmp`
 
-**Verification**:
-```bash
-# Audit code for variable-time operations
-grep -r "big.Int.Cmp" pkg/frost/
-grep -r "bytes.Compare" pkg/frost/
-grep -r "subtle.ConstantTimeCompare" pkg/frost/
-```
+**Verification**: search the non-test code under `pkg/` for `big.Int` `Cmp`,
+`bytes.Compare` and `subtle.ConstantTimeCompare`, and confirm each hit is not
+applied to secret values.
 
 ### 3. Unified Code Paths
 
@@ -800,7 +791,7 @@ func validateShare(share Scalar) error {
 }
 ```
 
-**Current Status**: ✅ Code review shows no secret-dependent early exits in hot paths
+**Current Status**: not established by a systematic audit; treat as a review guideline.
 
 ### 4. Blinding Techniques
 
@@ -828,9 +819,9 @@ func blindedScalarMult(secret Scalar, point Element) Element {
 **Mechanism**: Reject invalid inputs early to prevent oracle attacks.
 
 **Implementation**:
-- ✅ Scalar deserialization validates range [0, p-1]
-- ✅ Element deserialization validates point on curve
-- ✅ Identity element rejected in commitments
+- ✅ Scalar deserialization rejects non-canonical values (`SetCanonicalBytes`)
+- ✅ Element deserialization rejects invalid Ristretto encodings
+- ✅ Identity element rejected on element deserialization (`ErrIdentityElement`)
 
 **Security Note**: Validation timing may vary, but this is acceptable for untrusted inputs.
 
@@ -838,23 +829,18 @@ func blindedScalarMult(secret Scalar, point Element) Element {
 
 **Mechanism**: Verify all signature shares before aggregation to prevent timing oracles.
 
-**Implementation**: `pkg/frost/signing/participant.go:257-431`
+**Implementation**: `participant.VerifySignatureShare` in `pkg/frost/signing/participant.go`
+and `aggregator.AggregateWithVerification` in `pkg/frost/signing/aggregator.go`.
 
-**Current Status**: ⚠️ Implemented but DISABLED by default
+**Current Status**: opt-in. `Aggregate` does not verify individual shares;
+`AggregateWithVerification` takes the participants' verification shares and checks
+each signature share before combining them (identifiable abort).
 
-**Recommendation**: **Enable in production configurations**
+**Recommendation**: use `AggregateWithVerification` where a bad share must be
+attributed to a participant.
 
-**Example**:
-```go
-// In coordinator.RequestSignatureShares()
-for _, share := range signatureShares {
-    verifier := c.participants[share.Identifier]
-    if err := verifier.VerifySignatureShare(share, msg, commitmentList); err != nil {
-        // Generic error message (don't leak which participant failed)
-        return nil, errors.New("signature share verification failed")
-    }
-}
-```
+**Note**: failures identify the offending participant. That is the purpose of
+identifiable abort, and the identifier is public protocol data, not a secret.
 
 ---
 
@@ -864,155 +850,53 @@ for _, share := range signatureShares {
 
 #### Behavioral Side-Channel Test
 
-**Location**: `test/rfc/appendixd_test.go:275-290`
+**Location**: `test/rfc/appendixd_test.go`, subtest `SideChannelResistance`
 
-**Purpose**: Verify operations complete successfully (behavioral check only)
-
-**Code**:
-```go
-t.Run("SideChannelResistance", func(t *testing.T) {
-    scalar, _ := grp.RandomScalar()
-    element := grp.ScalarBaseMult(scalar)
-    if element == nil {
-        t.Error("Scalar should be valid")
-    }
-    // Note: This does not actually test timing!
-})
-```
-
-**Limitations**: ❌ Does not measure timing, only functional correctness
-
-**Recommendation**: ⚠️ Replace with statistical timing tests
+**Purpose**: behavioral check only. It generates a scalar, multiplies the base point
+and checks the result is non-nil. It does not measure timing.
 
 #### Nonce Uniqueness Tests
 
-**Location**: `test/rfc/section4_test.go:50-69`
+**Location**: `TestSection4_1_NonceGeneration` in `test/rfc/section4_test.go`
 
-**Purpose**: Verify nonces are unique across many iterations
-
-**Coverage**: ✅ 100 iterations, checks for duplicates
-
-**Security Property**: Validates randomness quality (indirectly tests for timing-dependent RNG flaws)
-
-### Benchmark Tests
-
-**Purpose**: Measure operation timing to establish baselines and detect regressions.
-
-**Example**:
-```go
-func BenchmarkScalarMult(b *testing.B) {
-    suite := ristretto255_sha512.New()
-    grp := suite.Group()
-    scalar, _ := grp.RandomScalar()
-    point := grp.Generator()
-
-    b.ResetTimer()
-    for i := 0; i < b.N; i++ {
-        _ = grp.ScalarMult(point, scalar)
-    }
-}
-```
-
-**Usage**:
-```bash
-go test -bench=BenchmarkScalarMult -benchmem
-```
-
-**Expected Output**:
-```
-BenchmarkScalarMult-8    10000    150000 ns/op    1024 B/op    10 allocs/op
-```
-
-**Analysis**:
-- Time per operation: ~150 microseconds (150000 ns)
-- Memory: 1024 bytes allocated
-- Allocations: 10 allocations per operation
-
-**Variance Analysis**:
-```bash
-# Run benchmark multiple times
-for i in {1..10}; do
-    go test -bench=BenchmarkScalarMult -count=1 | grep BenchmarkScalarMult
-done
-```
-
-**Expected**: Variance < 5% indicates good timing consistency
+**Purpose**: check generated nonces are unique. This is a randomness sanity check,
+not a timing test.
 
 ### Statistical Timing Tests
 
-**Purpose**: Detect timing variations correlated with secret values using statistical tests.
+**Location**: `test/rfc/section7_1_sidechannel_test.go`
 
-**Tool**: [dudect](https://github.com/oreparaz/dudect) - Constant-time verification tool
+**Methodology**: each test times an operation on two classes of input, applies
+Welch's t-test and fails when |t| exceeds `tTestThreshold` (5.0).
 
-**Methodology**:
-1. Generate two sets of inputs: fixed and random
-2. Measure operation timing for each set
-3. Apply Welch's t-test to detect timing differences
-4. Reject if |t-statistic| > 4.5 (indicates timing leak)
+**Tests**:
+- `TestScalarMultiplicationTiming`
+- `TestScalarBaseMultiplicationTiming`
+- `TestNonceGenerationTiming`
+- `TestSignatureShareVerificationTiming`
+- `TestHashOperationTiming`
+- `TestScalarEqualityTiming`
+- `TestElementEqualityTiming`
 
-**Example Test** (not currently implemented):
-```go
-// NOTE: This is example code showing how to implement dudect-style testing
-// Not currently part of the codebase
+**Running**: `make test-rfc` runs the suite with `-short`; `make test-rfc-full` runs
+it without. Timing tests are statistical and sensitive to machine load, so run
+them on a quiet machine.
 
-func TestConstantTimeScalarMult(t *testing.T) {
-    const iterations = 100000
+**Limits**: these tests time in-process Go calls. They do not cover cache or
+microarchitectural channels, network-level timing, or other suites' internals.
 
-    suite := ristretto255_sha512.New()
-    grp := suite.Group()
-    point := grp.Generator()
+### Benchmarks
 
-    // Fixed scalar (all zeros)
-    fixedBytes := make([]byte, 32)
-    fixedScalar, _ := grp.DeserializeScalar(fixedBytes)
+The same file defines `BenchmarkScalarMultiplication`, `BenchmarkScalarBaseMult`,
+`BenchmarkNonceGeneration`, `BenchmarkSignatureVerification` and
+`BenchmarkHashOperation`; each group package also has its own `BenchmarkScalarMult`
+and `BenchmarkScalarBaseMult`. `make bench` runs the benchmark target. Timings depend
+on the machine, so this guide gives no reference numbers.
 
-    // Measure fixed scalar timing
-    fixedTimes := make([]time.Duration, iterations)
-    for i := 0; i < iterations; i++ {
-        start := time.Now()
-        _ = grp.ScalarMult(point, fixedScalar)
-        fixedTimes[i] = time.Since(start)
-    }
+### Integration and Network Timing
 
-    // Measure random scalar timing
-    randomTimes := make([]time.Duration, iterations)
-    for i := 0; i < iterations; i++ {
-        randomScalar, _ := grp.RandomScalar()
-        start := time.Now()
-        _ = grp.ScalarMult(point, randomScalar)
-        randomTimes[i] = time.Since(start)
-    }
-
-    // Statistical analysis
-    tStatistic := welchTTest(fixedTimes, randomTimes)
-    if math.Abs(tStatistic) > 4.5 {
-        t.Errorf("Timing leak detected: t-statistic = %.2f", tStatistic)
-    }
-}
-```
-
-**Recommendation**: ⚠️ Implement statistical timing tests in CI/CD
-
-### Integration Tests
-
-**Purpose**: Test side-channel resistance in realistic deployment scenarios.
-
-**Methodology**:
-1. Deploy FROST participants in test environment
-2. Run signing operations under various loads
-3. Measure timing from network perspective
-4. Verify timing doesn't correlate with secret values
-
-**Example**:
-```bash
-# Run integration tests with timing analysis
-make test
-
-# Analyze timing logs
-python3 scripts/analyze_timing.py test/integration/timing.log
-```
-
-**Recommendation**: ⚠️ Add network timing analysis to integration tests
+No network-level timing analysis exists in this repository. Applications deploying
+participants over a network need to assess that themselves.
 
 ---
 
@@ -1110,7 +994,7 @@ lscpu | grep "Thread(s) per core"
 # Should output: Thread(s) per core: 1
 ```
 
-**Impact**: Reduces CPU performance by ~20-30%, but eliminates hyperthreading side-channels.
+**Impact**: reduces CPU throughput; the size depends on the workload.
 
 #### CPU Isolation
 
@@ -1184,7 +1068,7 @@ echo "kernel.randomize_va_space = 2" | sudo tee -a /etc/sysctl.conf
 grep . /sys/devices/system/cpu/vulnerabilities/*
 
 # Enable all mitigations (add to kernel cmdline)
-# Note: Significant performance impact (10-30%)
+# Note: mitigations can have a significant performance impact
 echo "spec_store_bypass_disable=on spectre_v2=on l1tf=full,force mds=full,nosmt" | sudo tee -a /boot/cmdline.txt
 
 # Reboot
@@ -1207,10 +1091,9 @@ import (
 
 // Configure TLS for FROST communication
 tlsConfig := &tls.Config{
-    MinVersion:               tls.VersionTLS13,
-    PreferServerCipherSuites: true,
+    MinVersion: tls.VersionTLS13,
     CurvePreferences: []tls.CurveID{
-        tls.X25519,  // Match ristretto255 security level
+        tls.X25519,
     },
 }
 ```
@@ -1505,14 +1388,7 @@ gcloud compute instances create frost-participant \
 
 ### Related Documentation
 
-17. **[go-frost Security Review]** RFC 9591 Section 7 Security Analysis.
-    `/home/jhahn/sources/go-frost/SECURITY_REVIEW_RFC9591_SECTION7.md`
-
-18. **[go-frost Implementation Guide]** FROST Implementation Guide.
-    `/home/jhahn/sources/go-frost/docs/IMPLEMENTATION_GUIDE.md`
-
-19. **[go-frost Testing]** Testing Documentation.
-    `/home/jhahn/sources/go-frost/docs/testing.md`
+17. **[go-frost Testing]** Security testing notes: `docs/security/testing.md`.
 
 ---
 

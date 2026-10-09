@@ -1,12 +1,9 @@
 # RFC 9591 Compliance
 
-go-frost is a compliant implementation of the FROST threshold signature scheme as specified in [RFC 9591](https://www.rfc-editor.org/rfc/rfc9591.html).
+> **Status: NORMATIVE** · Scope: RFC 9591 conformance of go-frost · Last verified: 2026-10-09
+> Conflicts with this document are defects. Fix them here first.
 
-## Compliance Status
-
-**Current Status**: 100% RFC 9591 Compliant
-
-See [status.md](status.md) for detailed compliance tracking and progress.
+go-frost implements the FROST threshold signature scheme as specified in [RFC 9591](https://www.rfc-editor.org/rfc/rfc9591.html). The RFC test vectors run under `test/rfc` and `test/testvectors`.
 
 ## RFC 9591 Overview
 
@@ -28,33 +25,17 @@ The FROST (Flexible Round-Optimized Schnorr Threshold) protocol enables a thresh
   - Round 1: Commitment generation
   - Round 2: Signature share generation
   - Aggregation: Signature combination
-- **Section 6**: FROST ciphersuites
-  - FROST(ristretto255, SHA-512) - Fully implemented
-  - Additional ciphersuites: Architecture ready
+- **Section 6**: FROST ciphersuites (all five, see below)
 
 ### Security Requirements (RFC 9591 Section 7)
 
-All security requirements from Section 7 are implemented:
-
-1. **Nonce Reuse Prevention** - Tracked and prevented
-2. **Participant Authentication** - Cryptographic verification
-3. **Identifiable Abort** - Malicious participants identified
-4. **Input Validation** - All inputs validated
-5. **Side-Channel Protection** - Constant-time operations
-6. **Error Sanitization** - No information leakage
-
-See [../security/README.md](../security/README.md) for detailed security documentation.
+Section 7 requirements map to code in `pkg/frost/security` (nonce tracking, authentication, reputation, validation) and `pkg/frost/signing` (identifiable abort via `AggregateWithVerification`). See [../security/README.md](../security/README.md).
 
 ## Test Coverage
 
-Comprehensive test coverage validates RFC compliance:
-
-- **RFC Test Vectors**: All official test vectors passing
-- **Unit Tests**: 90%+ coverage on all packages
-- **Integration Tests**: End-to-end protocol validation
-- **Security Tests**: Side-channel and attack vector testing
-
-See [test-coverage.md](test-coverage.md) for detailed test documentation.
+- **RFC Test Vectors**: `test/rfc`, `test/testvectors`
+- **Unit Tests**: next to each package
+- **Transport Tests**: `test/transport`
 
 ## Ciphersuite Support
 
@@ -87,12 +68,9 @@ make coverage-rfc
 
 This implementation maintains full RFC compliance while adding:
 
-1. **Service Layer**: Clean API abstraction over core protocol
-2. **Session Management**: Coordinated multi-participant sessions
-3. **Enhanced Security**: Additional protections beyond RFC minimums
-4. **Operational Features**: Monitoring, logging, and observability
-
-All additions are backward-compatible and maintain RFC compliance.
+1. **Service Layer**: Clean API abstraction over core protocol (`pkg/frost/service`)
+2. **Session Management**: Coordinated multi-participant sessions (`SessionManager`)
+3. **Enhanced Security**: Additional protections beyond RFC minimums (`pkg/frost/security`)
 
 ## References
 

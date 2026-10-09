@@ -1,13 +1,15 @@
 # FROST Architecture Overview
 
+> **Status: REFERENCE** · Last verified: 2026-10-09
+> As-built layering of go-frost. Package paths are relative to the repository root.
+
 ## Design Philosophy
 
 The go-frost implementation follows these core principles:
 
 - Clear separation between layers with well-defined interfaces
 - Type safety: Strongly typed interfaces, no `unsafe` in the library packages (only the `cmd/libfrost` C bindings use it)
-- Lock-free algorithms and efficient data structures
-- Comprehensive test coverage with TDD approach
+- Test-driven development
 - Strict adherence to RFC 9591 specification
 
 ## Layer Architecture
@@ -100,25 +102,20 @@ Group Layer (interface.go)
 
 ## Error Handling
 
-All errors are strongly typed (no `fmt.Errorf`):
+Errors are typed:
 
-- Base errors in `errors.go` (e.g., `ErrInvalidParameters`)
+- Base errors in `pkg/frost/errors.go` (e.g., `ErrInvalidParameters`)
 - Wrapped errors with context (`ParameterError`, `ParticipantError`, `VerificationError`)
 - Errors propagate up through layers with additional context
 
 ## Testing Strategy
 
 1. **Unit Tests**: Each package has comprehensive unit tests
-2. **Integration Tests**: End-to-end tests in Docker containers
-3. **Benchmarks**: Performance tests for critical operations
-4. **Coverage**: Target 90%+ for all packages
+2. **Integration Tests**: `make integration-test`, transport tests in `test/transport`
+3. **Benchmarks**: `make bench`
 
 ## Thread Safety
 
-The implementation uses lock-free algorithms where possible:
+`SessionManager` guards its sessions with a `sync.RWMutex` (`pkg/frost/service/session_manager.go`). Participants and aggregators are for single-threaded use within one signing session.
 
-- Immutable data structures for concurrent access
-- Atomic operations for state management
-- No shared mutable state in hot paths
-
-Note: DKG, key refresh, and repairable threshold are already implemented. HSM integration and identifiable abort are potential future additions.
+DKG (`pkg/frost/keygen/dkg`), key refresh (`pkg/frost/keygen/refresh`), repairable threshold (`pkg/frost/keygen/repairable`) and identifiable abort (`Aggregator.AggregateWithVerification`) are implemented.

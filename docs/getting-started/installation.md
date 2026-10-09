@@ -1,5 +1,8 @@
 # Getting Started with go-frost
 
+> **Status: REFERENCE** · Last verified: 2026-10-09
+> Installation and first-signature walkthrough for go-frost. The contract lives in [API Reference](../api/reference.md).
+
 This guide will help you get started with go-frost, a FROST threshold signature implementation in Go.
 
 ## Table of Contents
@@ -291,11 +294,11 @@ if err != nil {
 
 Now that you understand the basics:
 
-1. Read the [Protocol Documentation](protocol.md) to understand how FROST works
-2. Explore the [API Reference](api-reference.md) for detailed API documentation
-3. Check out more [Examples](examples.md) for advanced use cases
-4. Review [RFC Compliance](rfc-compliance.md) for specification details
-5. Learn about [Testing](testing.md) your FROST implementation
+1. Read the [Protocol Documentation](../guides/integration.md) to understand how FROST works
+2. Explore the [API Reference](../api/reference.md) for detailed API documentation
+3. Check out more [Examples](../examples/README.md) for advanced use cases
+4. Review [RFC Compliance](../rfc-compliance/README.md) for specification details
+5. Learn about [Testing](../guides/testing.md) your FROST implementation
 
 ## Tips and Best Practices
 

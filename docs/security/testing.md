@@ -1,5 +1,14 @@
 # Side-Channel Testing
 
+> **Status: REFERENCE** · Scope: go-frost security testing · Last verified: 2026-10-09
+> Conflicts with this document are defects. Fix them here first.
+
+The tests described here live in `test/rfc/section7_1_sidechannel_test.go` and exercise
+the ristretto255-SHA512 ciphersuite only. The "Typical results" and benchmark numbers
+below are from one past run on one machine; they illustrate the output format and are
+not guarantees or acceptance values. Wall-clock timing tests are statistical and can
+flake on a loaded host.
+
 ## Overview
 
 This document describes the side-channel resistance testing implemented for the go-frost FROST threshold signature implementation, addressing requirement M-2 from RFC 9591 Section 7.1.
@@ -19,7 +28,7 @@ We use **Welch's t-test** for timing difference detection, which is the industry
 - **Null Hypothesis (H0)**: The two timing distributions are identical (constant-time)
 - **Alternative Hypothesis (H1)**: The timing distributions differ (timing leak)
 - **Test Statistic**: Welch's t-statistic measures the difference between means relative to variability
-- **Significance Threshold**: |t| < 5.0 (p < 0.0000006)
+- **Significance Threshold**: |t| < 5.0 (the constant's comment states p < 0.0000006; some header comments in the test file still say 4.5, the constant governs)
 - **Sample Size**: 2000 measurements per input class
 
 ### Test Parameters
@@ -200,53 +209,42 @@ BenchmarkHashOperation-24            	2392246	507.8 ns/op	0 B/op	0 allocs/op
 
 ### Run All Side-Channel Tests
 
-```bash
-make test-sidechannel
-```
+Five of the seven timing tests (scalar multiplication, scalar base multiplication,
+share verification, scalar and element equality) skip themselves under `-short`, so `make test-rfc` (which passes
+`-short`) does not run them. Use the full RFC target, which runs them with `-race`
+and a 120 s timeout:
 
-Or directly:
-
 ```bash
-go test -v -timeout 300s ./test/security
+make test-rfc-full
 ```
 
 ### Run Benchmarks
 
-```bash
-make bench-sidechannel
-```
-
-Or directly:
+There is no side-channel-specific Makefile target; `make bench` runs every benchmark.
+To run just these:
 
 ```bash
-go test -bench=. -benchmem ./test/security
+go test -run '^$' -bench . -benchmem ./test/rfc
 ```
 
 ### Run Specific Tests
 
 ```bash
-go test -v ./test/security -run TestScalarMultiplicationTiming
-go test -v ./test/security -run TestNonceGenerationTiming
+go test -v ./test/rfc -run TestScalarMultiplicationTiming
+go test -v ./test/rfc -run TestNonceGenerationTiming
 ```
 
 ## CI Integration
 
-The side-channel tests are designed to run in CI environments:
-
-- **Timeout**: 300 seconds (5 minutes) for complete test suite
-- **Resource Requirements**: Single CPU core sufficient
-- **Deterministic**: Tests account for measurement noise and variance
-- No external dependencies beyond the Go standard library and ristretto255
-
-### Recommended CI Configuration
-
-```yaml
-- name: Side-Channel Testing
-  run: make test-sidechannel
-  timeout-minutes: 5
-```
+The timing tests run as part of `make test-rfc-full`. Because they measure wall-clock
+time, treat a single failure on a shared runner as a signal to re-run and investigate,
+not as proof of a leak.
 
 ## Timing Guarantees (RFC 9591 Section 7.1)
+
+This section describes what the ristretto255 suite inherits from `gtank/ristretto255`
+and what the tests above sample; it is not a proof. The other group backends
+(`pkg/frost/group/p256`, `ed25519`, `secp256k1`, `ed448`) are not covered by these tests.
 
 ### GUARANTEED Constant-Time
 
@@ -263,7 +261,7 @@ The side-channel tests are designed to run in CI environments:
 ✅ **Equality Comparisons**
 - Scalar equality (`Equal()`)
 - Element equality (`Equal()`)
-- Uses constant-time comparison via crypto/subtle
+- Delegated to `gtank/ristretto255` (`Equal` returns an int compared to 1)
 
 ### NOT Required to be Constant-Time
 
@@ -308,7 +306,7 @@ Timing characteristics may vary across different hardware:
 - Different CPU models
 - Different CPU frequencies
 
-The tests use statistical analysis to be robust across hardware variations.
+The tests use a fixed t-statistic threshold; it is not tuned per machine.
 
 ### 4. Compiler Optimizations
 
@@ -320,7 +318,6 @@ The Go compiler may introduce optimizations that affect timing:
 We mitigate this by:
 - Using random inputs (prevents constant folding)
 - Benchmarking actual operations (not optimized away)
-- Running tests with `-race` flag (disables some optimizations)
 
 ## Security Considerations
 
@@ -328,7 +325,7 @@ We mitigate this by:
 
 ✅ Our implementation doesn't introduce timing leaks
 ✅ Critical operations have timing independent of secret values
-✅ Statistical confidence at p < 0.0000006 level
+✅ A fixed t-statistic threshold (|t| < 5.0) is not exceeded, except the documented nanosecond-noise case for scalar equality
 
 ### What These Tests Don't Prove
 
@@ -395,8 +392,7 @@ As the field evolves, consider:
 
 | Requirement | Status | Evidence |
 |-------------|--------|----------|
-| M-2: Side-Channel Testing | ✅ COMPLETE | 7 tests covering all critical operations |
-| Statistical Analysis | ✅ COMPLETE | Welch's t-test with p < 0.0000006 |
-| Benchmark Variance Tests | ✅ COMPLETE | 5 benchmarks with allocation tracking |
-| CI Integration | ✅ COMPLETE | Makefile targets + timeout configuration |
-| Documentation | ✅ COMPLETE | This document |
+| M-2: Side-Channel Testing | 7 timing tests (ristretto255 only) | `test/rfc/section7_1_sidechannel_test.go` |
+| Statistical Analysis | Welch's t-test, \|t\| < 5.0 | `tTestThreshold` in the same file |
+| Benchmarks | 5 benchmarks with allocation tracking | same file |
+| CI Integration | `make test-rfc-full` | `Makefile` |

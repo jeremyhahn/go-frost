@@ -1,5 +1,8 @@
 # FROST Examples
 
+> **Status: REFERENCE** · Last verified: 2026-10-09
+> Usage examples for go-frost. The contract lives in [API Reference](../api/reference.md).
+
 Complete code examples demonstrating how to use go-frost.
 
 ## Basic Signing Example
@@ -175,8 +178,8 @@ if err != nil {
     switch {
     case errors.Is(err, frost.ErrInvalidSignature):
         // Handle invalid signature
-    case errors.Is(err, frost.ErrNonceReuse):
-        // Handle nonce reuse attempt
+    case errors.Is(err, frost.ErrInvalidNonce):
+        // Handle invalid or reused nonce
     case errors.Is(err, frost.ErrInvalidParticipant):
         // Handle invalid participant
     default:
