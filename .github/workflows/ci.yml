@@ -129,7 +129,7 @@ jobs:
 
     - name: Install and run staticcheck
       run: |
-        go install honnef.co/go/tools/cmd/staticcheck@latest
+        command -v staticcheck >/dev/null 2>&1 || go install honnef.co/go/tools/cmd/staticcheck@latest
         staticcheck ./...
 
   security:
