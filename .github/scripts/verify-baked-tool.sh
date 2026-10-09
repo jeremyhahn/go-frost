@@ -9,7 +9,7 @@
 # It never installs anything. A missing tool or a version mismatch means the
 # image is wrong, and a network install over it would hide exactly that — it is
 # how an unconditional `go install golangci-lint@v2.12.2` undid the image's
-# v2.13.2, which cannot be linted around on Go 1.27.
+# baked version, which cannot be linted around on Go 1.27.
 #
 # The version is read from the binary's embedded Go build info
 # (`go version -m`), never from the tool's own --version output: a

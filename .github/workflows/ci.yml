@@ -96,10 +96,10 @@ jobs:
     # Baked, not installed (issue #19). The ci-runner image bakes golangci-lint
     # and records it in /etc/ci-runner-tools.txt; a `go install` here would
     # overwrite that copy at run time with whatever this file names, which is
-    # how a v2.12.2 pin (cannot lint Go 1.27) undid the image's v2.13.2.
+    # how a v2.12.2 pin (cannot lint Go 1.27) undid the image's baked version.
     #
     # PINNED (devops.md §9, "a pin that is specifically documented, in place,
-    # with the reason"): v2.13.2 moves in the same change as `go 1.27.0` —
+    # with the reason"): the pin moves in the same change as `go 1.27.0` —
     # v2.12.2 cannot lint Go 1.27, and v2.13.0 panicked on Go 1.26 ("nilness:
     # internal error: unhandled builtin recover"). Raise it together with the
     # image and the go directive.
@@ -121,7 +121,7 @@ jobs:
 
     - name: Verify baked golangci-lint
       env:
-        GOLANGCI_LINT_VERSION: 'v2.13.2'
+        GOLANGCI_LINT_VERSION: 'v2.14.0'
       run: bash .github/scripts/verify-baked-tool.sh golangci-lint github.com/golangci/golangci-lint/v2 "$GOLANGCI_LINT_VERSION"
 
     - name: Run golangci-lint (baked)
@@ -166,7 +166,7 @@ jobs:
     - name: Verify baked security scanners
       env:
         GOSEC_VERSION: 'v2.29.0'
-        GOVULNCHECK_VERSION: 'v1.7.0'
+        GOVULNCHECK_VERSION: 'v1.8.0'
       run: |
         bash .github/scripts/verify-baked-tool.sh gosec github.com/securego/gosec/v2 "$GOSEC_VERSION"
         bash .github/scripts/verify-baked-tool.sh govulncheck golang.org/x/vuln "$GOVULNCHECK_VERSION"
