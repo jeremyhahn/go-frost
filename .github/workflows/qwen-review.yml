@@ -2,11 +2,12 @@
 #
 # The interim codex sweep hands a PR it cannot review (codex unavailable,
 # #174) to this job by labelling it `agent:opencode` + `task:ready`. The job
-# runs on runner 60 (`runs-on: qwen`, ci-node-2), whose label maps to the
+# runs on the `qwen` runner (role: ci-runner), whose label maps to the
 # qwen-review image pinned by digest: opencode at go-quicbaas's toolchain.mk
-# pin, provider http://198.51.100.91:11434/v1 (Ollama on gpu-host), model
-# review-q8 with thinking off. The model reads the PR and posts its own
-# review as `opencode`; an opencode APPROVED on the head releases automerge.
+# pin, provider Ollama on the GPU host (role: gpu-host.internal; the image's
+# OLLAMA_URL), model review-q8 with thinking off. The model reads the PR and
+# posts its own review as `opencode`; an opencode APPROVED on the head
+# releases automerge.
 #
 # Superseded by code-review.yml v5 (route-labels), which routes
 # `agent:opencode` to this runner from the one workflow; until then this job
@@ -22,6 +23,11 @@ name: Qwen Review
 on:
   pull_request_target:
     types: [opened, reopened, synchronize, labeled]
+
+# Least privilege: the job token only checks the head out. The review is
+# posted with the opencode token from TOKEN_FILE, never with this one.
+permissions:
+  contents: read
 
 # One review per PR at a time; the guard de-duplicates what cancellation
 # cannot (codex-review.yml's reasoning, unchanged).
@@ -45,7 +51,7 @@ jobs:
     # A JOB-LEVEL `if:`, unlike codex-review.yml, and safe here: this check is
     # not a required context (repo-policy.sh gate_context_for requires only the
     # CI gate), so a `skipped` conclusion gates nothing. Without it every PR
-    # event would queue on runner 60's single slot. The guard re-checks the
+    # event would queue on the qwen runner's single slot. The guard re-checks the
     # LIVE labels; this reads the event's.
     if: contains(github.event.pull_request.labels.*.name, 'agent:opencode')
     runs-on: qwen
@@ -97,8 +103,12 @@ jobs:
 
           # FAIL CLOSED on the credential: no token, no review.
           [ -r "$TOKEN_FILE" ] || die "the reviewer token $TOKEN_FILE is not mounted on this runner (dept-infra#164)"
+          # read fails at end of file; a token without a trailing newline is
+          # still read, so only a failed read that got nothing dies.
           tok=""
-          IFS= read -r tok < "$TOKEN_FILE" || true
+          if ! IFS= read -r tok < "$TOKEN_FILE" && [ -z "$tok" ]; then
+            die "the reviewer token $TOKEN_FILE cannot be read (dept-infra#164)"
+          fi
           tok=${tok%$'\r'}
           [[ $tok =~ ^[A-Za-z0-9._-]+$ ]] ||
             { unset tok; die "the reviewer token $TOKEN_FILE is empty or not a Gitea token (dept-infra#164)"; }
