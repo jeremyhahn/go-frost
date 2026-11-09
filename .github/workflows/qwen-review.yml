@@ -47,7 +47,11 @@ jobs:
     # CI gate), so a `skipped` conclusion gates nothing. Without it every PR
     # event would queue on runner 60's single slot. The guard re-checks the
     # LIVE labels; this reads the event's.
-    if: contains(github.event.pull_request.labels.*.name, 'agent:opencode')
+    # The head-repository condition (code-review template v5.10.6 (b)): a
+    # fork's head never takes the qwen runner.
+    if: >-
+      contains(github.event.pull_request.labels.*.name, 'agent:opencode')
+      && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: qwen
     timeout-minutes: 55
     steps:
