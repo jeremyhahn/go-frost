@@ -43,7 +43,7 @@ jobs:
           echo "version=${TAG#v}" >> $GITHUB_OUTPUT
           echo "releasing ${TAG}"
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: ${{ steps.resolve.outputs.tag }}
 
@@ -81,7 +81,7 @@ jobs:
       VERSION: ${{ needs.validate.outputs.version }}
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.validate.outputs.tag }}
           fetch-depth: 0
@@ -93,12 +93,12 @@ jobs:
       # v0.3.0-alpha failed. Check the workflow's own ref out alongside it and
       # run the script from there, leaving the build tree as the working
       # directory so CHANGELOG.md and dist/ still resolve to the release.
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
           path: .release-tooling
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version-file: 'go.mod'
           cache: true
@@ -160,7 +160,7 @@ jobs:
 
       - name: Create GitHub Release
         if: github.server_url == 'https://github.com'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ env.TAG }}
           files: dist/*
@@ -187,12 +187,12 @@ jobs:
       VERSION: ${{ needs.validate.outputs.version }}
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.validate.outputs.tag }}
 
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
 
       # ghcr.io on GitHub, Gitea's own registry (same host and port as its web
       # UI) on the internal network -- derived, never hardcoded (devops.md §2).
@@ -209,7 +209,7 @@ jobs:
 
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ steps.registry.outputs.host }}/${{ github.repository_owner }}/frost
           tags: |
@@ -222,7 +222,7 @@ jobs:
       # a registry. Build the amd64 leg locally, scan it, then publish the
       # multi-arch manifest from the same layer cache.
       - name: Build image for scanning
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           target: production
@@ -277,7 +277,7 @@ jobs:
       - name: Log in to the container registry
         id: login
         continue-on-error: true
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ steps.registry.outputs.host }}
           username: ${{ github.actor }}
@@ -286,7 +286,7 @@ jobs:
       - name: Build and push
         id: push
         continue-on-error: true
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           target: production
