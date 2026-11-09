@@ -66,6 +66,13 @@ permissions:
 # without an API call.
 env:
   TRIVY_VERSION: '0.74.0'
+  # The Go every job builds and tests with. go.mod's `go 1.27.2` directive is
+  # the minimum the module needs and stays there; CI runs the latest patch
+  # release so the stdlib it links carries the security fixes (1.27.3 fixes
+  # CVE-2026-111943 in crypto/x509, which Trivy Image flags in a 1.27.2
+  # binary). Raise it with each Go patch release, together with the
+  # Dockerfile's builder image.
+  GO_VERSION: '1.27.3'
 
 # Every job starts at once (ci-template v1.14/v1.15): none waits on another,
 # and CI Gate, the one required check, needs them all and fails closed. Do not
@@ -74,6 +81,8 @@ jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    env:
+      GOLANGCI_LINT_VERSION: 'v2.14.0'
 
     steps:
     - name: Checkout code
@@ -82,7 +91,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v6
       with:
-        go-version-file: 'go.mod'
+        go-version: ${{ env.GO_VERSION }}
         cache: true
 
     - name: Tidy dependencies
@@ -93,10 +102,14 @@ jobs:
     - name: Run go vet
       run: go vet ./...
 
-    # Baked, not installed (issue #19). The ci-runner image bakes golangci-lint
-    # and records it in /etc/ci-runner-tools.txt; a `go install` here would
-    # overwrite that copy at run time with whatever this file names, which is
-    # how a v2.12.2 pin (cannot lint Go 1.27) undid the image's baked version.
+    # Baked on Gitea, installed at the pin on GitHub. The Gitea ci-runner image
+    # bakes golangci-lint and records it in /etc/ci-runner-tools.txt (issue
+    # #19); a `go install` there would overwrite that copy at run time with
+    # whatever this file names, which is how a v2.12.2 pin (cannot lint Go
+    # 1.27) undid the image's baked version. GitHub's ubuntu-latest bakes no
+    # such tool, so there the pinned version is installed first. The
+    # verify step runs on both, after the install, so the version that runs is
+    # always the pin.
     #
     # PINNED (devops.md §9, "a pin that is specifically documented, in place,
     # with the reason"): the pin moves in the same change as `go 1.27.0` —
@@ -104,9 +117,9 @@ jobs:
     # internal error: unhandled builtin recover"). Raise it together with the
     # image and the go directive.
     #
-    # Fail closed, never fall back to a network install: a missing tool or a
-    # version mismatch means the image is wrong, and installing over it would
-    # hide exactly that.
+    # On Gitea, fail closed, never fall back to a network install: a missing
+    # tool or a version mismatch means the image is wrong, and installing over
+    # it would hide exactly that.
     #
     # The guard lives in .github/scripts/verify-baked-tool.sh (shared with the
     # Security Scan job) and is regression-tested with stub tools by the step
@@ -119,12 +132,14 @@ jobs:
     - name: Test release-alpha recipe
       run: make test-release-alpha
 
-    - name: Verify baked golangci-lint
-      env:
-        GOLANGCI_LINT_VERSION: 'v2.14.0'
+    - name: Install golangci-lint (GitHub)
+      if: github.server_url == 'https://github.com'
+      run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@"$GOLANGCI_LINT_VERSION"
+
+    - name: Verify golangci-lint version
       run: bash .github/scripts/verify-baked-tool.sh golangci-lint github.com/golangci/golangci-lint/v2 "$GOLANGCI_LINT_VERSION"
 
-    - name: Run golangci-lint (baked)
+    - name: Run golangci-lint
       run: golangci-lint run --timeout=5m
 
     - name: Install and run staticcheck
@@ -135,6 +150,9 @@ jobs:
   security:
     name: Security Scan
     runs-on: ubuntu-latest
+    env:
+      GOSEC_VERSION: 'v2.30.0'
+      GOVULNCHECK_VERSION: 'v1.8.0'
 
     steps:
     - name: Checkout code
@@ -143,38 +161,45 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v6
       with:
-        go-version-file: 'go.mod'
+        go-version: ${{ env.GO_VERSION }}
         cache: true
 
     - name: Verify module integrity
       run: go mod verify
 
-    # Baked, not installed (issue #19) — same rule as golangci-lint in the
-    # Lint job. An `@latest` install here was a network dependency that could
-    # fail and skip the analysers (a red check with no verdict on the code),
-    # and it scanned the same commit with different analyser versions on
-    # different days.
+    # Baked on Gitea, installed at the pin on GitHub — same rule as
+    # golangci-lint in the Lint job. An `@latest` install here was a network
+    # dependency that could fail and skip the analysers (a red check with no
+    # verdict on the code), and it scanned the same commit with different
+    # analyser versions on different days; a pinned install on GitHub, whose
+    # ubuntu-latest bakes neither tool, has neither problem.
     #
     # PINNED (devops.md §9, documented in place): the versions the ci-runner
     # image bakes and records in /etc/ci-runner-tools.txt. Raise them together
-    # with the image. The version is read from the binary's embedded build
-    # info (`go version -m`), not from `gosec --version`: a `go install`ed
-    # gosec prints "dev" whatever version was built, so its own output cannot
-    # prove which version ran.
+    # with the image. gosec is v2.30.0, the latest release, because it must
+    # load Go 1.27 export data: v2.29.0 fails with "could not import ...
+    # internal error in importing" under Go 1.27 on other repositories. The
+    # version is read from the binary's embedded build info (`go version -m`),
+    # not from `gosec --version`: a `go install`ed gosec prints "dev" unless
+    # its version is stamped with -ldflags, so its own output cannot prove
+    # which version ran. The install stamps it anyway, for the report.
     #
-    # Fail closed, never fall back to a network install.
-    - name: Verify baked security scanners
-      env:
-        GOSEC_VERSION: 'v2.29.0'
-        GOVULNCHECK_VERSION: 'v1.8.0'
+    # On Gitea, fail closed, never fall back to a network install.
+    - name: Install security scanners (GitHub)
+      if: github.server_url == 'https://github.com'
+      run: |
+        go install -ldflags "-X main.Version=${GOSEC_VERSION}" github.com/securego/gosec/v2/cmd/gosec@"$GOSEC_VERSION"
+        go install golang.org/x/vuln/cmd/govulncheck@"$GOVULNCHECK_VERSION"
+
+    - name: Verify security scanner versions
       run: |
         bash .github/scripts/verify-baked-tool.sh gosec github.com/securego/gosec/v2 "$GOSEC_VERSION"
         bash .github/scripts/verify-baked-tool.sh govulncheck golang.org/x/vuln "$GOVULNCHECK_VERSION"
 
-    - name: Run gosec (baked)
+    - name: Run gosec
       run: gosec -concurrency 4 -quiet -exclude=G101,G104,G115,G304,G306,G404 ./...
 
-    - name: Run govulncheck (baked)
+    - name: Run govulncheck
       run: govulncheck ./...
 
   trivy:
@@ -307,7 +332,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v6
       with:
-        go-version-file: 'go.mod'
+        go-version: ${{ env.GO_VERSION }}
         cache: true
 
     - name: Download dependencies
@@ -346,7 +371,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v6
       with:
-        go-version-file: 'go.mod'
+        go-version: ${{ env.GO_VERSION }}
         cache: true
 
     # The build-tagged suite under test/ — a real distributed FROST exchange
@@ -369,7 +394,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v6
       with:
-        go-version-file: 'go.mod'
+        go-version: ${{ env.GO_VERSION }}
         cache: true
 
     - name: Build CLI binary
@@ -406,7 +431,7 @@ jobs:
 
       - uses: actions/setup-go@v6
         with:
-          go-version-file: 'go.mod'
+          go-version: ${{ env.GO_VERSION }}
           cache: true
 
       - name: Download dependencies

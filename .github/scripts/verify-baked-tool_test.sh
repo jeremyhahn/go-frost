@@ -11,7 +11,8 @@
 #     and in no case is a network install attempted (`go install`/`go get`,
 #     curl, wget are stubbed to record any call);
 #   - ci.yml guards golangci-lint, gosec and govulncheck with this script, in a
-#     step before the one that runs the tool, and installs none of them.
+#     step before the one that runs the tool, and installs them only on
+#     GitHub, at their pins, in a step before the guard.
 #
 #   bash .github/scripts/verify-baked-tool_test.sh
 set -euo pipefail
@@ -184,10 +185,35 @@ check_wiring golangci-lint github.com/golangci/golangci-lint/v2 'golangci-lint r
 check_wiring gosec github.com/securego/gosec/v2 'gosec '
 check_wiring govulncheck golang.org/x/vuln 'govulncheck '
 
-# None of them installed over the network, by any route.
-if grep -nE '(go (install|get)|curl|wget).*(golangci-lint|gosec|govulncheck|x/vuln)' "$workflow"; then
-  fail "ci.yml installs a baked tool over the network (lines above)"
-fi
+# Installed over the network only on GitHub (whose ubuntu-latest bakes none
+# of them), never on Gitea where the image bakes them: every install line
+# sits in a step gated on github.com, names a pinned version (never
+# @latest), uses `go install` (no curl/wget/go get), and comes before the
+# guard step that verifies it.
+check_install() {
+  local line="$1" text="$2" step_line gate tool guard_line
+  step_line="$(head -n "$line" "$workflow" | grep -nE '^[[:space:]]*- name:' | tail -1 | cut -d: -f1 || true)"
+  gate="$(sed -n "${step_line:-1},${line}p" "$workflow" | grep -cE "^[[:space:]]*if: github\.server_url == 'https://github\.com'[[:space:]]*$" || true)"
+  [ "$gate" -ge 1 ] || fail "ci.yml:$line: network install not gated on github.com: $text"
+  case "$text" in
+    *'go install '*) ;;
+    *) fail "ci.yml:$line: tool installed by a route other than a pinned go install: $text" ;;
+  esac
+  case "$text" in
+    *@latest*) fail "ci.yml:$line: tool installed at @latest, not its pin: $text" ;;
+    *'@"$'*) ;;
+    *) fail "ci.yml:$line: tool install does not name its pinned version variable: $text" ;;
+  esac
+  for tool in golangci-lint gosec govulncheck; do
+    case "$text" in *"/$tool@"*) ;; *) continue ;; esac
+    guard_line="$(grep -nE "verify-baked-tool\.sh $tool " "$workflow" | head -1 | cut -d: -f1 || true)"
+    [ -n "$guard_line" ] && [ "$line" -lt "$guard_line" ] || fail "ci.yml:$line: $tool is installed after its guard (line ${guard_line:-none})"
+  done
+}
+while IFS=: read -r line text; do
+  [[ -z "$line" || "$text" =~ ^[[:space:]]*# ]] && continue
+  check_install "$line" "$text"
+done < <(grep -nE '(go (install|get)|curl|wget).*(golangci-lint|gosec|govulncheck|x/vuln)' "$workflow" || true)
 
 if [ "$failures" -ne 0 ]; then
   echo "verify-baked-tool: $failures failure(s)" >&2

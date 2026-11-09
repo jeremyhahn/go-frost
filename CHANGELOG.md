@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   them with `secmem.ZeroBytes`. The file format is unchanged: JSON escapes
   in a secret field are decoded exactly as before, directly into the owned
   buffer, so the secret never passes through a string
+- ci: Go 1.27.3 in CI (directive stays 1.27.2); golangci-lint, gosec and govulncheck installed at their pins on GitHub runners
 
 ## [0.3.0-alpha] - 2026-08-22
 
