@@ -29,7 +29,10 @@ func NewMockGroup() *MockGroup {
 	return &MockGroup{order: order, name: "MockGroup"}
 }
 
-// NewMockGroupWithName creates a mock group; "p256" and "secp256k1" encode big-endian, any other name little-endian.
+// NewMockGroupWithName creates a new mock group with a specific name for testing
+// endianness behavior. Supported names that trigger big-endian encoding:
+// - "p256" or "secp256k1" -> big-endian
+// - Any other name -> little-endian (default, like ed25519/ristretto255)
 func NewMockGroupWithName(name string) *MockGroup {
 	order := new(big.Int)
 	order.SetString("7237005577332262213973186563042994240857116359379907606001950938285454250989", 10)

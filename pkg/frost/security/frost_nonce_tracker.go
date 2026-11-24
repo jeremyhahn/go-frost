@@ -13,7 +13,15 @@ import (
 	"github.com/jeremyhahn/go-frost/pkg/frost"
 )
 
-// FrostNonceTracker tracks each participant's hiding and binding commitments per session to detect nonce reuse; clear sessions when done.
+// FrostNonceTracker wraps CommitmentTracker to provide FROST-specific nonce tracking.
+// It tracks both hiding and binding nonce commitments per participant per session
+// to prevent the catastrophic nonce reuse vulnerability.
+//
+// Security considerations:
+//   - Each signing session gets a unique session ID
+//   - Each participant's hiding and binding commitments are tracked separately
+//   - Nonce reuse detection is CRITICAL - reuse leads to complete key recovery
+//   - Sessions should be cleared after successful completion to free memory
 type FrostNonceTracker struct {
 	tracker CommitmentTracker
 }
@@ -32,7 +40,9 @@ func NewDefaultFrostNonceTracker() *FrostNonceTracker {
 	return NewFrostNonceTracker(NewInMemoryCommitmentTracker())
 }
 
-// RecordSigningCommitments records a participant's round 1 commitments, returning an error on reuse.
+// RecordSigningCommitments records both hiding and binding commitments for a participant.
+// This is called when a participant generates commitments (Round 1).
+// Returns error if any commitment was already recorded (nonce reuse detected).
 func (t *FrostNonceTracker) RecordSigningCommitments(
 	ctx context.Context,
 	sessionID string,

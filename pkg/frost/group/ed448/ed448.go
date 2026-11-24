@@ -1,4 +1,12 @@
-// Package ed448 implements the FROST group interface on edwards448 using circl's goldilocks package.
+// Package ed448 implements the FROST group interface using the Ed448 group.
+//
+// Ed448 is based on the edwards448 curve (Goldilocks), providing:
+// - 224-bit security level (highest of all RFC 9591 ciphersuites)
+// - Fast, constant-time operations
+// - Compatible with RFC 8032 (Ed448 signatures)
+//
+// This implementation uses github.com/cloudflare/circl/ecc/goldilocks for the
+// underlying cryptographic primitives.
 package ed448
 
 import (
@@ -168,7 +176,10 @@ func (s *Scalar) Mul(other group.Scalar) group.Scalar {
 	return &Scalar{value: result}
 }
 
-// Inv returns the inverse modulo p using big.Int; only used on public participant identifiers.
+// Inv returns the multiplicative inverse of this scalar modulo p.
+// Note: Uses big.Int for modular inverse computation. This is acceptable
+// because Inv is only used for Lagrange coefficient computation with public
+// participant identifiers, not secret values.
 func (s *Scalar) Inv() (group.Scalar, error) {
 	if s.IsZero() {
 		return nil, frost.ErrZeroScalar
@@ -228,7 +239,10 @@ func (s *Scalar) Copy() group.Scalar {
 	return &Scalar{value: result}
 }
 
-// Compare returns -1, 0 or 1; not constant-time, so only for public values.
+// Compare compares this scalar with another scalar.
+// Returns -1 if this < other, 0 if equal, 1 if this > other.
+// Note: This comparison is NOT constant-time and should only be used for
+// sorting public values, not for comparisons involving secrets.
 func (s *Scalar) Compare(other group.Scalar) int {
 	otherScalar := other.(*Scalar)
 	// Convert to big.Int for comparison (big-endian for proper ordering)

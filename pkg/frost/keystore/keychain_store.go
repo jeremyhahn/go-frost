@@ -20,14 +20,48 @@ const (
 	groupKeySuffix   = ".json"
 )
 
-// KeychainStore is a KeyStore over an injected backend, storing frost/keypackages/<keyID>.json and frost/groups/<groupID>.json.
+// KeychainStore implements KeyStore using a pluggable storage backend.
+//
+// The storage backend is injected via the Config struct, allowing applications
+// to provide their own implementations (file-based, DHT, cloud storage, etc.).
+//
+// Storage layout:
+//
+//	frost/keypackages/<keyID>.json       - Key package data
+//	frost/groups/<groupID>.json          - Group public key data
 type KeychainStore struct {
 	storage StorageBackend
 	group   group.Group
 	config  *Config
 }
 
-// NewKeychainStore returns a KeychainStore over config.Storage, for example NewFileStorage or an application backend.
+// NewKeychainStore creates a new KeychainStore instance.
+//
+// The storage backend must be provided via config.Storage. Applications can use:
+//   - NewFileStorage() for file-based storage
+//   - Their own DHT implementation for distributed storage
+//   - Their own cloud storage implementation
+//
+// Example (file-based):
+//
+//	storage, err := keystore.NewFileStorage("/var/lib/frost/keystore")
+//	if err != nil {
+//	    return nil, err
+//	}
+//	config := &keystore.Config{
+//	    Group:   suite.Group(),
+//	    Storage: storage,
+//	}
+//	store, err := keystore.NewKeychainStore(config)
+//
+// Example (DHT-based):
+//
+//	dhtStorage := mydht.NewDHTStorage(dhtNode)
+//	config := &keystore.Config{
+//	    Group:   suite.Group(),
+//	    Storage: dhtStorage,
+//	}
+//	store, err := keystore.NewKeychainStore(config)
 func NewKeychainStore(config *Config) (KeyStore, error) {
 	if config == nil {
 		return nil, fmt.Errorf("config is required")

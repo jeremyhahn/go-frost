@@ -10,12 +10,32 @@ import (
 	"github.com/jeremyhahn/go-frost/pkg/storage"
 )
 
-// FileStorage is a thread-safe file-based StorageBackend wrapping the go-frost storage backend.
+// FileStorage implements StorageBackend using file-based storage.
+//
+// This adapter wraps the go-frost storage backend to provide
+// a compatible implementation of the StorageBackend interface.
+//
+// Thread-safe: Yes (provided by underlying storage implementation)
 type FileStorage struct {
 	backend storage.Backend
 }
 
-// NewFileStorage returns a file-based StorageBackend rooted at storagePath; Close it when done.
+// NewFileStorage creates a new file-based storage backend.
+//
+// Parameters:
+//   - storagePath: Base directory for file storage
+//
+// Returns:
+//   - StorageBackend: File storage implementation
+//   - error: Any error that occurred during initialization
+//
+// Example:
+//
+//	storage, err := keystore.NewFileStorage("/var/lib/frost/keystore")
+//	if err != nil {
+//	    return err
+//	}
+//	defer storage.Close()
 func NewFileStorage(storagePath string) (StorageBackend, error) {
 	backend, err := storage.NewFileBackend(storagePath)
 	if err != nil {
@@ -91,7 +111,13 @@ func (f *FileStorage) List(prefix string) ([]string, error) {
 	return keys, nil
 }
 
-// PutSecret writes the payload straight from its enclave; the file holds it in the clear with 0600 permissions.
+// PutSecret stores secret-bearing data at the given key.
+//
+// The payload is written to disk straight out of the enclave: the plaintext
+// only ever exists inside the mlock'd buffer opened for the write, and the
+// buffer is resealed before this function returns. Note that the file itself
+// holds the payload in the clear - at-rest protection is the responsibility
+// of the filesystem (the default 0600 permissions apply).
 func (f *FileStorage) PutSecret(key string, data *secmem.SecretBytes, opts *PutOptions) error {
 	if data == nil {
 		return ErrProtectedMemory.Wrap(secmem.ErrNilSecret)

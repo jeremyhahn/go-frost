@@ -1,4 +1,8 @@
-// Package group defines the prime-order group interface FROST requires.
+// Package group defines the prime-order group interface required for FROST.
+//
+// FROST depends on an abelian group of prime order p. The group operation is
+// addition (+) with identity element I. This package defines the abstract
+// interface that all group implementations must satisfy.
 package group
 
 // ByteOrder represents the native byte order for scalar serialization.
@@ -86,7 +90,11 @@ type Group interface {
 	// Order returns the order of the group (i.e., p).
 	Order() []byte
 
-	// Cofactor returns the group cofactor: 1 for prime-order groups, 8 for Ed25519, 4 for Ed448.
+	// Cofactor returns the cofactor of the group.
+	// For prime-order groups (ristretto255, P-256, secp256k1), this returns 1.
+	// For groups with cofactors (Ed25519 cofactor=8, Ed448 cofactor=4),
+	// this returns the appropriate scalar value.
+	// This is used in signature verification to ensure RFC 9591 compliance.
 	Cofactor() Scalar
 
 	// Identity returns the identity element of the group (i.e., I).
@@ -118,7 +126,10 @@ type Group interface {
 	// Returns an error if the element is the identity element.
 	SerializeElement(element Element) ([]byte, error)
 
-	// DeserializeElement decodes an element, rejecting invalid encodings and the identity.
+	// DeserializeElement decodes a byte slice to an element.
+	// Returns an error if:
+	// - The byte slice is not a valid element encoding
+	// - The resulting element is the identity element
 	DeserializeElement(data []byte) (Element, error)
 
 	// SerializeScalar encodes a scalar to its canonical byte representation.

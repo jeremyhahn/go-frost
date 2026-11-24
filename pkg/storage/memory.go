@@ -20,7 +20,22 @@ type memoryEntry struct {
 	expiration time.Time // Zero value means no expiration
 }
 
-// MemoryBackend is a thread-safe in-memory Backend that zeroizes an entry's data whenever it drops it; Take hands data over instead.
+// MemoryBackend implements Backend using an in-memory map.
+//
+// This implementation is thread-safe and suitable for:
+//   - Testing
+//   - Development
+//   - Temporary storage
+//   - Caching layer
+//
+// Callers store secret material here - a serialized FROST key package among
+// other things - so an entry's data is zeroized whenever the backend drops it,
+// whether that is a delete, an overwrite, a close, or a TTL that has elapsed.
+// Dropping the map reference alone would leave the bytes in the backing array
+// until the allocator happened to reuse them. Take is the one path that does
+// not zeroize, because it hands the data to its caller rather than dropping it.
+//
+// Note: All data is lost when the process terminates.
 type MemoryBackend struct {
 	// mu is exclusive rather than an RWMutex because every operation mutates:
 	// any of them may reap an entry whose TTL has elapsed.
@@ -45,7 +60,17 @@ func (e *memoryEntry) expired(now time.Time) bool {
 	return !e.expiration.IsZero() && now.After(e.expiration)
 }
 
-// NewMemoryBackend returns an in-memory Backend; Close it when done.
+// NewMemoryBackend creates a new in-memory storage backend.
+//
+// Returns:
+//   - Backend: In-memory storage implementation
+//
+// Example:
+//
+//	storage := storage.NewMemoryBackend()
+//	defer storage.Close()
+//
+//	err := storage.Put("key1", []byte("value1"), nil)
 func NewMemoryBackend() Backend {
 	return &MemoryBackend{
 		data: make(map[string]*memoryEntry),
@@ -207,7 +232,24 @@ func (m *MemoryBackend) List(prefix string) ([]string, error) {
 	return keys, nil
 }
 
-// Take removes key's entry and returns its data and expiry without keeping a copy; an empty entry stays; ErrNotFound if absent or expired.
+// Take removes the entry for key and hands its data to the caller rather than
+// copying it: the backend keeps no reference to the returned slice once Take
+// returns. A caller holding secret material can therefore seal or zeroize what
+// it gets back knowing that no other copy of it survives here - which Get,
+// which returns a copy and leaves the original in the map, cannot offer.
+//
+// It also reports when the entry expires, so a caller moving the value
+// somewhere else can carry the remaining lifetime across with it. The zero
+// Time means the entry does not expire.
+//
+// An entry holding no data is left in place and reported as an empty slice.
+// Take exists to move a payload out of the backend, and an empty entry has
+// none to move; removing it would discard a value on what the caller meant as
+// a read.
+//
+// Returns ErrNotFound if the key does not exist or has already expired. An
+// expired entry is removed and its data zeroized on the way past, rather than
+// left resident for the rest of the process's life.
 func (m *MemoryBackend) Take(key string) ([]byte, time.Time, error) {
 	if key == "" {
 		return nil, time.Time{}, ErrInvalidKey

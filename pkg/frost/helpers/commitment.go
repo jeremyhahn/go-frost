@@ -7,7 +7,17 @@ import (
 
 // GroupCommitmentComputer computes the group commitment from participant commitments.
 type GroupCommitmentComputer interface {
-	// Compute returns the group commitment sum(hiding_i + binding_factor_i * binding_i).
+	// Compute calculates the group commitment point from the commitment list.
+	//
+	// Inputs:
+	// - commitmentList: Sorted list of participant commitments
+	// - bindingFactors: List of binding factors for each participant
+	//
+	// Outputs:
+	// - groupCommitment: The aggregated group commitment point
+	//
+	// The group commitment is computed as:
+	// sum_{i in participants} (hiding_nonce_commitment_i + binding_factor_i * binding_nonce_commitment_i)
 	Compute(commitmentList frost.CommitmentList, bindingFactors frost.BindingFactorList) (group.Element, error)
 }
 
@@ -20,7 +30,20 @@ type groupCommitmentComputer struct {
 	group group.Group
 }
 
-// Compute implements GroupCommitmentComputer.Compute per RFC 9591 Section 4.5.
+// Compute implements GroupCommitmentComputer.Compute
+//
+// Calculates the group commitment point from the commitment list and binding factors.
+// The group commitment is computed as:
+// sum_{i in participants} (hiding_nonce_commitment_i + binding_factor_i * binding_nonce_commitment_i)
+//
+// Algorithm (from RFC 9591 Section 4.5):
+//  1. Initialize group_commitment = Identity
+//  2. For each participant in commitment_list:
+//     a. Get binding_factor for participant
+//     b. Compute binding_nonce = binding_factor * binding_nonce_commitment
+//     c. Compute commitment = hiding_nonce_commitment + binding_nonce
+//     d. Add commitment to group_commitment
+//  3. Return group_commitment
 func (g *groupCommitmentComputer) Compute(commitmentList frost.CommitmentList, bindingFactors frost.BindingFactorList) (group.Element, error) {
 	if len(commitmentList) == 0 {
 		return nil, frost.ErrEmptyCommitmentList

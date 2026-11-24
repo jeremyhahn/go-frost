@@ -77,7 +77,17 @@ func (n *Node) Addr() string {
 	return n.addr
 }
 
-// Start binds the listener synchronously, so a port conflict fails with the address, then serves in a goroutine.
+// Start binds the node's listener and serves on it in a background goroutine.
+//
+// The bind is deliberately synchronous. The previous version called
+// ListenAndServe inside the goroutine, printed any error, and then decided the
+// node was ready as soon as *something* answered GET /health on the configured
+// address. When the port was already taken that probe was answered by the
+// unrelated process holding it, so Start reported success for a node that had
+// never bound — and the test then spoke FROST to a stranger. Binding here
+// means a port conflict fails immediately, with the address in the error,
+// instead of being papered over by a readiness check that cannot tell this
+// node's server from anyone else's.
 func (n *Node) Start() error {
 	ln, err := net.Listen("tcp", n.server.Addr)
 	if err != nil {

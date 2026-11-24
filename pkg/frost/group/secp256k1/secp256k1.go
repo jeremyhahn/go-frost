@@ -1,4 +1,25 @@
-// Package secp256k1 implements the FROST group interface on secp256k1 (secp256k1-voi, constant-time), with big-endian scalars per RFC 9591 Section 6.5.
+// Package secp256k1 implements the FROST group interface using the secp256k1 group.
+//
+// secp256k1 is based on the Bitcoin/blockchain curve, providing:
+// - 128-bit security level
+// - SEC 2 v2.0 compliant operations
+// - Compatible with Bitcoin and Ethereum signatures
+//
+// This implementation uses gitlab.com/yawning/secp256k1-voi for the underlying
+// cryptographic primitives, which provides constant-time implementations.
+//
+// # Security Considerations
+//
+// This implementation provides FULL constant-time guarantees for all operations.
+// The secp256k1-voi library uses formally verified arithmetic via fiat-crypto
+// and provides constant-time curve and scalar arithmetic operations.
+//
+// All operations are constant-time:
+// - Point addition, subtraction, scalar multiplication
+// - Scalar addition, subtraction, multiplication, inversion
+// - Element/scalar encoding and decoding
+//
+// Per RFC 9591 Section 6.5, secp256k1 uses big-endian byte encoding for scalars.
 package secp256k1
 
 import (
@@ -143,7 +164,12 @@ func (s *Scalar) Copy() group.Scalar {
 	return &Scalar{value: result}
 }
 
-// Compare returns -1, 0 or 1; ordering is not constant-time, so not for secrets.
+// Compare compares this scalar with another scalar.
+// Returns -1 if this < other, 0 if equal, 1 if this > other.
+//
+// Note: This comparison is NOT constant-time for ordering (< or >).
+// However, equality is checked using constant-time comparison.
+// This method should NOT be used with secret scalar values for ordering.
 func (s *Scalar) Compare(other group.Scalar) int {
 	otherScalar := other.(*Scalar)
 

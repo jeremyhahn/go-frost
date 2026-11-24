@@ -41,7 +41,16 @@ func (s secretHex) MarshalJSON() ([]byte, error) {
 	return s, nil
 }
 
-// UnmarshalJSON unquotes a JSON string, as encoding/json would, directly into an owned buffer; data is not retained and null is a no-op.
+// UnmarshalJSON unquotes a JSON string into a buffer the secretHex owns.
+// data belongs to the caller's input, which the caller scrubs after
+// json.Unmarshal returns, so it must not be retained. A JSON null leaves the
+// value unchanged, as encoding/json expects of an Unmarshaler.
+//
+// Escapes are decoded exactly as encoding/json decodes them into a string, so
+// every file the CLI accepted when these fields were strings still parses to
+// the same hex text. The unquoting is done here, directly into the owned
+// buffer, because letting encoding/json do it would leave the secret in a
+// string that can never be scrubbed.
 func (s *secretHex) UnmarshalJSON(data []byte) error {
 	if bytes.Equal(data, []byte("null")) {
 		return nil

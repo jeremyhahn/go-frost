@@ -7,7 +7,22 @@ import (
 	"github.com/jeremyhahn/go-frost/pkg/frost/group"
 )
 
-// DeriveIdentifier derives a non-zero participant identifier from non-empty data with the suite's HID hash.
+// DeriveIdentifier derives a participant identifier from arbitrary data using HID.
+// This allows creating identifiers from strings, UUIDs, or other application-specific data.
+//
+// The derived identifier is guaranteed to be non-zero because it's derived from
+// a hash function that outputs a scalar modulo the group order.
+//
+// Inputs:
+//   - data: Arbitrary byte data to derive identifier from (e.g., username, UUID)
+//   - suite: The ciphersuite to use (provides HID hash function)
+//
+// Outputs:
+//   - identifier: A non-zero identifier derived from the data
+//
+// Errors:
+//   - Returns error if data is empty
+//   - Returns error if derived identifier is zero (extremely unlikely)
 func DeriveIdentifier(data []byte, suite ciphersuite.Ciphersuite) (Identifier, error) {
 	if len(data) == 0 {
 		return 0, NewParameterError("data", "cannot be empty", ErrInvalidParameters)

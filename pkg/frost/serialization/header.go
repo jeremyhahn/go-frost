@@ -1,4 +1,7 @@
-// Package serialization provides versioned FROST serialization with a version and ciphersuite header.
+// Package serialization provides versioned serialization for FROST data structures.
+//
+// All serialized data includes a header with version and ciphersuite information
+// to ensure compatibility and proper deserialization.
 package serialization
 
 import (

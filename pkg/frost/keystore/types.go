@@ -1,4 +1,7 @@
 // Package keystore provides secure storage for FROST key material using go-xkms.
+//
+// The keystore layer abstracts key storage operations and provides integration with
+// the go-xkms library for secure, production-ready key management.
 package keystore
 
 import (
@@ -12,7 +15,12 @@ type StoredKeyPackage struct {
 	// Identifier of the participant
 	Identifier frost.Identifier
 
-	// SecretShareProtected is the only in-memory copy of the share, in mlock'd memory; Seal and OpenStoredKeyPackage serialize it.
+	// SecretShareProtected holds the participant's secret key share in
+	// encrypted, mlock'd memory. It is the only in-memory copy of the share:
+	// the struct never holds a plaintext duplicate. The field itself is not
+	// serialized; Seal emits the share directly from the enclave into a
+	// document that is itself protected, and OpenStoredKeyPackage decodes such
+	// a document straight back into one.
 	SecretShareProtected *secmem.SecretBytes `json:"-"`
 
 	// GroupPublicKey is the group's public key (serialized)
@@ -76,12 +84,28 @@ type GroupPublicKeyEntry struct {
 	CreatedAt int64
 }
 
-// MarshalJSON refuses, because encoding/json would leave the share on the heap; use Seal.
+// MarshalJSON implements json.Marshaler for StoredKeyPackage by refusing.
+//
+// A serialized key package carries the secret share, so the document is secret
+// too, and encoding/json cannot produce one without leaving the share on the
+// ordinary heap: it assembles the result in a pooled buffer it neither
+// zeroizes nor releases, and returns a second heap copy. The refusal is the
+// point - it makes json.Marshal(storedKeyPackage) fail loudly rather than
+// quietly write a document the caller cannot clean up.
+//
+// Use Seal instead, which returns the same document sealed in protected
+// memory. See wire.go.
 func (s *StoredKeyPackage) MarshalJSON() ([]byte, error) {
 	return nil, ErrPlaintextSerialization
 }
 
-// UnmarshalJSON refuses, because decoding here would put the share on the heap; use OpenStoredKeyPackage.
+// UnmarshalJSON implements json.Unmarshaler for StoredKeyPackage by refusing,
+// for the reason MarshalJSON does: the document holds the secret share, and
+// decoding it here would put a plaintext copy on the ordinary heap.
+//
+// Use OpenStoredKeyPackage instead, which decodes the document from inside its
+// enclave and seals the share into protected memory without either ever
+// existing as a heap allocation. See wire.go.
 func (s *StoredKeyPackage) UnmarshalJSON(data []byte) error {
 	return ErrPlaintextSerialization
 }
@@ -96,7 +120,10 @@ func (s *StoredKeyPackage) Zeroize() {
 	s.SecretShareProtected = nil
 }
 
-// ToKeyPackage returns the frost.KeyPackage, decrypting the share only while deserializing; ErrMissingSecretShare if none.
+// ToKeyPackage converts a StoredKeyPackage back to a frost.KeyPackage.
+// The secret share is decrypted from protected memory for the duration of the
+// deserialization only; ErrMissingSecretShare is returned when the stored key
+// package carries no protected share.
 func (s *StoredKeyPackage) ToKeyPackage(g group.Group) (*frost.KeyPackage, error) {
 	if s.SecretShareProtected == nil {
 		return nil, ErrMissingSecretShare
@@ -146,7 +173,10 @@ func (s *StoredKeyPackage) ToKeyPackage(g group.Group) (*frost.KeyPackage, error
 	}, nil
 }
 
-// FromKeyPackage returns a StoredKeyPackage with the share only in protected memory; callers should Zeroize it.
+// FromKeyPackage creates a StoredKeyPackage from a frost.KeyPackage.
+// The secret share is held only in protected memory via SecretShareProtected;
+// the serialized plaintext produced here is zeroized as it is sealed. Callers
+// own the returned package and should Zeroize it once they are done with it.
 func FromKeyPackage(keyID, groupID string, kp *frost.KeyPackage, minSigners, maxSigners uint32, createdAt int64) (*StoredKeyPackage, error) {
 	if kp == nil || kp.SecretShare == nil {
 		return nil, ErrInvalidKeyPackage

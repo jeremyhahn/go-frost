@@ -1,4 +1,9 @@
-// Package signing implements two-round FROST signing: commitments, signature shares and aggregation.
+// Package signing implements the two-round FROST signing protocol.
+//
+// The FROST signing protocol consists of:
+// - Round 1: Commitment generation
+// - Round 2: Signature share generation
+// - Aggregation: Signature share aggregation
 package signing
 
 import (
@@ -21,13 +26,42 @@ type Participant interface {
 	// Returns 0 if the KeyPackage doesn't have MinSigners set.
 	MinSigners() uint32
 
-	// RoundOne returns hiding and binding nonces, kept secret until round two, and their commitments to broadcast.
+	// RoundOne generates signing nonces and commitments for round one.
+	//
+	// Outputs:
+	// - nonces: The secret nonces (must be stored securely until round two)
+	// - commitments: The public commitments to broadcast
+	//
+	// Each participant generates two random nonces (hiding and binding) and
+	// computes commitments to these nonces by multiplying with the generator.
 	RoundOne() (frost.SigningNonces, frost.SigningCommitments, error)
 
-	// RoundTwo returns z_i = hiding + binding * binding_factor + lambda_i * secret_share * challenge.
+	// RoundTwo generates a signature share using the participant's key share,
+	// nonces from round one, and the aggregated commitment list.
+	//
+	// Inputs:
+	// - nonces: The nonces generated in round one
+	// - msg: The message to sign
+	// - commitmentList: Sorted list of all participants' commitments
+	//
+	// Outputs:
+	// - signatureShare: The participant's signature share
+	//
+	// The signature share is computed as:
+	// z_i = hiding_nonce + (binding_nonce * binding_factor) + (lambda_i * secret_share * challenge)
 	RoundTwo(nonces frost.SigningNonces, msg []byte, commitmentList frost.CommitmentList) (frost.SignatureShare, error)
 
-	// VerifySignatureShare reports whether another participant's share is valid, for identifiable abort.
+	// VerifySignatureShare verifies a signature share from another participant.
+	//
+	// Inputs:
+	// - share: The signature share to verify
+	// - msg: The message being signed
+	// - commitmentList: The commitment list used in signing
+	//
+	// Outputs:
+	// - valid: True if the signature share is valid
+	//
+	// This is used for identifiable abort to detect malicious participants.
 	VerifySignatureShare(share frost.SignatureShare, msg []byte, commitmentList frost.CommitmentList) error
 }
 
@@ -54,7 +88,18 @@ func (p *participant) MinSigners() uint32 {
 	return p.keyPackage.MinSigners
 }
 
-// RoundOne implements Participant.RoundOne per RFC 9591 Section 5.1.
+// RoundOne implements Participant.RoundOne
+//
+// Generates signing nonces and commitments for round one.
+// Each participant generates two random nonces (hiding and binding) and
+// computes commitments to these nonces by multiplying with the generator.
+//
+// Algorithm (from RFC 9591 Section 5.1):
+// 1. Generate hiding_nonce using nonce_generate(secret_share)
+// 2. Generate binding_nonce using nonce_generate(secret_share)
+// 3. Compute hiding_nonce_commitment = ScalarBaseMult(hiding_nonce)
+// 4. Compute binding_nonce_commitment = ScalarBaseMult(binding_nonce)
+// 5. Return nonces and commitments
 func (p *participant) RoundOne() (frost.SigningNonces, frost.SigningCommitments, error) {
 	grp := p.suite.Group()
 
@@ -134,7 +179,21 @@ func (p *participant) RoundOne() (frost.SigningNonces, frost.SigningCommitments,
 	return nonces, commitments, nil
 }
 
-// RoundTwo implements Participant.RoundTwo per RFC 9591 Section 5.2.
+// RoundTwo implements Participant.RoundTwo
+//
+// Generates a signature share using the participant's key share,
+// nonces from round one, and the aggregated commitment list.
+//
+// Algorithm (from RFC 9591 Section 5.2):
+// 1. Validate commitment list (sorted, no duplicates)
+// 2. Compute binding factors
+// 3. Compute group commitment
+// 4. Get participant identifiers from commitment list
+// 5. Compute lambda_i = derive_interpolating_value(identifiers, identifier)
+// 6. Compute challenge = H2(group_commitment || group_public_key || msg)
+// 7. Get binding_factor for this participant
+// 8. Compute sig_share = hiding_nonce + (binding_nonce * binding_factor) + (lambda_i * secret_share * challenge)
+// 9. Return signature share
 func (p *participant) RoundTwo(nonces frost.SigningNonces, msg []byte, commitmentList frost.CommitmentList) (frost.SignatureShare, error) {
 	grp := p.suite.Group()
 
@@ -227,7 +286,20 @@ func (p *participant) RoundTwo(nonces frost.SigningNonces, msg []byte, commitmen
 	}, nil
 }
 
-// VerifySignatureShare implements Participant.VerifySignatureShare per RFC 9591 Section 5.4.
+// VerifySignatureShare implements Participant.VerifySignatureShare
+//
+// Verifies a signature share from another participant using identifiable abort.
+// This allows detection of malicious participants who provide invalid shares.
+//
+// Algorithm (from RFC 9591 Section 5.4):
+// 1. Compute binding factors
+// 2. Compute group commitment
+// 3. Get participant identifiers
+// 4. Compute lambda_i for the share's participant
+// 5. Compute challenge
+// 6. Get participant's commitment from list
+// 7. Get participant's verification share
+// 8. Verify: ScalarBaseMult(sig_share) == hiding_commitment + binding_factor*binding_commitment + lambda_i*verification_key*challenge
 func (p *participant) VerifySignatureShare(share frost.SignatureShare, msg []byte, commitmentList frost.CommitmentList) error {
 	grp := p.suite.Group()
 

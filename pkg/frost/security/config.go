@@ -7,21 +7,42 @@ package security
 
 import "time"
 
-// SecurityConfig configures FROST hardening; use DefaultProductionConfig in production.
+// SecurityConfig configures security features for FROST protocol operations.
+//
+// This configuration enables various security hardening features to prevent
+// common attacks and vulnerabilities in threshold signature schemes.
+//
+// Production deployments should use DefaultProductionConfig() which enables
+// all security features by default (secure by default principle).
 type SecurityConfig struct {
-	// IdentifiableAbortEnabled verifies shares before aggregation (RFC 9591 Section 7.6); default true.
+	// IdentifiableAbortEnabled enables signature share verification before aggregation.
+	// When enabled, malicious participants can be identified if they produce invalid shares.
+	// RECOMMENDED: true (RFC 9591 Section 7.6)
+	// Default: true
 	IdentifiableAbortEnabled bool
 
-	// NonceReuseProtection tracks nonce commitments, since reuse reveals the key; default true.
+	// NonceReuseProtection enables tracking of nonce commitments to prevent reuse.
+	// Nonce reuse is CRITICAL - it leads to complete key recovery.
+	// REQUIRED: true for production systems
+	// Default: true
 	NonceReuseProtection bool
 
-	// NonceTracker detects nonce reuse; nil creates an in-memory tracker, production should use a persistent one.
+	// NonceTracker is the commitment tracker to use for nonce reuse detection.
+	// If nil and NonceReuseProtection is true, an in-memory tracker will be created.
+	// Production systems should provide a persistent tracker.
+	// Default: nil (creates in-memory tracker)
 	NonceTracker CommitmentTracker
 
-	// SessionTimeout is the maximum signing session lifetime; default 1 hour.
+	// SessionTimeout is the maximum time a signing session can remain active.
+	// After this timeout, session data is automatically cleared.
+	// This prevents unbounded memory growth in long-running systems.
+	// Default: 1 hour
 	SessionTimeout time.Duration
 
-	// CommitmentExpiration is the TTL of tracked commitments; default 24 hours.
+	// CommitmentExpiration is the TTL for tracked commitments.
+	// Commitments older than this are periodically removed.
+	// This prevents memory exhaustion from long-running sessions.
+	// Default: 24 hours
 	CommitmentExpiration time.Duration
 
 	// MaxSignersPerSession limits the number of participants per signing session.
@@ -29,19 +50,36 @@ type SecurityConfig struct {
 	// Default: 1000 (very generous for most use cases)
 	MaxSignersPerSession uint32
 
-	// RequireCommitmentsSorted requires sorted commitment lists (RFC 9591); default true.
+	// RequireCommitmentsSorted requires commitment lists to be sorted.
+	// This is required by RFC 9591 for deterministic binding factor computation.
+	// REQUIRED: true (protocol correctness)
+	// Default: true
 	RequireCommitmentsSorted bool
 
-	// MessageValidator validates messages before signing; nil disables it; default a 1 MB SizeValidator.
+	// MessageValidator validates messages before signing.
+	// This prevents signing oracle attacks and DoS via malformed messages.
+	// If nil, no validation is performed (not recommended for production).
+	// Default: SizeValidator with 1 MB limit
 	MessageValidator MessageValidator
 
-	// MaxMessageSize limits message size for the default SizeValidator; 0 disables; default 1 MB.
+	// MaxMessageSize is the maximum allowed message size in bytes.
+	// This is used by the default SizeValidator to prevent DoS attacks.
+	// Set to 0 to disable size validation (not recommended).
+	// Default: 1 MB (1024 * 1024)
 	MaxMessageSize int
 
-	// ParticipantAuthenticator authenticates participants' messages (RFC 9591 Section 7.2); default nil, none.
+	// ParticipantAuthenticator authenticates participants' messages.
+	// This prevents impersonation attacks as required by RFC 9591 Section 7.2.
+	// If nil, no authentication is performed (not recommended for production).
+	// RECOMMENDED: Set to Ed25519Authenticator for production
+	// Default: nil (no authentication)
 	ParticipantAuthenticator ParticipantAuthenticator
 
-	// ReputationTracker excludes participants over misbehavior thresholds; default nil, none.
+	// ReputationTracker tracks participant misbehavior for DoS prevention.
+	// When enabled, participants exceeding misbehavior thresholds are automatically excluded.
+	// If nil, no reputation tracking is performed.
+	// RECOMMENDED: Enable for production to prevent repeated DoS attacks
+	// Default: nil (no reputation tracking)
 	ReputationTracker ReputationTracker
 
 	// ReputationConfig configures reputation tracking thresholds.
@@ -50,7 +88,17 @@ type SecurityConfig struct {
 	ReputationConfig ReputationConfig
 }
 
-// DefaultProductionConfig enables every protection; supply a persistent NonceTracker, an authenticator and a reputation tracker.
+// DefaultProductionConfig returns security configuration for production deployments.
+// This enables all security features with secure defaults.
+//
+// Production recommendations:
+//   - Provide a persistent NonceTracker (not in-memory)
+//   - Set ParticipantAuthenticator to Ed25519Authenticator with participant public keys
+//   - Enable ReputationTracker to prevent repeated DoS attacks
+//   - Monitor SessionTimeout and adjust based on your use case
+//   - Consider shorter CommitmentExpiration for high-security environments
+//   - Implement regular cleanup of expired commitments
+//   - Override MessageValidator if custom validation logic is needed
 func DefaultProductionConfig() SecurityConfig {
 	const defaultMaxMessageSize = 1024 * 1024 // 1 MB
 	reputationConfig := DefaultReputationConfig()
@@ -80,7 +128,14 @@ func DefaultDevelopmentConfig() SecurityConfig {
 	return config
 }
 
-// InsecureConfig disables every protection; only for benchmarks and tests, never with real keys.
+// InsecureConfig returns security configuration with all protections DISABLED.
+//
+// WARNING: This is INSECURE and should ONLY be used for:
+//   - Performance benchmarking
+//   - Testing specific edge cases
+//   - Educational demonstrations
+//
+// NEVER use this in production or with real key material!
 func InsecureConfig() SecurityConfig {
 	return SecurityConfig{
 		IdentifiableAbortEnabled: false,

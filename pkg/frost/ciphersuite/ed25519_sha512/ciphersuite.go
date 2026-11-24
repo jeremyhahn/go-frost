@@ -1,4 +1,20 @@
-// Package ed25519_sha512 implements FROST(Ed25519, SHA-512) per RFC 9591 Section 6.1; H2 has no context prefix, for Ed25519 compatibility.
+// Package ed25519_sha512 implements the FROST(Ed25519, SHA-512) ciphersuite.
+//
+// This ciphersuite uses Ed25519 for the prime-order group and SHA-512 for
+// all hash functions. It implements RFC 9591 Section 6.1.
+//
+// Context string: "FROST-ED25519-SHA512-v1"
+//
+// CRITICAL DIFFERENCE from ristretto255-sha512:
+// H2 (challenge hash) does NOT use the contextString prefix for Ed25519
+// compatibility with standard Ed25519 signatures.
+//
+// The ciphersuite provides five domain-separated hash functions:
+// - H1: Used for binding factor computation (domain: "rho")
+// - H2: Used for challenge computation (NO domain prefix - Ed25519 compat!)
+// - H3: Used for nonce generation (domain: "nonce")
+// - H4: Used for message hashing (domain: "msg")
+// - H5: Used for commitment list hashing (domain: "com")
 package ed25519_sha512
 
 import (
@@ -73,7 +89,10 @@ func (cs *Ed25519SHA512) H1(data []byte) group.Scalar {
 	return cs.hashToScalar(domainH1, data)
 }
 
-// H2 hashes data to a scalar without a context prefix, for Ed25519 compatibility.
+// H2 is a hash-to-scalar function for challenge computation.
+// CRITICAL: For Ed25519, H2 does NOT use contextString prefix!
+// This ensures compatibility with standard Ed25519 signatures.
+// Implements: H(data) -> Scalar (no domain separation)
 func (cs *Ed25519SHA512) H2(data []byte) group.Scalar {
 	// No contextString prefix for Ed25519 compatibility.
 	hash := cs.Hash(data)
@@ -111,7 +130,9 @@ func (cs *Ed25519SHA512) H5(data []byte) []byte {
 	return cs.Hash(input)
 }
 
-// HDKG computes H(contextString || "dkg" || data) for the DKG proof of knowledge.
+// HDKG is a domain-separated hash-to-scalar function for DKG operations.
+// Used for computing challenges in the Schnorr proof of knowledge during DKG.
+// Implements: H(contextString || "dkg" || data) -> Scalar
 func (cs *Ed25519SHA512) HDKG(data []byte) group.Scalar {
 	return cs.hashToScalar("dkg", data)
 }
@@ -123,7 +144,10 @@ func (cs *Ed25519SHA512) HID(data []byte) group.Scalar {
 	return cs.hashToScalar("id", data)
 }
 
-// HashToCurve maps bytes to a group element by hash-and-increment.
+// HashToCurve maps arbitrary byte strings to group elements.
+// This uses a hash-and-increment approach for edwards25519.
+// We hash the input and attempt to decode it as a point. If that fails,
+// we increment a counter and try again until we find a valid point.
 func (cs *Ed25519SHA512) HashToCurve(data []byte) (group.Element, error) {
 	// Use a domain-separated hash for hash-to-curve
 	input := cs.domainSeparate("h2c", data)
@@ -148,7 +172,12 @@ func (cs *Ed25519SHA512) HashToCurve(data []byte) (group.Element, error) {
 	return nil, frost.NewParameterError("data", "failed to find valid curve point after 256 attempts", frost.ErrDeserializationFailed)
 }
 
-// VerifySignature checks R || z (32+32 bytes): z*G == R + c*PK, c = H2(R || PK || msg).
+// VerifySignature verifies a FROST signature against a message and public key.
+// Implements Schnorr signature verification for Ed25519.
+//
+// Signature format: R (32 bytes) || z (32 bytes)
+// Verification equation: z * G == R + c * PK
+// where c = H2(R || PK || msg)
 func (cs *Ed25519SHA512) VerifySignature(message []byte, signature []byte, publicKey group.Element) error {
 	// Validate inputs
 	if publicKey == nil {

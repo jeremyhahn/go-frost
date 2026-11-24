@@ -34,7 +34,17 @@ type storedKeyPackagePublic struct {
 	Metadata           KeyMetadata
 }
 
-// Seal returns the document assembled in a protected buffer, which the caller must Destroy; ErrMissingSecretShare if there is no share.
+// Seal serializes the stored key package into protected memory and returns the
+// sealed document. The document is assembled inside a mlock'd buffer: the
+// share is base64-encoded straight out of its enclave into that buffer, and
+// the public members are spliced in around it. No plaintext copy of the share,
+// and no plaintext copy of the document, exists on the ordinary heap at any
+// point.
+//
+// The caller owns the returned payload and must Destroy it.
+//
+// Seal returns ErrMissingSecretShare when the package carries no protected
+// share; a package without a share has nothing to serialize.
 func (s *StoredKeyPackage) Seal() (*secmem.SecretBytes, error) {
 	if s == nil || s.SecretShareProtected == nil {
 		return nil, ErrMissingSecretShare
@@ -103,7 +113,12 @@ func (s *StoredKeyPackage) Seal() (*secmem.SecretBytes, error) {
 	return payload, nil
 }
 
-// OpenStoredKeyPackage decodes a Seal document from its enclave into a protected share; callers must Zeroize the result.
+// OpenStoredKeyPackage decodes a document sealed by Seal. The document is
+// decoded from inside its enclave and the share is base64-decoded straight
+// into a protected buffer of its own, so neither the document nor the share
+// exists as an ordinary heap allocation at any point.
+//
+// Callers own the returned package and must Zeroize it.
 func OpenStoredKeyPackage(payload *secmem.SecretBytes) (*StoredKeyPackage, error) {
 	var (
 		stored    *StoredKeyPackage

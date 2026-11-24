@@ -9,7 +9,16 @@ import (
 	"fmt"
 )
 
-// MessageValidator is a stateless, thread-safe check of messages before signing (size, content, policy).
+// MessageValidator validates messages before signing to prevent various attacks.
+//
+// This interface enables applications to implement custom validation logic
+// to protect against:
+//   - Signing oracle attacks (unintended message signatures)
+//   - DoS attacks via extremely large messages
+//   - Malformed or malicious message content
+//   - Policy violations (e.g., signing forbidden content)
+//
+// Implementations should be stateless and thread-safe.
 type MessageValidator interface {
 	// ValidateStructure checks if the message has a valid structure.
 	// This might include format validation, encoding checks, etc.
@@ -28,7 +37,11 @@ type MessageValidator interface {
 	Validate(msg []byte) error
 }
 
-// NoOpValidator performs no validation; only when a higher layer validates.
+// NoOpValidator is a validator that performs no validation.
+// This is useful for testing, development, or when validation is handled externally.
+//
+// WARNING: Using NoOpValidator in production bypasses all message validation
+// and should only be done if validation is performed at a higher layer.
 type NoOpValidator struct{}
 
 // NewNoOpValidator creates a new no-op validator.
@@ -63,7 +76,13 @@ type SizeValidator struct {
 	maxSize int // Maximum message size in bytes
 }
 
-// NewSizeValidator returns a validator that rejects messages larger than maxSize bytes.
+// NewSizeValidator creates a new size validator with the specified maximum size.
+// The maxSize parameter specifies the maximum allowed message size in bytes.
+//
+// Recommended limits:
+//   - 1 MB (1024*1024) for general use
+//   - 10 MB for applications that need to sign larger messages
+//   - 100 KB for high-security environments
 func NewSizeValidator(maxSize int) *SizeValidator {
 	return &SizeValidator{
 		maxSize: maxSize,

@@ -8,7 +8,29 @@ import (
 	"github.com/jeremyhahn/go-frost/pkg/secmem"
 )
 
-// Part2 runs DKG round 2: verifies every proof of knowledge and computes the shares f_i(j) to send privately to each participant.
+// Part2 executes round 2 of the DKG protocol.
+//
+// Each participant:
+//  1. Verifies the Schnorr proofs from all other participants
+//  2. Computes secret shares for each other participant: f_i(j)
+//  3. Computes their own share: f_i(i)
+//
+// The shares for other participants are sent on secure (confidential + authenticated)
+// channels, not broadcast.
+//
+// Inputs:
+//   - secretPackage: The secret package from Part1 (kept private)
+//   - round1Packages: Map of Round1Packages received from all other participants
+//   - suite: The ciphersuite to use
+//
+// Outputs:
+//   - secretPackage: Secret data to keep for round 3 (MUST NOT be shared)
+//   - round2Packages: Map of packages to send privately to each other participant
+//
+// Errors:
+//   - Returns error if any proof of knowledge verification fails
+//   - Returns error if wrong number of round1Packages provided
+//   - Returns error if commitment lengths are invalid
 func Part2(
 	secretPackage *Round1SecretPackage,
 	round1Packages map[frost.Identifier]*Round1Package,
@@ -78,7 +100,21 @@ func Part2(
 	return round2SecretPackage, round2Packages, nil
 }
 
-// VerifyShare checks g^share == product(commitment[k]^(id^k)) against the sender's VSS commitment.
+// VerifyShare verifies a secret share against the sender's VSS commitment.
+//
+// Verification equation: g^share == product(commitment[k]^(id^k)) for k=0..t-1
+//
+// This ensures the share was correctly computed from the committed polynomial.
+//
+// Inputs:
+//   - identifier: The recipient's identifier (the point at which to evaluate)
+//   - share: The secret share to verify
+//   - commitment: The sender's polynomial commitments
+//   - suite: The ciphersuite to use
+//
+// Returns:
+//   - nil if share is valid
+//   - error if share is invalid
 func VerifyShare(
 	identifier frost.Identifier,
 	share group.Scalar,

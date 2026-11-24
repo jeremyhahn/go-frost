@@ -1,4 +1,23 @@
-// Package repairable recovers a lost share with at least two helpers and without the group secret (https://eprint.iacr.org/2017/1155); deltas and sigmas need secure channels.
+// Package repairable implements the Repairable Threshold Scheme for FROST.
+//
+// This allows recovery of a lost share using cooperation of threshold participants,
+// without reconstructing the group secret. Based on the paper:
+// "A Survey and Refinement of Repairable Threshold Schemes"
+// https://eprint.iacr.org/2017/1155
+//
+// The protocol has three steps:
+//
+//  1. Step 1 (Each Helper): Generate random delta values that sum to their
+//     Lagrange-weighted share contribution for the lost participant.
+//
+//  2. Step 2 (Each Helper): Sum all received delta values to compute sigma.
+//
+//  3. Step 3 (Recovering Participant): Sum all sigma values to recover the share.
+//
+// Security Requirements:
+//   - At least 2 helpers are required (the threshold for the original scheme)
+//   - Delta values between helpers must be sent on secure channels
+//   - Sigma values to the recovering participant must be sent on secure channels
 package repairable
 
 import (
@@ -18,7 +37,10 @@ type Step1Result struct {
 	Deltas map[frost.Identifier]group.Scalar
 }
 
-// Zeroize erases the delta values; call it once they are sent.
+// Zeroize securely erases the delta values from memory.
+//
+// This method should be called after the delta values have been transmitted
+// to reduce the risk of memory disclosure attacks.
 func (r *Step1Result) Zeroize() {
 	for id, delta := range r.Deltas {
 		runtime.KeepAlive(delta)
@@ -33,7 +55,25 @@ func (r *Step1Result) Zeroize() {
 	}
 }
 
-// RepairShareStep1 returns one random delta per helper, summing to this helper's Lagrange-weighted contribution to the lost share.
+// RepairShareStep1 is executed by each helper to generate delta values.
+//
+// Each helper generates (n-1) random delta values (where n is the number of helpers),
+// with the last delta computed to ensure the sum equals their Lagrange-weighted
+// contribution to the recovering participant's share.
+//
+// Inputs:
+//   - helperIdentifiers: All helpers participating in the recovery (including self)
+//   - myKeyPackage: This helper's key package
+//   - participantToRecover: The identifier of the participant whose share is being recovered
+//   - suite: The ciphersuite to use
+//
+// Outputs:
+//   - result: Map of delta values, one for each helper (including self)
+//
+// Errors:
+//   - Returns error if fewer than 2 helpers
+//   - Returns error if duplicate helper identifiers
+//   - Returns error if this helper is not in the helper list
 func RepairShareStep1(
 	helperIdentifiers []frost.Identifier,
 	myKeyPackage *frost.KeyPackage,
@@ -123,7 +163,16 @@ func RepairShareStep1(
 	return &Step1Result{Deltas: deltas}, nil
 }
 
-// RepairShareStep2 returns sigma, the sum of the deltas a helper received.
+// RepairShareStep2 is executed by each helper to compute their sigma value.
+//
+// Each helper sums all the delta values they received (including from themselves)
+// to produce a sigma value that will be sent to the recovering participant.
+//
+// Inputs:
+//   - deltas: All delta values received from other helpers (and self)
+//
+// Outputs:
+//   - sigma: The sum of all deltas
 func RepairShareStep2(deltas []group.Scalar) group.Scalar {
 	if len(deltas) == 0 {
 		return nil
@@ -138,7 +187,22 @@ func RepairShareStep2(deltas []group.Scalar) group.Scalar {
 	return sigma
 }
 
-// RepairShareStep3 sums the helpers' sigmas into the recovered share and verifies it against the VSS commitment.
+// RepairShareStep3 is executed by the recovering participant to compute their share.
+//
+// The recovering participant sums all sigma values received from helpers
+// to recover their signing share.
+//
+// Inputs:
+//   - sigmas: All sigma values received from helpers
+//   - identifier: The recovering participant's identifier
+//   - commitment: The original VSS commitment (for verification)
+//   - suite: The ciphersuite to use
+//
+// Outputs:
+//   - keyPackage: A key package with the recovered share
+//
+// Errors:
+//   - Returns error if verification fails
 func RepairShareStep3(
 	sigmas []group.Scalar,
 	identifier frost.Identifier,

@@ -18,7 +18,8 @@ const redactedPlaceholder = "[REDACTED]"
 // Security-related errors for FROST protocol operations.
 
 var (
-	// ErrCommitmentReused is returned when a nonce commitment is reused, which can reveal the key.
+	// ErrCommitmentReused is returned when a commitment (nonce) is reused.
+	// This is a CRITICAL security violation that can lead to complete key recovery.
 	ErrCommitmentReused = errors.New("commitment reused - CRITICAL security violation")
 
 	// ErrInvalidSession is returned when a session ID is invalid or not found.
@@ -95,7 +96,20 @@ func DefaultDevelopmentErrorConfig() ErrorSanitizerConfig {
 	}
 }
 
-// ErrorSanitizer strips hex, base64, byte arrays and scalars from error messages, keeping more context in development mode.
+// ErrorSanitizer sanitizes error messages to prevent sensitive information leakage.
+//
+// Security considerations:
+//   - Removes hexadecimal values that might represent cryptographic material
+//   - Removes base64-encoded data
+//   - Removes byte arrays and scalar values
+//   - Preserves enough context for debugging in development mode
+//   - Configurable for production vs development environments
+//
+// Example:
+//
+//	sanitizer := NewErrorSanitizer(DefaultProductionErrorConfig())
+//	err := fmt.Errorf("signature verification failed: scalar=0x1234abcd")
+//	safe := sanitizer.Sanitize(err) // Returns "signature verification failed"
 type ErrorSanitizer struct {
 	config ErrorSanitizerConfig
 
@@ -127,7 +141,12 @@ func NewErrorSanitizer(config ErrorSanitizerConfig) *ErrorSanitizer {
 	}
 }
 
-// Sanitize returns a generic error in production mode, a redacted one in development mode, and the original when disabled.
+// Sanitize sanitizes an error message according to the configured mode.
+//
+// Returns:
+//   - In production mode: Generic error with sensitive data removed
+//   - In development mode: Error with sensitive data redacted but structure preserved
+//   - In disabled mode: Original error unchanged
 func (s *ErrorSanitizer) Sanitize(err error) error {
 	if err == nil {
 		return nil

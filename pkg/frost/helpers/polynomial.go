@@ -8,13 +8,39 @@ import (
 
 // PolynomialHelper provides operations on polynomials over scalars.
 type PolynomialHelper interface {
-	// Evaluate returns the polynomial's value at x.
+	// Evaluate evaluates a polynomial at a given x-coordinate.
+	//
+	// Inputs:
+	// - poly: The polynomial to evaluate
+	// - x: The x-coordinate at which to evaluate
+	//
+	// Outputs:
+	// - y: The result of evaluating the polynomial at x
 	Evaluate(poly frost.Polynomial, x group.Scalar) group.Scalar
 
-	// DeriveInterpolatingValue returns the Lagrange coefficient for xi in xCoords; errors if xi is absent or xCoords has duplicates.
+	// DeriveInterpolatingValue computes the Lagrange interpolation coefficient
+	// for a given x-coordinate within a set of x-coordinates.
+	//
+	// Inputs:
+	// - xCoords: List of x-coordinates (must not contain duplicates or zero)
+	// - xi: The x-coordinate for which to compute the coefficient (must be in xCoords)
+	//
+	// Outputs:
+	// - value: The interpolating coefficient
+	//
+	// Errors:
+	// - Returns error if xi is not in xCoords
+	// - Returns error if xCoords contains duplicates
 	DeriveInterpolatingValue(xCoords []group.Scalar, xi group.Scalar) (group.Scalar, error)
 
-	// Generate returns a random polynomial of the given degree with the given constant term.
+	// Generate creates a random polynomial of degree t with the given constant term.
+	//
+	// Inputs:
+	// - constantTerm: The constant coefficient (polynomial[0])
+	// - degree: The maximum degree of the polynomial
+	//
+	// Outputs:
+	// - poly: A random polynomial with the specified constant term
 	Generate(constantTerm group.Scalar, degree uint32) (frost.Polynomial, error)
 }
 
@@ -27,7 +53,16 @@ type polynomialHelper struct {
 	group group.Group
 }
 
-// Evaluate implements PolynomialHelper.Evaluate with Horner's method.
+// Evaluate implements PolynomialHelper.Evaluate
+//
+// Evaluates a polynomial at a given x-coordinate using Horner's method.
+// This is an efficient algorithm with O(n) complexity for degree n polynomial.
+//
+// Algorithm:
+// result = coefficients[degree]
+// for i from degree-1 down to 0:
+//
+//	result = result * x + coefficients[i]
 func (p *polynomialHelper) Evaluate(poly frost.Polynomial, x group.Scalar) group.Scalar {
 	if len(poly.Coefficients) == 0 {
 		return p.group.NewScalar()
@@ -45,7 +80,17 @@ func (p *polynomialHelper) Evaluate(poly frost.Polynomial, x group.Scalar) group
 	return result
 }
 
-// DeriveInterpolatingValue implements PolynomialHelper.DeriveInterpolatingValue: L_i = product(xj) / product(xj - xi) for j != i.
+// DeriveInterpolatingValue implements PolynomialHelper.DeriveInterpolatingValue
+//
+// Computes the Lagrange interpolation coefficient for xi within the set of x-coordinates.
+//
+// The Lagrange coefficient L_i is computed as:
+// L_i = product(xj / (xj - xi)) for all j != i
+//
+// This can be rewritten as:
+// numerator = product(xj) for all j != i
+// denominator = product(xj - xi) for all j != i
+// L_i = numerator / denominator
 func (p *polynomialHelper) DeriveInterpolatingValue(xCoords []group.Scalar, xi group.Scalar) (group.Scalar, error) {
 	if len(xCoords) == 0 {
 		return nil, frost.NewParameterError("xCoords", "cannot be empty", frost.ErrInvalidParameters)

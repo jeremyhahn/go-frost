@@ -1,4 +1,16 @@
-// Package p256_sha256 implements FROST(P-256, SHA-256) per RFC 9591 Section 6.4.
+// Package p256_sha256 implements the FROST(P-256, SHA-256) ciphersuite.
+//
+// This ciphersuite uses P-256 (secp256r1) for the prime-order group and SHA-256 for
+// all hash functions. It implements RFC 9591 Section 6.4.
+//
+// Context string: "FROST-P256-SHA256-v1"
+//
+// The ciphersuite provides five domain-separated hash functions:
+// - H1: Used for binding factor computation (domain: "rho")
+// - H2: Used for challenge computation (domain: "chal")
+// - H3: Used for nonce generation (domain: "nonce")
+// - H4: Used for message hashing (domain: "msg")
+// - H5: Used for commitment list hashing (domain: "com")
 package p256_sha256
 
 import (
@@ -98,7 +110,9 @@ func (cs *P256SHA256) H5(data []byte) []byte {
 	return cs.Hash(input)
 }
 
-// HDKG computes H(contextString || "dkg" || data) for the DKG proof of knowledge.
+// HDKG is a domain-separated hash-to-scalar function for DKG operations.
+// Used for computing challenges in the Schnorr proof of knowledge during DKG.
+// Implements: H(contextString || "dkg" || data) -> Scalar
 func (cs *P256SHA256) HDKG(data []byte) group.Scalar {
 	return cs.hashToScalar("dkg", data)
 }
@@ -110,7 +124,10 @@ func (cs *P256SHA256) HID(data []byte) group.Scalar {
 	return cs.hashToScalar("id", data)
 }
 
-// HashToCurve maps bytes to a group element by hash-and-increment.
+// HashToCurve maps arbitrary byte strings to group elements.
+// This uses a hash-and-increment approach for P-256.
+// We hash the input and attempt to decode it as a point. If that fails,
+// we increment a counter and try again until we find a valid point.
 func (cs *P256SHA256) HashToCurve(data []byte) (group.Element, error) {
 	// Use a domain-separated hash for hash-to-curve
 	input := cs.domainSeparate("h2c", data)
@@ -162,7 +179,12 @@ func (cs *P256SHA256) tryFindPoint(x *big.Int) group.Element {
 	return nil
 }
 
-// VerifySignature checks R || z (33+32 bytes): z*G == R + c*PK, c = H2(R || PK || msg).
+// VerifySignature verifies a FROST signature against a message and public key.
+// Implements Schnorr signature verification for P-256.
+//
+// Signature format: R (33 bytes) || z (32 bytes)
+// Verification equation: z * G == R + c * PK
+// where c = H2(R || PK || msg)
 func (cs *P256SHA256) VerifySignature(message []byte, signature []byte, publicKey group.Element) error {
 	// Validate inputs
 	if publicKey == nil {

@@ -1,4 +1,8 @@
-// Package service orchestrates FROST key generation, signing and verification behind the public API.
+// Package service provides the service layer for FROST operations.
+//
+// The service layer provides clean separation between the public API and
+// business logic. It orchestrates operations across multiple components
+// (key generation, signing, verification) and enforces business rules.
 package service
 
 import (
@@ -14,16 +18,47 @@ import (
 // FrostService provides high-level FROST protocol operations.
 // This is the main service interface that applications should use.
 type FrostService interface {
-	// GenerateKeys returns trusted dealer key packages and the group public key.
+	// GenerateKeys generates key shares for participants using a trusted dealer.
+	//
+	// Inputs:
+	// - config: FROST configuration (min/max signers, group)
+	// - participantIDs: List of participant identifiers
+	//
+	// Outputs:
+	// - keyPackages: Key packages for each participant
+	// - groupPublicKey: The group's public key
 	GenerateKeys(config frost.Configuration, participantIDs []frost.Identifier) ([]frost.KeyPackage, group.Element, error)
 
-	// Sign runs both signing rounds and returns the threshold signature.
+	// Sign generates a FROST threshold signature.
+	//
+	// Inputs:
+	// - keyPackages: Key packages for signing participants
+	// - msg: The message to sign
+	//
+	// Outputs:
+	// - signature: The FROST threshold signature
+	//
+	// This orchestrates the complete two-round signing protocol.
 	Sign(keyPackages []frost.KeyPackage, msg []byte) (frost.Signature, error)
 
-	// Verify returns an error if signature is not valid for msg and publicKey.
+	// Verify verifies a FROST signature.
+	//
+	// Inputs:
+	// - msg: The message that was signed
+	// - signature: The signature to verify
+	// - publicKey: The group's public key
+	//
+	// Errors:
+	// - Returns error if signature verification fails
 	Verify(msg []byte, signature frost.Signature, publicKey group.Element) error
 
-	// VerifyKeyShare returns an error if the key package's share does not verify.
+	// VerifyKeyShare verifies a participant's key share.
+	//
+	// Inputs:
+	// - keyPackage: The key package to verify
+	//
+	// Errors:
+	// - Returns error if verification fails
 	VerifyKeyShare(keyPackage frost.KeyPackage) error
 
 	// GetCiphersuite returns the ciphersuite being used.

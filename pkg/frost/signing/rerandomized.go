@@ -1,4 +1,17 @@
-// Rerandomized FROST: shares offset by a randomizer, sent confidentially and identical for all, give signatures that verify against a randomized, unlinkable key.
+// Package signing implements rerandomized FROST for unlinkable signatures.
+//
+// Re-randomized FROST allows producing signatures that are unlinkable to the
+// original public key. This is useful for privacy-preserving applications
+// where you want to prove ownership of a key without revealing which key.
+//
+// The protocol works by:
+// 1. Computing a randomizer from the signing package and randomness
+// 2. Each participant randomizes their key package by adding the randomizer to their secret share
+// 3. The aggregator uses the randomized public key package
+// 4. The final signature verifies against the randomized public key
+//
+// Security: The randomizer MUST be sent to all participants via a confidential channel.
+// All participants MUST use the same randomizer value.
 package signing
 
 import (
@@ -20,7 +33,18 @@ type RandomizedParams struct {
 	RandomizedVerifyingKey group.Element
 }
 
-// NewRandomizedParams returns parameters for randomizer and groupPublicKey; errors if the randomized key is the identity.
+// NewRandomizedParams creates RandomizedParams from a randomizer scalar and group public key.
+//
+// Inputs:
+//   - randomizer: The randomizer scalar (should be derived deterministically from signing package)
+//   - groupPublicKey: The original group public key
+//   - suite: The ciphersuite to use
+//
+// Outputs:
+//   - params: The randomized parameters
+//
+// Errors:
+//   - Returns error if the randomized public key is the identity element
 func NewRandomizedParams(
 	randomizer group.Scalar,
 	groupPublicKey group.Element,
@@ -54,7 +78,21 @@ func NewRandomizedParams(
 	}, nil
 }
 
-// ComputeRandomizer derives the randomizer from the signing package and extra randomness; errors if the randomized key is the identity.
+// ComputeRandomizer computes a randomizer for rerandomized FROST.
+// The randomizer is derived from the signing package and additional randomness
+// to ensure binding to the specific signing session.
+//
+// Inputs:
+//   - signingPackage: The signing package for this session
+//   - randomness: Additional randomness (from coordinator)
+//   - groupPublicKey: The original group public key
+//   - suite: The ciphersuite to use
+//
+// Outputs:
+//   - params: The randomized parameters
+//
+// Errors:
+//   - Returns error if the randomized public key is the identity element
 func ComputeRandomizer(
 	msg []byte,
 	commitmentList frost.CommitmentList,
@@ -85,7 +123,20 @@ func ComputeRandomizer(
 	return NewRandomizedParams(randomizer, groupPublicKey, suite)
 }
 
-// RandomizeKeyPackage returns the key package with s_i' = s_i + randomizer; every participant uses the same randomizer.
+// RandomizeKeyPackage creates a randomized key package for rerandomized signing.
+// Each participant must call this with the same randomizer before signing.
+//
+// Inputs:
+//   - keyPackage: The original key package
+//   - params: The randomized parameters (with shared randomizer)
+//   - suite: The ciphersuite to use
+//
+// Outputs:
+//   - randomizedKeyPackage: The key package with randomized secret share
+//
+// The randomized secret share is: s_i' = s_i + randomizer
+// This ensures that when participants sign, the randomizer contribution
+// is automatically included in their signature shares.
 func RandomizeKeyPackage(
 	keyPackage frost.KeyPackage,
 	params *RandomizedParams,
@@ -114,7 +165,19 @@ func RandomizeKeyPackage(
 	}
 }
 
-// RerandomizedSign returns a participant's signature share for a rerandomized session.
+// RerandomizedSign performs rerandomized FROST signing.
+// This is the main entry point for participants in a rerandomized signing session.
+//
+// Inputs:
+//   - msg: The message to sign
+//   - keyPackage: The original (non-randomized) key package
+//   - noncePkg: The nonce package from round one
+//   - commitments: Map of all participant commitments
+//   - params: The randomized parameters (shared by all participants)
+//   - suite: The ciphersuite to use
+//
+// Outputs:
+//   - signatureShare: The signature share (includes randomizer contribution)
 func RerandomizedSign(
 	msg []byte,
 	keyPackage *frost.KeyPackage,
@@ -130,7 +193,18 @@ func RerandomizedSign(
 	return Sign(msg, &randomizedKeyPackage, noncePkg, commitments, suite)
 }
 
-// RerandomizedAggregate returns the signature, which verifies against the randomized public key.
+// RerandomizedAggregate aggregates signature shares for rerandomized FROST.
+//
+// Inputs:
+//   - msg: The message that was signed
+//   - commitments: Map of all participant commitments
+//   - signatureShares: Map of signature shares from participants
+//   - verificationShares: Map of verification shares (original, non-randomized)
+//   - params: The randomized parameters
+//   - suite: The ciphersuite to use
+//
+// Outputs:
+//   - signature: The final FROST signature (verifies against randomized public key)
 func RerandomizedAggregate(
 	msg []byte,
 	commitments map[frost.Identifier]*frost.SigningCommitments,
@@ -171,7 +245,12 @@ type RerandomizedParticipant struct {
 	suite      ciphersuite.Ciphersuite
 }
 
-// NewRerandomizedParticipant returns a participant that signs with the shared randomized parameters.
+// NewRerandomizedParticipant creates a participant that produces rerandomized signatures.
+//
+// Inputs:
+//   - keyPackage: The original (non-randomized) key package
+//   - params: The randomized parameters (must be shared by all participants)
+//   - suite: The ciphersuite to use
 func NewRerandomizedParticipant(
 	keyPackage frost.KeyPackage,
 	params *RandomizedParams,
@@ -191,7 +270,16 @@ func (rp *RerandomizedParticipant) RoundOne() (frost.SigningNonces, frost.Signin
 	return participant.RoundOne()
 }
 
-// RoundTwo returns a rerandomized signature share, randomizing the key package first.
+// RoundTwo generates a rerandomized signature share.
+// The key package is randomized internally before signing.
+//
+// Inputs:
+//   - nonces: The signing nonces from round one
+//   - msg: The message being signed
+//   - commitmentList: Sorted list of participant commitments
+//
+// Outputs:
+//   - signatureShare: The rerandomized signature share
 func (rp *RerandomizedParticipant) RoundTwo(
 	nonces frost.SigningNonces,
 	msg []byte,
@@ -227,7 +315,17 @@ func NewRerandomizedAggregator(
 	}
 }
 
-// Aggregate combines rerandomized shares into a signature that verifies against the randomized public key.
+// Aggregate combines rerandomized signature shares into a signature.
+// The resulting signature verifies against the randomized public key.
+//
+// Inputs:
+//   - commitmentList: Sorted list of participant commitments
+//   - msg: The message being signed
+//   - signatureShares: List of signature shares (already include randomizer contribution)
+//   - verificationShares: Original (non-randomized) verification shares
+//
+// Outputs:
+//   - signature: The rerandomized FROST signature
 func (ra *RerandomizedAggregator) Aggregate(
 	commitmentList frost.CommitmentList,
 	msg []byte,

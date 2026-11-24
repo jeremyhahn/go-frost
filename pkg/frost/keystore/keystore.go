@@ -5,7 +5,15 @@ import (
 	"github.com/jeremyhahn/go-frost/pkg/frost/group"
 )
 
-// KeyStore is thread-safe storage for FROST key packages, group public keys and metadata.
+// KeyStore defines the interface for secure storage of FROST key material.
+//
+// All implementations must be thread-safe and provide secure storage for:
+//   - Key packages (participant secret shares and verification keys)
+//   - Group public keys
+//   - Key metadata
+//
+// The keystore abstracts the underlying storage mechanism, allowing for
+// different implementations (file-based, hardware-backed, cloud KMS, etc.).
 type KeyStore interface {
 	// StoreKeyPackage stores a key package with the given key ID and group ID.
 	// Returns ErrAlreadyExists if a key package with the same key ID already exists.
@@ -58,7 +66,13 @@ type Config struct {
 	// Required for serialization/deserialization of key material.
 	Group group.Group
 
-	// Storage is the required StorageBackend, for example NewFileStorage().
+	// Storage is the storage backend implementation.
+	// REQUIRED: Applications must provide their own storage implementation
+	// (file-based, DHT, cloud storage, etc.) that implements the StorageBackend interface.
+	//
+	// For file-based storage, use NewFileStorage().
+	// For DHT storage, provide your own DHT-backed implementation.
+	// For cloud storage, provide your own cloud-backed implementation.
 	Storage StorageBackend
 
 	// Tags are optional key-value pairs for organizing keys.

@@ -7,7 +7,27 @@ import (
 	"github.com/jeremyhahn/go-frost/pkg/frost/helpers"
 )
 
-// Part3 runs the final DKG round: verifies received shares, sums them into the signing share and derives the group public key and verifying shares.
+// Part3 executes round 3 (final round) of the DKG protocol.
+//
+// Each participant:
+//  1. Verifies all received shares using VSS verification
+//  2. Accumulates all shares (received + own) to compute final signing share
+//  3. Computes verifying share (public key share)
+//  4. Aggregates commitments to compute group public key and all verifying shares
+//
+// Inputs:
+//   - round2SecretPackage: The secret package from Part2 (kept private)
+//   - round1Packages: Map of Round1Packages received from all other participants
+//   - round2Packages: Map of Round2Packages received from all other participants
+//   - suite: The ciphersuite to use
+//
+// Outputs:
+//   - keyPackage: This participant's final key material for signing
+//   - publicKeyPackage: The group's public key material for verification
+//
+// Errors:
+//   - Returns error if any share verification fails (identifies the culprit)
+//   - Returns error if wrong number of packages provided
 func Part3(
 	round2SecretPackage *Round2SecretPackage,
 	round1Packages map[frost.Identifier]*Round1Package,

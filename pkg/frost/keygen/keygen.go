@@ -1,4 +1,7 @@
-// Package keygen implements trusted dealer key generation with VSS per RFC 9591 Appendix C.
+// Package keygen implements key generation for FROST.
+//
+// This package provides trusted dealer key generation using
+// Verifiable Secret Sharing (VSS) as specified in RFC 9591 Appendix C.
 package keygen
 
 import (
@@ -17,7 +20,24 @@ type PublicKeyPackage struct {
 	VerificationShares []frost.VerificationShare
 }
 
-// TrustedDealerKeygen creates a dealer and returns key packages and the public key package for unique non-zero identifiers, with 2 <= minSigners <= maxSigners.
+// TrustedDealerKeygen generates key packages for all participants using a trusted dealer.
+//
+// This is a convenience function that creates a dealer and generates shares.
+//
+// Inputs:
+//   - maxSigners: Total number of participants
+//   - minSigners: Minimum threshold required for signing
+//   - identifiers: Participant identifiers (must be unique and non-zero)
+//   - suite: The ciphersuite to use
+//
+// Outputs:
+//   - keyPackages: Key packages for each participant (contains secret share)
+//   - publicKeyPackage: Public key package (contains group key and verification shares)
+//
+// Errors:
+//   - Returns error if minSigners > maxSigners
+//   - Returns error if minSigners < 2
+//   - Returns error if identifiers contains duplicates or zeros
 func TrustedDealerKeygen(
 	maxSigners, minSigners uint32,
 	identifiers []frost.Identifier,

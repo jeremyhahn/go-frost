@@ -92,48 +92,118 @@ func (r *ParticipantReputation) TotalViolations() int {
 		r.InvalidCommitments
 }
 
-// ReputationTracker is a thread-safe record of participant misbehavior with automatic exclusion past thresholds.
+// ReputationTracker tracks participant misbehavior and manages automatic exclusion.
+//
+// This interface provides:
+// - Misbehavior tracking per participant
+// - Automatic exclusion after threshold violations
+// - Reputation queries for access control decisions
+//
+// Implementations should be thread-safe for concurrent access.
 type ReputationTracker interface {
-	// RecordMisbehavior records a misbehavior of the given type for a participant.
+	// RecordMisbehavior records a misbehavior instance for a participant.
+	//
+	// Parameters:
+	//   - participantID: The identifier of the misbehaving participant
+	//   - misbehaviorType: The type of misbehavior detected
+	//   - details: Additional context about the misbehavior
+	//
+	// Returns error if the record cannot be stored.
 	RecordMisbehavior(participantID frost.Identifier, misbehaviorType MisbehaviorType, details string) error
 
-	// GetReputation returns a participant's reputation, or ErrParticipantNotFound.
+	// GetReputation returns the current reputation for a participant.
+	//
+	// Parameters:
+	//   - participantID: The identifier of the participant
+	//
+	// Returns:
+	//   - ParticipantReputation: The reputation record
+	//   - error: ErrParticipantNotFound if not tracked, or storage error
 	GetReputation(participantID frost.Identifier) (ParticipantReputation, error)
 
-	// IsExcluded reports whether a participant is excluded.
+	// IsExcluded checks if a participant is currently excluded.
+	//
+	// Parameters:
+	//   - participantID: The identifier of the participant
+	//
+	// Returns:
+	//   - bool: true if excluded, false otherwise
+	//   - error: Storage error if any
 	IsExcluded(participantID frost.Identifier) (bool, error)
 
-	// ExcludeParticipant excludes a participant for the given reason.
+	// ExcludeParticipant manually excludes a participant from future operations.
+	//
+	// Parameters:
+	//   - participantID: The identifier of the participant to exclude
+	//   - reason: The reason for manual exclusion
+	//
+	// Returns error if the exclusion cannot be recorded.
 	ExcludeParticipant(participantID frost.Identifier, reason string) error
 
-	// ReinstateParticipant lifts a participant's exclusion.
+	// ReinstateParticipant removes exclusion status from a participant.
+	//
+	// Parameters:
+	//   - participantID: The identifier of the participant to reinstate
+	//
+	// Returns error if the participant is not tracked or cannot be reinstated.
 	ReinstateParticipant(participantID frost.Identifier) error
 
-	// GetMisbehaviorHistory returns up to limit records (0 = all), or ErrParticipantNotFound.
+	// GetMisbehaviorHistory returns the misbehavior history for a participant.
+	//
+	// Parameters:
+	//   - participantID: The identifier of the participant
+	//   - limit: Maximum number of records to return (0 = all)
+	//
+	// Returns:
+	//   - []MisbehaviorRecord: The misbehavior records
+	//   - error: ErrParticipantNotFound if not tracked, or storage error
 	GetMisbehaviorHistory(participantID frost.Identifier, limit int) ([]MisbehaviorRecord, error)
 
-	// CleanupOldRecords removes records older than maxAge and returns how many.
+	// CleanupOldRecords removes misbehavior records older than the specified duration.
+	//
+	// Parameters:
+	//   - maxAge: Records older than this are removed
+	//
+	// Returns the number of records removed and any error.
 	CleanupOldRecords(maxAge time.Duration) (int, error)
 }
 
 // ReputationConfig configures reputation tracking behavior.
 type ReputationConfig struct {
-	// MaxAuthenticationFailures before exclusion; 0 disables; default 3.
+	// MaxAuthenticationFailures is the threshold for authentication failures
+	// before automatic exclusion. Set to 0 to disable automatic exclusion
+	// for this violation type.
+	// Default: 3
 	MaxAuthenticationFailures int
 
-	// MaxInvalidShares before exclusion; 0 disables; default 2.
+	// MaxInvalidShares is the threshold for invalid signature shares
+	// before automatic exclusion. Set to 0 to disable automatic exclusion
+	// for this violation type.
+	// Default: 2
 	MaxInvalidShares int
 
-	// MaxTimeouts before exclusion; 0 disables; default 5.
+	// MaxTimeouts is the threshold for timeout violations
+	// before automatic exclusion. Set to 0 to disable automatic exclusion
+	// for this violation type.
+	// Default: 5
 	MaxTimeouts int
 
-	// MaxNonceReuses before exclusion; default 1.
+	// MaxNonceReuses is the threshold for nonce reuse attempts
+	// before automatic exclusion. This should be very low as nonce reuse
+	// is a critical security violation.
+	// Default: 1
 	MaxNonceReuses int
 
-	// MaxInvalidCommitments before exclusion; 0 disables; default 3.
+	// MaxInvalidCommitments is the threshold for invalid commitments
+	// before automatic exclusion. Set to 0 to disable automatic exclusion
+	// for this violation type.
+	// Default: 3
 	MaxInvalidCommitments int
 
-	// RecordRetention is how long records are kept; 0 keeps them forever; default 30 days.
+	// RecordRetention is how long to keep misbehavior records.
+	// Records older than this are eligible for cleanup.
+	// Set to 0 to keep records indefinitely.
+	// Default: 30 days
 	RecordRetention time.Duration
 }
 
@@ -149,7 +219,10 @@ func DefaultReputationConfig() ReputationConfig {
 	}
 }
 
-// InMemoryReputationTracker is a thread-safe in-memory ReputationTracker for single-node use.
+// InMemoryReputationTracker is an in-memory implementation of ReputationTracker.
+//
+// This implementation is thread-safe and suitable for single-node deployments.
+// For distributed systems, use a persistent implementation with shared storage.
 type InMemoryReputationTracker struct {
 	config      ReputationConfig
 	mu          sync.RWMutex

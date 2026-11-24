@@ -13,14 +13,47 @@ import (
 	"sync"
 )
 
-// FileBackend is a thread-safe Backend storing each key as a file under the base path, mirroring the key hierarchy.
+// FileBackend implements Backend using file system storage.
+//
+// This implementation is thread-safe and suitable for:
+//   - Local persistence
+//   - Production deployments
+//   - Secure key material storage
+//
+// Files are stored with configurable permissions for security.
+// The storage directory structure mirrors the key hierarchy.
+//
+// Example directory structure:
+//
+//	/var/lib/frost/
+//	  frost/
+//	    keypackages/
+//	      key-123.json
+//	      key-456.json
+//	    groups/
+//	      group-abc.json
 type FileBackend struct {
 	mu       sync.RWMutex
 	basePath string
 	closed   bool
 }
 
-// NewFileBackend returns a file-based Backend rooted at basePath; Close it when done.
+// NewFileBackend creates a new file-based storage backend.
+//
+// Parameters:
+//   - basePath: Base directory for file storage
+//
+// Returns:
+//   - Backend: File storage implementation
+//   - error: Any error that occurred during initialization
+//
+// Example:
+//
+//	storage, err := storage.NewFileBackend("/var/lib/frost/keystore")
+//	if err != nil {
+//	    return err
+//	}
+//	defer storage.Close()
 func NewFileBackend(basePath string) (Backend, error) {
 	if basePath == "" {
 		return nil, fmt.Errorf("storage: base path cannot be empty")

@@ -1,4 +1,28 @@
-// Package ristretto255 implements the FROST group interface on ristretto255 (gtank/ristretto255), constant-time throughout, with little-endian scalars per RFC 9591 Section 6.2.
+// Package ristretto255 implements the FROST group interface using the ristretto255 group.
+//
+// Ristretto255 is a prime-order group based on Curve25519, providing:
+// - 128-bit security level
+// - Fast, constant-time operations
+// - Clean abstraction without cofactor complications
+//
+// This implementation uses github.com/gtank/ristretto255 for the underlying
+// cryptographic primitives.
+//
+// # Security Considerations
+//
+// This implementation provides FULL constant-time guarantees for all operations,
+// including both point and scalar arithmetic. This makes ristretto255 the
+// RECOMMENDED ciphersuite for deployments where timing side-channel attacks
+// are a concern.
+//
+// Unlike P-256 (partial constant-time) and secp256k1 (NOT constant-time),
+// ristretto255 uses constant-time implementations for ALL operations:
+// - Point addition, scalar multiplication, base multiplication
+// - Scalar addition, subtraction, multiplication, inversion
+// - Element/scalar encoding and decoding
+//
+// Per RFC 9591 Section 6.2, ristretto255 uses little-endian byte encoding
+// for scalars (unlike P-256/secp256k1 which use big-endian).
 package ristretto255
 
 import (
@@ -144,7 +168,15 @@ func (s *Scalar) Copy() group.Scalar {
 	return &Scalar{scalar: result}
 }
 
-// Compare returns -1, 0 or 1; ordering is not constant-time, so use Equal for secrets.
+// Compare compares this scalar with another scalar.
+// Returns -1 if this < other, 0 if equal, 1 if this > other.
+//
+// IMPORTANT: This implementation is NOT constant-time for ordering (< or >).
+// However, equality checks use constant-time comparison via crypto/subtle.
+// This method should NOT be used with secret scalar values for ordering comparisons.
+// For equality checks with secrets, use Equal() which is fully constant-time.
+//
+// Note: Currently unused in production code. Provided for interface completeness.
 func (s *Scalar) Compare(other group.Scalar) int {
 	otherScalar := other.(*Scalar)
 

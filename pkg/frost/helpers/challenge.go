@@ -10,7 +10,18 @@ import (
 
 // ChallengeComputer computes the signature challenge.
 type ChallengeComputer interface {
-	// Compute returns the challenge H2(group_commitment || group_public_key || msg).
+	// Compute calculates the signature challenge scalar.
+	//
+	// Inputs:
+	// - groupCommitment: The aggregated group commitment point (R)
+	// - groupPublicKey: The group's public key
+	// - msg: The message being signed
+	//
+	// Outputs:
+	// - challenge: The challenge scalar
+	//
+	// The challenge is computed as:
+	// H2(group_commitment || group_public_key || msg)
 	Compute(groupCommitment group.Element, groupPublicKey group.Element, msg []byte) (group.Scalar, error)
 }
 
@@ -23,7 +34,17 @@ type challengeComputer struct {
 	suite ciphersuite.Ciphersuite
 }
 
-// Compute implements ChallengeComputer.Compute per RFC 9591 Section 4.6.
+// Compute implements ChallengeComputer.Compute
+//
+// Calculates the signature challenge scalar.
+// The challenge is computed as:
+// H2(group_commitment || group_public_key || msg)
+//
+// Algorithm (from RFC 9591 Section 4.6):
+// 1. Serialize group_commitment
+// 2. Serialize group_public_key
+// 3. Compute challenge_input = group_commitment_enc || group_public_key_enc || msg
+// 4. Return H2(challenge_input)
 func (c *challengeComputer) Compute(groupCommitment group.Element, groupPublicKey group.Element, msg []byte) (group.Scalar, error) {
 	if groupCommitment == nil {
 		return nil, frost.NewParameterError("groupCommitment", "cannot be nil", frost.ErrInvalidParameters)

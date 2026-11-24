@@ -1,4 +1,7 @@
-// Package signing implements FROST signing: Participant, Aggregator, Coordinator and convenience functions.
+// Package signing implements the FROST signing protocol.
+//
+// This package provides both low-level primitives (Participant, Aggregator, Coordinator)
+// and high-level convenience functions for common signing operations.
 package signing
 
 import (
@@ -16,7 +19,17 @@ type NoncePackage struct {
 // SignatureShare wraps frost.SignatureShare for convenience.
 type SignatureShare = frost.SignatureShare
 
-// GenerateNonces runs round 1 for a participant; keep the nonces secret and share the commitments.
+// GenerateNonces generates nonces and commitments for the signing protocol.
+//
+// This is a convenience function that creates a participant and runs round 1.
+//
+// Inputs:
+//   - identifier: The participant's identifier
+//   - secretShare: The participant's secret share
+//   - suite: The ciphersuite to use
+//
+// Outputs:
+//   - noncePackage: Contains nonces (keep secret) and commitments (share with others)
 func GenerateNonces(
 	identifier frost.Identifier,
 	secretShare group.Scalar,
@@ -39,7 +52,19 @@ func GenerateNonces(
 	}, nil
 }
 
-// Sign returns the participant's round 2 signature share.
+// Sign generates a signature share using the participant's secret share.
+//
+// This is a convenience function for round 2 of the signing protocol.
+//
+// Inputs:
+//   - message: The message to sign
+//   - keyPackage: The participant's key package
+//   - noncePackage: The nonces generated in round 1
+//   - allCommitments: All participants' commitments
+//   - suite: The ciphersuite to use
+//
+// Outputs:
+//   - signatureShare: The participant's signature share
 func Sign(
 	message []byte,
 	keyPackage *frost.KeyPackage,
@@ -66,7 +91,20 @@ func Sign(
 	return &share, nil
 }
 
-// Aggregate combines the signature shares into the FROST signature.
+// Aggregate combines signature shares into a final signature.
+//
+// This is a convenience function for the aggregation phase.
+//
+// Inputs:
+//   - message: The message that was signed
+//   - commitments: All participants' commitments
+//   - signatureShares: All participants' signature shares
+//   - verificationShares: All participants' verification shares
+//   - groupPublicKey: The group's public key
+//   - suite: The ciphersuite to use
+//
+// Outputs:
+//   - signature: The aggregated FROST signature
 func Aggregate(
 	message []byte,
 	commitments map[frost.Identifier]*frost.SigningCommitments,
@@ -104,7 +142,19 @@ func Aggregate(
 	)
 }
 
-// VerifySignature returns nil if signature is valid for message and groupPublicKey.
+// VerifySignature verifies a FROST signature.
+//
+// This is a convenience function for signature verification.
+//
+// Inputs:
+//   - message: The message that was signed
+//   - signature: The signature to verify
+//   - groupPublicKey: The group's public key
+//   - suite: The ciphersuite to use
+//
+// Returns:
+//   - nil if the signature is valid
+//   - error if the signature is invalid
 func VerifySignature(
 	message []byte,
 	signature frost.Signature,

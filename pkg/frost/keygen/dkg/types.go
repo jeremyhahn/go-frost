@@ -1,4 +1,25 @@
-// Package dkg implements FROST's three-round Pedersen DKG with Schnorr proofs of knowledge; round 1 is broadcast, round 2 needs confidential authenticated channels.
+// Package dkg implements Distributed Key Generation for FROST.
+//
+// This package implements the DKG protocol from the FROST paper (Figure 1),
+// which is a variant of Pedersen's DKG with Schnorr proofs of knowledge
+// to protect against rogue-key attacks.
+//
+// The protocol consists of three rounds:
+//
+//  1. Part1: Each participant generates a secret polynomial and broadcasts
+//     commitments to its coefficients along with a Schnorr proof of knowledge.
+//
+//  2. Part2: Each participant verifies the proofs from all other participants
+//     and sends secret shares to each other participant on secure channels.
+//
+//  3. Part3: Each participant verifies received shares using VSS verification,
+//     accumulates them to form the final signing share, and computes the
+//     group public key.
+//
+// Security Requirements:
+//   - Round 1 packages must be broadcast (all participants see the same values)
+//   - Round 2 packages must be sent on confidential, authenticated channels
+//   - All proofs and shares must be verified before use
 package dkg
 
 import (
@@ -20,7 +41,9 @@ type Signature struct {
 	Z group.Scalar
 }
 
-// Round1Package is broadcast in round 1: polynomial commitments and a proof of knowledge.
+// Round1Package is broadcast to all participants in round 1.
+// It contains the public commitments to polynomial coefficients and
+// a proof of knowledge of the secret coefficient.
 type Round1Package struct {
 	// Commitment contains commitments to the polynomial coefficients.
 	// These are [g^a_0, g^a_1, ..., g^a_(t-1)] where t is minSigners.
@@ -32,7 +55,11 @@ type Round1Package struct {
 	ProofOfKnowledge Signature
 }
 
-// Round1SecretPackage holds the secret polynomial between rounds 1 and 2; never share it.
+// Round1SecretPackage contains secret data that must be kept private
+// between round 1 and round 2. This includes the secret polynomial
+// coefficients that will be used to generate shares for other participants.
+//
+// SECURITY: This package MUST NOT be shared with any other participant.
 type Round1SecretPackage struct {
 	// Identifier is this participant's unique ID
 	Identifier frost.Identifier
@@ -52,7 +79,10 @@ type Round1SecretPackage struct {
 	MaxSigners uint32
 }
 
-// Round2Package carries one participant's share; send it on a confidential, authenticated channel.
+// Round2Package is sent privately to each other participant in round 2.
+// It contains the secret share computed for that specific participant.
+//
+// SECURITY: This package MUST be sent on a confidential, authenticated channel.
 type Round2Package struct {
 	// SigningShare is the secret share f_i(recipient_id) computed for the recipient.
 	// This is a scalar value that the recipient will accumulate with shares
@@ -72,15 +102,21 @@ func (p *Round2Package) Zeroize() {
 	runtime.KeepAlive(p.SigningShare)
 }
 
-// Round2SecretPackage holds the participant's own share and commitment between rounds 2 and 3; never share it.
+// Round2SecretPackage contains secret data that must be kept private
+// between round 2 and round 3. This includes the participant's own share
+// and the commitment for verification.
+//
+// SECURITY: This package MUST NOT be shared with any other participant.
 type Round2SecretPackage struct {
 	// Identifier is this participant's unique ID
 	Identifier frost.Identifier
 
-	// Commitment is this participant's polynomial commitment, checked in round 3.
+	// Commitment contains this participant's polynomial commitments.
+	// Used for verification in round 3.
 	Commitment []group.Element
 
-	// SecretShare is this participant's own share f_i(i), added in round 3.
+	// SecretShare is this participant's own share: f_i(i)
+	// This is added to received shares in round 3.
 	SecretShare group.Scalar
 
 	// MinSigners is the threshold (t)
@@ -102,7 +138,8 @@ type PublicKeyPackage struct {
 	VerifyingKey group.Element
 }
 
-// Zeroize erases the secret coefficients; call it after round 2.
+// Zeroize securely erases the secret coefficients from memory.
+// This should be called after round 2 is complete.
 func (sp *Round1SecretPackage) Zeroize() {
 	for i, coeff := range sp.Coefficients {
 		runtime.KeepAlive(coeff)
@@ -117,7 +154,8 @@ func (sp *Round1SecretPackage) Zeroize() {
 	}
 }
 
-// Zeroize erases the secret share; call it after round 3.
+// Zeroize securely erases the secret share from memory.
+// This should be called after round 3 is complete.
 func (sp *Round2SecretPackage) Zeroize() {
 	runtime.KeepAlive(sp.SecretShare)
 	if sp.SecretShare != nil {
