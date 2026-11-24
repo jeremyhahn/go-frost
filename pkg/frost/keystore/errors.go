@@ -127,10 +127,7 @@ var (
 	// this package would resolve differently from encoding/json.
 	errJSONDuplicateMember = errors.New("JSON member appears more than once")
 
-	// errJSONEscapedKey reports a member name carrying a JSON escape. Such a
-	// name reads as one thing to encoding/json, which unescapes it, and as
-	// another to a scan that compares raw bytes - so a document could carry
-	// the share twice and be seen as carrying it once.
+	// errJSONEscapedKey reports a member name with a JSON escape, which encoding/json and the raw scan would read differently.
 	errJSONEscapedKey = errors.New("JSON member name contains an escape")
 )
 

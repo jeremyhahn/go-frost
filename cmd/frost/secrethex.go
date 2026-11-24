@@ -15,18 +15,7 @@ import (
 // a JSON string.
 var errSecretHexNotString = errors.New("frost: secret must be a JSON string of hex digits")
 
-// secretHex is secret material (a secret share or a signing nonce) that
-// travels through a JSON file as a hex string but is held in memory as bytes
-// this program allocated and owns. That ownership is what makes zero sound:
-// the bytes are never a string literal's read-only backing array, never shared
-// with a Go string, and never a map key, so overwriting them cannot fault and
-// cannot corrupt anything else (go-frost#15).
-//
-// The slice holds the field's exact JSON wire form — the quoted hex string —
-// so MarshalJSON hands encoding/json the owned buffer itself instead of a
-// fresh copy this program could never reach. encoding/json still copies it
-// into its own internal buffers, which are outside this program's control;
-// callers scrub the marshaled document they get back.
+// secretHex is secret material held as owned bytes in its quoted JSON wire form, so it can be zeroed safely; callers scrub marshaled output.
 type secretHex []byte
 
 var (
@@ -69,9 +58,7 @@ func (s *secretHex) UnmarshalJSON(data []byte) error {
 	if len(data) < 2 || data[0] != '"' || data[len(data)-1] != '"' {
 		return errSecretHexNotString
 	}
-	// Escapes only shrink, and an invalid UTF-8 byte grows to at most the
-	// three bytes of U+FFFD, so this capacity is never exceeded and append
-	// never reallocates — a reallocation would strand an unscrubbed copy.
+	// Unquoting never exceeds this capacity, so append never reallocates and strands an unscrubbed copy.
 	owned := make([]byte, 0, 3*len(data))
 	owned = append(owned, '"')
 	owned, ok := appendUnquoted(owned, data[1:len(data)-1])
@@ -85,11 +72,7 @@ func (s *secretHex) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// appendUnquoted appends the unescaped contents of a JSON string body to dst,
-// following encoding/json: simple escapes, \uXXXX with surrogate pairs
-// combined, and U+FFFD for an unpaired surrogate or invalid UTF-8. It reports
-// false for a malformed escape, which encoding/json rejects before calling
-// UnmarshalJSON, so that path is only reachable by calling it directly.
+// appendUnquoted appends the unescaped JSON string body to dst as encoding/json does; false means a malformed escape.
 func appendUnquoted(dst, body []byte) ([]byte, bool) {
 	for i := 0; i < len(body); {
 		c := body[i]

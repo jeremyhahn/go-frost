@@ -16,10 +16,7 @@ typedef enum {
     FROST_ERR_VERIFY_FAILED = 4,
     FROST_ERR_SERIALIZE_FAILED = 5,
     FROST_ERR_DESERIALIZE_FAILED = 6,
-    // The requested ciphersuite exists but is not permitted in this runtime,
-    // which today means it is built on algorithms FIPS 140-3 does not approve
-    // while the module is enforcing approved-only operation
-    // (GODEBUG=fips140=only).
+    // The ciphersuite exists but is not permitted while FIPS 140-3 approved-only mode is enforced.
     FROST_ERR_CIPHERSUITE_NOT_ALLOWED = 7,
     FROST_ERR_INTERNAL = 99
 } frost_error_t;
@@ -44,11 +41,7 @@ import (
 	"github.com/jeremyhahn/go-frost/pkg/secmem"
 )
 
-// The mirrors in suite.go must track the C enums above, or the shim would
-// resolve the wrong ciphersuite while every Go-level test still passed. Each
-// pair is pinned in both directions: converting a negative untyped constant to
-// uint is a compile error, so a divergence stops the build rather than
-// shipping.
+// Compile-time checks that the suite.go mirrors equal the C enums in both directions.
 const (
 	_ = uint(C.FROST_OK - statusOK)
 	_ = uint(statusOK - C.FROST_OK)

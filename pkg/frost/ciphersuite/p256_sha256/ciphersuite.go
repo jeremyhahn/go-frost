@@ -260,12 +260,7 @@ func (cs *P256SHA256) hashToScalar(domain string, data []byte) group.Scalar {
 	return p256.NewScalarFromBigInt(hashInt)
 }
 
-// expandMessageXMD implements expand_message_xmd from RFC 9380 Section 5.3.1.
-// This is used for hash_to_field to produce uniform random bytes.
-//
-// Parameters (for SHA-256):
-// - b_in_bytes = 32 (SHA-256 output size)
-// - s_in_bytes = 64 (SHA-256 input block size)
+// expandMessageXMD implements RFC 9380 Section 5.3.1 expand_message_xmd for SHA-256 (b=32, s=64).
 func expandMessageXMD(msg, dst []byte, lenInBytes int) []byte {
 	const (
 		bInBytes = 32 // SHA-256 output size
@@ -275,9 +270,7 @@ func expandMessageXMD(msg, dst []byte, lenInBytes int) []byte {
 	// Step 1: ell = ceil(len_in_bytes / b_in_bytes)
 	ell := (lenInBytes + bInBytes - 1) / bInBytes
 
-	// Step 2: Abort checks (len(DST) <= 255, ell <= 255, len_in_bytes <= 65535)
-	// SECURITY NOTE: These conditions should never fail with internal calls.
-	// A failure here indicates a bug in the FROST library implementation.
+	// Step 2: abort checks; internal calls never fail them, so an error is a library bug.
 	if ell > 255 || len(dst) > 255 || lenInBytes > 65535 {
 		panic("FROST library bug: expandMessageXMD called with invalid parameters")
 	}

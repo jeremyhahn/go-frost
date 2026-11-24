@@ -158,16 +158,7 @@ func (s *signingSession) GetSignature() (frost.Signature, error) {
 		return frost.Signature{}, frost.NewParameterError("signatureShares", "insufficient signature shares", frost.ErrInsufficientParticipants)
 	}
 
-	// For a complete session-based signing implementation, we would need to:
-	// 1. Store the group public key in the session
-	// 2. Store key packages or participant information
-	// 3. Use the aggregator to combine the signature shares
-	//
-	// Since this is a simplified implementation and the Sign method in FrostService
-	// handles the complete flow, sessions are primarily useful for async/distributed scenarios
-	// where the service layer would need more context.
-	//
-	// For now, return an error indicating this limitation
+	// Session aggregation needs the group key and key packages in the session, which it does not hold; use FrostService.Sign.
 	return frost.Signature{}, frost.NewParameterError("session", "session-based aggregation requires group public key context", frost.ErrInvalidConfiguration)
 }
 

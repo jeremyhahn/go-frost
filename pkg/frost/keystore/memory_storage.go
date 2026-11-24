@@ -14,12 +14,7 @@ import (
 	"github.com/jeremyhahn/go-frost/pkg/storage"
 )
 
-// expiringBackend is the storage backend MemoryStorage needs: one that can
-// hand an entry over rather than copy it, so a plain value can be moved into
-// protected memory without leaving the original behind. Composing the
-// capability into a local interface keeps it off storage.Backend, which
-// backends with no notion of expiry - the file backend among them - could not
-// satisfy.
+// expiringBackend is a backend that can hand an entry over instead of copying it, so a plain value moves into protected memory.
 type expiringBackend interface {
 	storage.Backend
 
@@ -47,21 +42,7 @@ var _ expiringBackend = (*storage.MemoryBackend)(nil)
 type MemoryStorage struct {
 	backend expiringBackend
 
-	// mu guards secrets, which holds the payloads written through PutSecret.
-	// They are kept in enclaves rather than in the plain []byte map of the
-	// underlying backend so that a serialized key package is never resident
-	// in memory as plaintext.
-	//
-	// mu also serializes every operation on the backend, so that a key moving
-	// between the two keyspaces does so atomically. Put/PutSecret each have
-	// to touch both stores - one installs a value, the other clears whatever
-	// the key held in the other keyspace - and holding mu across the pair is
-	// what keeps two concurrent writers from interleaving into a state where
-	// both report success and the key holds nothing.
-	//
-	// It is an exclusive lock rather than an RWMutex because every operation
-	// mutates: a read opens and reseals an enclave, and any operation may reap
-	// an entry whose TTL has elapsed.
+	// mu guards secrets (PutSecret payloads in enclaves) and serializes every backend operation, so a key moves between keyspaces atomically.
 	mu      sync.Mutex
 	secrets map[string]*secretEntry
 }
@@ -96,10 +77,7 @@ func NewMemoryStorage() StorageBackend {
 	}
 }
 
-// dropSecret removes the secret entry for key, if there is one, destroying its
-// enclave. Destroying under the lock keeps a concurrent reader from observing a
-// half-removed entry.
-// The caller must hold m.mu for writing.
+// dropSecret destroys key's secret entry, if any; the caller must hold m.mu for writing.
 func (m *MemoryStorage) dropSecret(key string) {
 	entry, ok := m.secrets[key]
 	if !ok {
@@ -109,17 +87,7 @@ func (m *MemoryStorage) dropSecret(key string) {
 	entry.secret.Destroy()
 }
 
-// liveSecret returns the unexpired secret entry for key, if any, reaping the
-// entry on the way past if its TTL has elapsed.
-//
-// Reaping rather than merely hiding is the point: an expired payload that
-// stays in the map keeps its plaintext resident in protected memory for the
-// rest of the process's life, which is exactly the lifetime the TTL was set to
-// bound. Every path that can observe an entry goes through here or through
-// reapExpired, so nothing keeps an expired enclave alive until the next
-// explicit Delete, overwrite or Close.
-//
-// The caller must hold m.mu.
+// liveSecret returns key's unexpired secret entry, destroying it if its TTL has elapsed; the caller must hold m.mu.
 func (m *MemoryStorage) liveSecret(key string) *secretEntry {
 	entry, ok := m.secrets[key]
 	if !ok {

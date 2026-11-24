@@ -121,11 +121,7 @@ func (p *polynomialHelper) DeriveInterpolatingValue(xCoords []group.Scalar, xi g
 		}
 	}
 
-	// Step 3: Compute Lagrange coefficient
-	// Special case: if only one coordinate, coefficient is 1 (mathematically correct).
-	// NOTE: In FROST, this case should never occur because threshold >= 2 is enforced
-	// during key generation (see dealer.go:82-84). This check exists for mathematical
-	// completeness and defense-in-depth.
+	// Step 3: compute the coefficient; a single coordinate gives 1 (keygen enforces threshold >= 2).
 	if len(xCoords) == 1 {
 		one := scalarOne(p.group)
 		return one, nil

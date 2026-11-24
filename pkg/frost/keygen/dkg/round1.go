@@ -85,13 +85,7 @@ func Part1(
 	return secretPackage, publicPackage, nil
 }
 
-// computeProofOfKnowledge creates a Schnorr signature proving knowledge of the secret.
-//
-// The proof is: sigma = (R, z) where:
-//   - k is a random nonce
-//   - R = g^k
-//   - c = HDKG(identifier || commitment || R)
-//   - z = k + secret * c
+// computeProofOfKnowledge returns the Schnorr proof (R = g^k, z = k + secret*c) with c = HDKG(identifier || commitment || R).
 func computeProofOfKnowledge(
 	identifier frost.Identifier,
 	secret group.Scalar,
@@ -119,8 +113,7 @@ func computeProofOfKnowledge(
 	return &Signature{R: R, Z: z}, nil
 }
 
-// computeChallenge computes the DKG challenge hash.
-// challenge = HDKG(identifier || commitment || R)
+// computeChallenge returns HDKG(identifier || commitment || R).
 func computeChallenge(
 	identifier frost.Identifier,
 	commitment group.Element,

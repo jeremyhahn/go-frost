@@ -375,9 +375,8 @@ it. `OpenStoredKeyPackage` decodes from inside the enclave and base64-decodes
 the share straight into a protected buffer of its own. Neither the share nor
 the document is ever an ordinary heap allocation, and the wire format is
 unchanged - the share is still written under the `SecretShare` key, byte for
-byte as `encoding/json` used to write it, member order included: the share
-member is spliced in after `Identifier`, where the plaintext field used to be
-declared. Existing stores read back unmodified.
+byte as `encoding/json` writes it, member order included: the share member
+goes right after `Identifier`. Existing stores read back unmodified.
 
 A document carrying no share is rejected with `ErrMissingSecretShare`. So is
 one this package cannot decode without routing the share through the heap: a

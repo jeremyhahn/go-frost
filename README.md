@@ -84,8 +84,8 @@ ceremony that produced them, and shares on a non-approved curve are the less
 defensible of two non-approved options. ristretto255 remains the default
 everywhere else, so existing shares are unaffected.
 
-Whether this library should run under `fips140=only` at all is an open
-question for the owner — see issue #14.
+Whether this library should run under `fips140=only` at all is open; see
+issue #14.
 
 Import a ciphersuite package directly to bypass this policy — the gate is on
 selection by name, not on the implementations.

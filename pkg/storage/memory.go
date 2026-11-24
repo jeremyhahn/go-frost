@@ -44,11 +44,7 @@ type MemoryBackend struct {
 	closed bool
 }
 
-// dropEntry removes the entry for key and zeroizes the data it held. Every
-// path that drops an entry without handing its data to someone goes through
-// here, so a path added later cannot quietly reintroduce the residue.
-//
-// The caller must hold m.mu.
+// dropEntry removes key's entry and zeroizes its data; the caller must hold m.mu.
 func (m *MemoryBackend) dropEntry(key string) {
 	entry, ok := m.data[key]
 	if !ok {
@@ -307,11 +303,7 @@ func (m *MemoryBackend) Close() error {
 	return nil
 }
 
-// cleanExpired removes expired entries from memory.
-// This should be called periodically if TTL is used extensively.
-//
-// Note: This is a utility method for memory management and is not part
-// of the Backend interface.
+// cleanExpired removes expired entries; not part of Backend.
 func (m *MemoryBackend) cleanExpired() {
 	m.mu.Lock()
 	defer m.mu.Unlock()

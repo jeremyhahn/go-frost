@@ -111,11 +111,7 @@ func NewSecret(size int, fill func(dst []byte) (int, error)) (*SecretBytes, erro
 
 	buf := memguard.NewBuffer(size)
 
-	// fill is caller-supplied, so it can panic. Without this the buffer would
-	// be left mlock'd holding whatever fill had written into it before the
-	// panic, with nothing left alive to wipe it. Destroy is idempotent and
-	// reads buf at the time it runs, so it covers the reassignment below and
-	// costs nothing on the path where Seal has already destroyed the buffer.
+	// Destroy the buffer even if fill panics; Destroy is idempotent.
 	defer func() { buf.Destroy() }()
 
 	n, err := fill(buf.Bytes())
@@ -233,18 +229,7 @@ func (s *SecretBytes) Size() int {
 	return s.size
 }
 
-// withOpen runs fn against the plaintext of the secret, holding s.mu for the
-// entire open/use/reseal cycle.
-//
-// Holding the mutex across the whole cycle is what makes the cycle atomic with
-// respect to Destroy: a concurrent Destroy lands either entirely before it (fn
-// is never called and ErrDestroyed is returned) or entirely after it. Were the
-// reseal able to interleave with a Destroy, it would install a fresh enclave
-// over the nil one Destroy left behind, resurrecting secret material the
-// caller had explicitly destroyed.
-//
-// fn must not call any method on s - s.mu is not reentrant - and must not
-// retain the byte slice it is given.
+// withOpen runs fn on the plaintext holding s.mu for the whole cycle, atomic with Destroy; fn must not call s or retain the slice.
 func (s *SecretBytes) withOpen(fn func([]byte) error) error {
 	if s == nil {
 		return ErrNilSecret

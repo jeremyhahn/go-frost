@@ -150,11 +150,7 @@ func (t *FrostNonceTracker) ClearParticipant(
 	_ string,
 	_ frost.Identifier,
 ) error {
-	// Clear both hiding and binding commitments
-	// We don't have a direct "clear by participant" method, so we record empty
-	// commitments and then clear the session. For now, we'll just document this
-	// limitation. A production implementation might add a ClearParticipant method
-	// to CommitmentTracker.
+	// CommitmentTracker has no per-participant clear, so participant commitments stay until the session is cleared.
 
 	// For now, this is a no-op. The commitments will be cleared when the session
 	// is cleared. If we need finer-grained control, we can extend CommitmentTracker

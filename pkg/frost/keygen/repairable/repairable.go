@@ -247,10 +247,7 @@ func RepairShareStep3(
 	}, nil
 }
 
-// computeLagrangeCoefficient computes the Lagrange coefficient L_i(x)
-// for participant i at point x, given all participant identifiers.
-//
-// L_i(x) = product((x - x_j) / (x_i - x_j)) for all j != i
+// computeLagrangeCoefficient returns L_i(x) = product((x - x_j) / (x_i - x_j)) for j != i.
 func computeLagrangeCoefficient(
 	xCoords []group.Scalar,
 	x group.Scalar,

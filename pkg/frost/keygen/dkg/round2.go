@@ -152,10 +152,7 @@ func VerifyShare(
 	return nil
 }
 
-// evaluateCommitmentPolynomial evaluates the commitment polynomial at point x.
-// Returns: product(commitment[k]^(x^k)) for k=0..t-1
-//
-// This is the VSS verification equation in group element form.
+// evaluateCommitmentPolynomial returns product(commitment[k]^(x^k)).
 func evaluateCommitmentPolynomial(commitment []group.Element, x group.Scalar, grp group.Group) group.Element {
 	// Start with identity
 	result := grp.Identity()

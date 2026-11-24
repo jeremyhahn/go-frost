@@ -824,9 +824,7 @@ func TestFileStorage_Put_Error(t *testing.T) {
 		t.Fatalf("Put() error = %v", err)
 	}
 
-	// Put has to create the parent directory of the key. Occupying that path
-	// with a regular file fails the write with ENOTDIR for every user,
-	// including the root that CI runs the job container as.
+	// A regular file at the parent path fails Put with ENOTDIR, even as root.
 	blocker := filepath.Join(tmpDir, "blocked")
 	if err := os.WriteFile(blocker, []byte("not a directory"), 0600); err != nil {
 		t.Fatalf("Failed to create blocking file: %v", err)

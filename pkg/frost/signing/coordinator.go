@@ -266,10 +266,7 @@ func (c *coordinator) RequestSignatureShares(commitmentList frost.CommitmentList
 			return nil, frost.NewParticipantError(commitment.Identifier, "failed to generate signature share", err)
 		}
 
-		// d. Optionally verify signature share (identifiable abort)
-		// Per RFC 9591 Section 7.4, share verification is optional but enables identifying
-		// malicious participants. Use AggregateWithVerification() instead of Aggregate()
-		// to enable signature share verification with identifiable abort support.
+		// Share verification (RFC 9591 Section 7.4) happens in AggregateWithVerification.
 
 		// 3. Collect signature share
 		signatureShares = append(signatureShares, share)

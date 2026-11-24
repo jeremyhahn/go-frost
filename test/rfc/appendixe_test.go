@@ -13,15 +13,7 @@ func TestAppendixE_TestVectors(t *testing.T) {
 	// This appendix provides test vectors for all 5 ciphersuites
 
 	t.Run("TestVectorStructure", func(t *testing.T) {
-		// RFC 9591 Appendix E: Test vectors include:
-		// - Configuration (MIN_PARTICIPANTS, MAX_PARTICIPANTS, NUM_PARTICIPANTS)
-		// - Group secret key and public key
-		// - Participant shares and public keys
-		// - Round 1 nonces and commitments
-		// - Binding factors
-		// - Group commitment
-		// - Signature shares
-		// - Final signature
+		// RFC 9591 Appendix E vectors: configuration, keys, shares, nonces, commitments, binding factors, signature shares and signature.
 
 		tv := testvectors.Ristretto255SHA512Vector()
 

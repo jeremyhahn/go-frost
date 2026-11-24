@@ -10,12 +10,7 @@ import (
 	"github.com/jeremyhahn/go-frost/pkg/frost/service"
 )
 
-// RFC 9591 Appendix E.4, FROST(P-256, SHA-256). The full vector — shares,
-// nonces, binding factors and signature shares — drives the protocol-step
-// suite in test/testvectors, which is dark on shared runners (company task
-// #49). The three values below are the ones that make a self-contained
-// known-answer check, and they run wherever ./pkg/... runs, including the
-// FIPS job.
+// RFC 9591 Appendix E.4 FROST(P-256, SHA-256) known-answer values that run wherever ./pkg/... runs, including the FIPS job.
 const (
 	rfc9591E4GroupPublicKey = "023a309ad94e9fe8a7ba45dfc58f38bf091959d3c99cfbd02b4dc00585ec45ab70"
 	rfc9591E4Message        = "74657374"
@@ -73,10 +68,7 @@ func TestP256_RFC9591AppendixE4(t *testing.T) {
 	})
 }
 
-// TestP256_EndToEndThroughSelection is issue #12's verification: a complete
-// 2-of-3 keygen, sign and verify on the suite obtained by name, which is the
-// path a FIPS ceremony takes. Under GODEBUG=fips140=only this is the only
-// suite that can run it at all.
+// TestP256_EndToEndThroughSelection runs 2-of-3 keygen, sign and verify on the suite selected by name, the path a FIPS ceremony takes.
 func TestP256_EndToEndThroughSelection(t *testing.T) {
 	suite, err := suites.ByName("p256")
 	if err != nil {

@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Removed
-- **`secmem.ZeroString`** (breaking; owner ruling 2026-08-23, #15) - it wrote
+- **`secmem.ZeroString`** (breaking, #15) - it wrote
   zeros through a Go string's backing array, which is unsound either way:
   on a string literal the array is read-only and the process dies with
   SIGSEGV (a fault, so no `recover`); on a heap string it silently mutates
@@ -46,7 +46,7 @@ where breakage lives.
     registered past the FIPS policy below
 - **`ciphersuite.ErrUnknownCiphersuite`, `ciphersuite.ErrNotFIPSSelectable`
   and `ciphersuite.LookupError`** - the typed vocabulary for a failed selection
-- **FIPS 140-3 ciphersuite selection policy** (owner ruling 2026-08-20) -
+- **FIPS 140-3 ciphersuite selection policy** -
   while FIPS enforcement is active the library hands out only
   FROST(P-256, SHA-256), because P-256 and SHA-256 are the only underlying
   primitives FIPS approves at all; the other four suites are built on
@@ -64,10 +64,8 @@ where breakage lives.
     ECDSA, EdDSA and RSA; NIST's threshold work, the NISTIR 8214 series, is a
     project rather than a standard), and go-frost is not a validated module
     (P-256 point arithmetic is `crypto/elliptic`, but scalar arithmetic runs
-    through `filippo.io/bigmod`, outside the boundary). Earlier drafts of this
-    change named the predicate `FIPSApproved`, then `UsesApprovedAlgorithms`;
-    both over-claimed. Whether the library should run under `fips140=only` at
-    all is open for the owner as **#14**
+    through `filippo.io/bigmod`, outside the boundary). Whether the library
+    should run under `fips140=only` at all is open as **#14**
   - Coverage runs in the `fips` CI job: the RFC 9591 Appendix E.4 known-answer
     check and a full P-256 keygen/sign/verify through the selection API
 
@@ -110,7 +108,7 @@ where breakage lives.
   side-channel tests report an 8ns delta as a leak on a CPU-capped shared
   runner (go-frost#7)
 - Both jobs now cover `./cmd/...` alongside `./pkg/...`. The dark suites under
-  `test/` stay excluded: `test/rfc` for the reason above (company task #49),
+  `test/` stay excluded: `test/rfc` for the reason above,
   `test/transport` because it is the build-tagged integration job
 
 ## [0.2.0-alpha] - 2026-08-19

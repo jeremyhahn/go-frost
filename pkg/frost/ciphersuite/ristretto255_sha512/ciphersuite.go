@@ -215,10 +215,7 @@ func (cs *Ristretto255SHA512) hashToScalar(domain string, data []byte) group.Sca
 	// Hash with SHA-512 (64 bytes output)
 	hash := cs.Hash(input)
 
-	// Use SetUniformBytes for proper wide reduction.
-	// SECURITY NOTE: SetUniformBytes requires exactly 64 bytes. SHA-512 always
-	// produces 64 bytes, so this should never fail. A failure here indicates
-	// a bug in the cryptographic library implementation.
+	// SetUniformBytes needs exactly 64 bytes, which SHA-512 always gives; an error is a library bug.
 	if len(hash) != 64 {
 		panic("FROST library bug: SHA-512 produced unexpected output length")
 	}

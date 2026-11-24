@@ -107,10 +107,7 @@ func (s *frostService) Sign(keyPackages []frost.KeyPackage, msg []byte) (frost.S
 		return frost.Signature{}, err
 	}
 
-	// Get min signers from first key package's verification shares length
-	// The threshold is len(verificationShares) - 1 + 1 = len(verificationShares)
-	// Actually, minSigners should be derived from polynomial degree
-	// For simplicity, we check that we have enough participants
+	// Check that there are enough participants.
 	if len(keyPackages) < 2 {
 		return frost.Signature{}, frost.NewParameterError("keyPackages", "must have at least 2 participants", frost.ErrInsufficientParticipants)
 	}

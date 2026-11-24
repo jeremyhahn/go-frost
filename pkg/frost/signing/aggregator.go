@@ -281,10 +281,7 @@ func (a *aggregator) AggregateWithVerification(groupPublicKey group.Element, com
 				"failed to compute interpolating value", err)
 		}
 
-		// Verify signature share using equation:
-		// sig_share * G == hiding_commitment + binding_factor * binding_commitment + lambda_i * verification_key * challenge
-		//
-		// Left side: sig_share * G
+		// Check sig_share * G == hiding + binding_factor * binding + lambda_i * verification_key * challenge; left side first.
 		left := grp.ScalarBaseMult(share.SignatureShare)
 
 		// Right side components:

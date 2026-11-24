@@ -29,7 +29,7 @@
 // FIPSSelectable is therefore named for what it does: it decides which suite
 // this library will hand out while FIPS enforcement is active. It reports a
 // local policy, not an approval, not a validation, and not a compliance
-// guarantee. See issue #14, which asks the owner what go-frost should do here.
+// guarantee.
 //
 // The set is closed: it holds exactly the five ciphersuites RFC 9591 defines
 // and nothing can be added at run time. That is deliberate rather than an
@@ -91,27 +91,12 @@ var longNames = map[ciphersuite.CiphersuiteID]string{
 	ciphersuite.Secp256k1SHA256:    "secp256k1-sha256",
 }
 
-// fipsSelectable records which ciphersuites this library hands out while FIPS
-// enforcement is active. FROST(P-256, SHA-256) is the only one, because P-256
-// and SHA-256 are the only underlying primitives FIPS approves at all — the
-// other four are built on Curve25519, Ed448 or secp256k1, which are not
-// approved curves in any scheme.
-//
-// That is a comparative statement, not an approval: FROST itself is not an
-// approved signature scheme, so no entry in this table is FIPS-compliant. The
-// table exists so that a deployment which has chosen to run FROST under FIPS
-// at least does so on the approved primitives rather than on Curve25519.
-// Whether this library should run under enforcement at all is issue #14, an
-// open question for the owner.
+// fipsSelectable lists the suites handed out under FIPS enforcement: only P-256/SHA-256, whose primitives are approved; FROST itself is not.
 var fipsSelectable = map[ciphersuite.CiphersuiteID]struct{}{
 	ciphersuite.P256SHA256: {},
 }
 
-// aliases maps every accepted spelling, lower-cased, to a canonical
-// identifier. Matching is deliberately case-insensitive: RFC 9591 spells the
-// secp256k1 context string in lower case and the other four in upper, so a
-// consumer that upper-cases them uniformly would otherwise name a suite that
-// does not exist.
+// aliases maps every accepted lower-cased spelling to a canonical identifier; matching is case-insensitive.
 var aliases = buildAliases()
 
 func buildAliases() map[string]ciphersuite.CiphersuiteID {
@@ -212,7 +197,7 @@ func FIPSSelectable(id ciphersuite.CiphersuiteID) bool {
 // FROST(P-256, SHA-256) whenever the FIPS 140-3 module is active
 // (GODEBUG=fips140=on or fips140=only). Shares outlive the ceremony that
 // produced them, so a ceremony run under FIPS must not mint shares that a
-// FIPS deployment then cannot use. Owner ruling 2026-08-20 (go-frost#12).
+// FIPS deployment then cannot use.
 //
 // Get(Default()) always succeeds.
 func Default() ciphersuite.CiphersuiteID {

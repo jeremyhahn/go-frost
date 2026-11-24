@@ -123,16 +123,7 @@ func Part3(
 	return keyPackage, publicKeyPackage, nil
 }
 
-// aggregateCommitments computes the group public key and all verifying shares
-// from the aggregated commitments.
-//
-// For each coefficient position k, we sum all participants' commitments:
-//
-//	summedCommitment[k] = sum(commitment_i[k]) for all participants i
-//
-// The group public key is summedCommitment[0] (g raised to the sum of all a_0 values).
-// Each participant's verifying share is computed by evaluating the summed
-// commitment polynomial at their identifier.
+// aggregateCommitments sums every participant's commitments; the group key is the constant term and each verifying share the sum evaluated at its identifier.
 func aggregateCommitments(
 	round2SecretPackage *Round2SecretPackage,
 	round1Packages map[frost.Identifier]*Round1Package,

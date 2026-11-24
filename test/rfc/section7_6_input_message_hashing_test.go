@@ -1,40 +1,4 @@
-// RFC 9591 Section 7.6: Input Message Hashing
-//
-// This file provides testing for input message hashing requirements in FROST.
-// Implements M-6: Message Hashing Testing from RFC 9591 Section 7.6.
-//
-// RFC 9591 Section 7.6 states:
-// "FROST signatures do not pre-hash the message to be signed. This means the
-// entire message must be known in advance of invoking the signing protocol."
-//
-// For applications that require pre-hashing (e.g., due to memory constraints),
-// the RFC recommends:
-// 1. Use a collision-resistant hash function with security level matching the ciphersuite
-// 2. Use the hash function (H) associated with the chosen ciphersuite
-// 3. Use domain separation (different prefix from H4) to differentiate the pre-hash
-//
-// Test Coverage:
-// - Verify FROST requires full message during signing
-// - Test that different messages produce different signatures
-// - Test collision resistance when pre-hashing is used
-// - Verify domain separation for pre-hash operations
-// - Test hash function consistency with ciphersuite
-//
-// Ciphersuite Implementation Status (RFC 9591 Section 6):
-//
-// Currently Implemented:
-// - FROST(ristretto255, SHA-512) - Section 6.2 ✓
-//
-// Not Yet Implemented (Future Work):
-// - FROST(Ed25519, SHA-512) - Section 6.1
-// - FROST(Ed448, SHAKE256) - Section 6.3
-// - FROST(P-256, SHA-256) - Section 6.4
-// - FROST(secp256k1, SHA-256) - Section 6.5
-//
-// NOTE: When additional ciphersuites are implemented, update the test
-// functions to use table-driven tests iterating over all available suites.
-// See section5_test.go or section6_test.go for examples of multi-ciphersuite
-// table-driven test patterns.
+// RFC 9591 Section 7.6 tests: signing needs the full message; pre-hashing uses the suite hash with separate domain.
 package rfc
 
 import (

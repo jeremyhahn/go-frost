@@ -1,35 +1,4 @@
-// RFC 9591 Section 7.1: Side-Channel Mitigations
-//
-// This file provides side-channel resistance testing for the FROST implementation.
-// Implements M-2: Side-Channel Testing from RFC 9591 Section 7.1.
-//
-// The tests verify constant-time behavior of critical cryptographic operations:
-// - Scalar multiplication operations
-// - Nonce generation
-// - Signature verification
-// - Hash operations
-//
-// Statistical methodology:
-// - Welch's t-test for timing difference detection
-// - Minimum sample size: 1000 measurements per input type
-// - Significance threshold: |t-statistic| < 4.5 (p < 0.00001)
-// - Multiple input classes to detect timing variations
-//
-// IMPORTANT: These tests verify that the underlying ristretto255 library
-// provides constant-time operations. They do NOT test the library itself,
-// but rather verify our implementation doesn't introduce timing leaks.
-//
-// Timing Guarantees (RFC 9591 Section 7.1):
-// 1. Scalar operations MUST be constant-time
-// 2. Group operations MUST be constant-time
-// 3. Equality comparisons MUST be constant-time
-// 4. Hash operations MAY have data-dependent timing (not secret-dependent)
-//
-// Test Coverage:
-// - Scalar multiplication timing independence
-// - Nonce generation timing independence
-// - Signature share verification timing independence
-// - Hash operation timing independence (informational)
+// RFC 9591 Section 7.1 side-channel tests: Welch's t-test, |t| < 4.5 over 1000+ samples, on scalar multiplication, nonce generation, share verification and hashing.
 package rfc_test
 
 import (
@@ -117,17 +86,7 @@ func welchTTest(s1, s2 *timingSample) float64 {
 	return (mean1 - mean2) / denominator
 }
 
-// TestScalarMultiplicationTiming verifies constant-time scalar multiplication.
-//
-// This test ensures that scalar multiplication operations take the same time
-// regardless of the scalar value. We test multiple scalar classes:
-// - Small scalars (low Hamming weight)
-// - Large scalars (high Hamming weight)
-// - Random scalars (mixed Hamming weight)
-//
-// Statistical analysis: Welch's t-test with threshold |t| < 4.5
-// PASS: Timing is independent of scalar value
-// FAIL: Timing leak detected (potential side-channel vulnerability)
+// TestScalarMultiplicationTiming checks scalar multiplication timing across low, high and random Hamming weight scalars.
 func TestScalarMultiplicationTiming(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping intensive timing test in -short mode")
@@ -497,15 +456,7 @@ func TestHashOperationTiming(t *testing.T) {
 	t.Logf("  This test is informational only")
 }
 
-// TestScalarEqualityTiming verifies constant-time scalar equality checks.
-//
-// The Equal() method MUST be constant-time to prevent timing leaks when
-// comparing secret values.
-//
-// NOTE: This test is measuring nanosecond-level operations which are highly
-// susceptible to CPU microarchitecture effects (branch prediction, cache, etc).
-// The ristretto255 library implements Equal() using constant-time comparison.
-// Small timing variations (< 5ns) are acceptable and likely due to measurement noise.
+// TestScalarEqualityTiming checks Equal timing; variations under 5ns are measurement noise.
 func TestScalarEqualityTiming(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping intensive timing test in -short mode")

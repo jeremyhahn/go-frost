@@ -594,13 +594,7 @@ func computeLagrangeCoefficient(grp group.Group, i frost.Identifier, participant
 	return result
 }
 
-// TestRFC9591_NonceGenerationValidation validates that nonces are correctly
-// generated using H3(randomness || secret) as specified in the RFC.
-//
-// This test verifies:
-// 1. Nonces are generated using the correct H3 function
-// 2. Input format is randomness || secret_share
-// 3. Generated nonces match the expected test vector values
+// TestRFC9591_NonceGenerationValidation checks nonces are H3(randomness || secret_share) against the vectors.
 func TestRFC9591_NonceGenerationValidation(t *testing.T) {
 	tv := Ristretto255SHA512Vector()
 	suite := ristretto255_sha512.New()
@@ -828,14 +822,7 @@ func TestRFC9591_NonceGenerationValidation_AllCiphersuites(t *testing.T) {
 	}
 }
 
-// TestRFC9591_NonSignerShareValidation validates that P2's share (non-signer)
-// is correctly generated from the polynomial, even though P2 doesn't participate
-// in signing.
-//
-// This is important because:
-// 1. All participants should receive valid shares
-// 2. The dealer must correctly evaluate the polynomial for all participants
-// 3. Non-signers could potentially become signers in future sessions
+// TestRFC9591_NonSignerShareValidation checks the dealer share of P2, which does not sign.
 func TestRFC9591_NonSignerShareValidation(t *testing.T) {
 	tv := Ristretto255SHA512Vector()
 	suite := ristretto255_sha512.New()

@@ -1,6 +1,4 @@
-// These tests verify the complete workflow from key generation through signing and
-//
-// These tests MUST run in a Docker container and NEVER on the host OS.
+// Workflow tests from key generation through signing; run them in a container, not on the host.
 package service
 
 import (

@@ -182,40 +182,7 @@ func FromKeyPackage(keyID, groupID string, kp *frost.KeyPackage, minSigners, max
 		return nil, ErrInvalidKeyPackage
 	}
 
-	// PROTECTED-MEMORY BOUNDARY. Serializing the share allocates it on the
-	// ordinary heap for the length of this one call, and that allocation
-	// cannot be avoided: it is the only thing the scalar implementations can
-	// hand back.
-	//
-	// group.Scalar is this package's own interface, but every implementation
-	// of Bytes delegates to a dependency whose sole exported encoding returns
-	// a fresh slice, with no variant that fills a caller-provided
-	// destination:
-	//
-	//	filippo.io/edwards25519  Scalar.Bytes() []byte
-	//	                         (bytes(out *[32]byte) is unexported)
-	//	filippo.io/bigmod        Nat.Bytes(m *Modulus) []byte  - allocates
-	//	gitlab.com/yawning/
-	//	  secp256k1-voi          Scalar.Bytes() []byte
-	//	                         (getBytes(dst *[32]byte) is unexported)
-	//	github.com/gtank/
-	//	  ristretto255           Scalar.Bytes() []byte. Encode(b []byte) does
-	//	                         take a destination, but it is deprecated and
-	//	                         copies from Bytes() anyway - same allocation
-	//
-	// So the window is closed rather than removed: the serialized share is
-	// passed straight into NewSecretBytes, which copies it into mlock'd memory
-	// and zeroizes the transient in place before returning. It is never bound
-	// to a variable here and cannot escape this expression.
-	// TestFromKeyPackage_LeavesNoPlaintextShare holds that bound by scanning
-	// process memory for the share afterwards.
-	//
-	// Widening group.Scalar with a fill-destination method would not help and
-	// would mislead: four of the five suites would implement it as a copy out
-	// of Bytes(), making the same allocation behind an API that promised
-	// otherwise. The scalar itself is heap-resident for its whole life anyway,
-	// which is the constraint the secmem package documents - arithmetic on
-	// these types cannot happen inside protected memory.
+	// The scalar types only return a fresh []byte, so the serialized share goes straight into NewSecretBytes, which zeroizes it.
 	secretShareProtected := secmem.NewSecretBytes(kp.SecretShare.Bytes())
 	if secretShareProtected == nil {
 		return nil, ErrInvalidKeyPackage

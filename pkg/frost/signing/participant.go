@@ -380,12 +380,7 @@ func (p *participant) VerifySignatureShare(share frost.SignatureShare, msg []byt
 		return frost.NewParticipantError(share.Identifier, "commitment not found in list", frost.ErrInvalidCommitment)
 	}
 
-	// 9. Compute participant's verification share (public key) by evaluating
-	// the verification polynomial at the participant's identifier.
-	// This is the counterpart to secret share evaluation in key generation.
-	// PK_i = sum_{j=0}^{degree} (commitment_j * identifier^j)
-	//
-	// Uses group-specific byte ordering for identifier encoding.
+	// 9. Verification share PK_i = sum(commitment_j * identifier^j), with the group's identifier byte order.
 
 	// Convert participant identifier to scalar using group-specific encoding
 	polyIDScalar, err := helpers.IdentifierToScalar(grp, share.Identifier)

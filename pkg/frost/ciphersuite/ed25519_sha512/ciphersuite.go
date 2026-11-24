@@ -94,14 +94,10 @@ func (cs *Ed25519SHA512) H1(data []byte) group.Scalar {
 // This ensures compatibility with standard Ed25519 signatures.
 // Implements: H(data) -> Scalar (no domain separation)
 func (cs *Ed25519SHA512) H2(data []byte) group.Scalar {
-	// IMPORTANT: No contextString prefix for Ed25519 compatibility!
-	// Hash the data directly
+	// No contextString prefix for Ed25519 compatibility.
 	hash := cs.Hash(data)
 
-	// Use SetUniformBytes for proper wide reduction.
-	// SECURITY NOTE: SetUniformBytes requires exactly 64 bytes. SHA-512 always
-	// produces 64 bytes, so this should never fail. A failure here indicates
-	// a bug in the cryptographic library implementation.
+	// SetUniformBytes needs exactly 64 bytes, which SHA-512 always gives; an error is a library bug.
 	if len(hash) != 64 {
 		panic("FROST library bug: SHA-512 produced unexpected output length")
 	}
@@ -253,10 +249,7 @@ func (cs *Ed25519SHA512) hashToScalar(domain string, data []byte) group.Scalar {
 	// Hash with SHA-512 (64 bytes output)
 	hash := cs.Hash(input)
 
-	// Use SetUniformBytes for proper wide reduction.
-	// SECURITY NOTE: SetUniformBytes requires exactly 64 bytes. SHA-512 always
-	// produces 64 bytes, so this should never fail. A failure here indicates
-	// a bug in the cryptographic library implementation.
+	// SetUniformBytes needs exactly 64 bytes, which SHA-512 always gives; an error is a library bug.
 	if len(hash) != 64 {
 		panic("FROST library bug: SHA-512 produced unexpected output length")
 	}

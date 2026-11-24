@@ -85,9 +85,7 @@ func TestGetCiphersuite_OmittedFlagUsesRuntimeDefault(t *testing.T) {
 	}
 }
 
-// TestGetCiphersuite_DefaultIsP256UnderFIPS runs the same check in a child
-// process under GODEBUG=fips140=only, so the FIPS half is covered even when
-// the suite itself is running without FIPS.
+// TestGetCiphersuite_DefaultIsP256UnderFIPS runs the check in a child process under GODEBUG=fips140=only.
 func TestGetCiphersuite_DefaultIsP256UnderFIPS(t *testing.T) {
 	if os.Getenv(subprocessEnv) == "1" {
 		if !fips140.Enabled() {
@@ -142,9 +140,7 @@ func TestGetCiphersuite_ExitsOnUnapprovedSuiteUnderFIPS(t *testing.T) {
 	}
 }
 
-// TestAddCiphersuiteFlag_DefaultIsEmpty pins the default to "" — the value
-// that means "ask the library". Pinning it to a suite name, as it used to be,
-// makes the FIPS default unreachable from the CLI.
+// TestAddCiphersuiteFlag_DefaultIsEmpty pins the default to "", which asks the library.
 func TestAddCiphersuiteFlag_DefaultIsEmpty(t *testing.T) {
 	fs := flag.NewFlagSet("test", flag.ContinueOnError)
 	value := addCiphersuiteFlag(fs)
@@ -177,9 +173,7 @@ func TestAddCiphersuiteFlag_ParsesAValue(t *testing.T) {
 	}
 }
 
-// TestEverySubcommandUsesTheSharedFlag guards the regression Codex named: one
-// subcommand keeping its own declaration, and so its own default, while the
-// other five move. The helper is the only place the flag may be declared.
+// TestEverySubcommandUsesTheSharedFlag checks that the helper is the only place the flag is declared.
 func TestEverySubcommandUsesTheSharedFlag(t *testing.T) {
 	source, err := os.ReadFile("main.go")
 	if err != nil {

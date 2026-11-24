@@ -136,11 +136,7 @@ func (k *KeychainStore) StoreKeyPackage(keyID, groupID string, kp *frost.KeyPack
 	return nil
 }
 
-// readStoredKeyPackage reads a serialized key package out of the storage
-// backend and decodes it without the document ever existing as a plain
-// []byte: it is decoded from inside the enclave that the backend returns.
-//
-// Callers own the returned package and must Zeroize it.
+// readStoredKeyPackage decodes a key package from the backend's enclave; callers must Zeroize the result.
 func (k *KeychainStore) readStoredKeyPackage(storageKey string) (*StoredKeyPackage, error) {
 	payload, err := k.storage.GetSecret(storageKey)
 	if err != nil {

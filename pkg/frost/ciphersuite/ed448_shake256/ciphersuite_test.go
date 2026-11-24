@@ -142,8 +142,7 @@ func TestH1(t *testing.T) {
 func TestH2(t *testing.T) {
 	suite := New()
 
-	// CRITICAL: H2 for Ed448 does NOT use contextString prefix
-	// This is for Ed448 signature compatibility
+	// H2 for Ed448 has no contextString prefix.
 	input := []byte("test input")
 	result := suite.H2(input)
 
