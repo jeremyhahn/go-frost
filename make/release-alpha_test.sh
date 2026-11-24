@@ -1,45 +1,6 @@
 #!/usr/bin/env bash
-#
-# Regression tests for `make release-alpha` and `make changelog-assemble`
-# (issue #17): the vendored company template make/release-alpha.mk and the
-# fragment assembly make/changelog-assemble.sh, as wired into THIS
-# repository's Makefile.
-#
-# Each case copies the real Makefile and make/ into a throwaway git repository
-# whose `origin` is a local bare repository, puts a stub agent-git.sh on PATH
-# (it records every call, then runs git as a fixed agent identity), and runs
-# the real recipe. A refused release must leave the remote's refs untouched
-# and must not create a local tag or a release commit; it is the half-released
-# state (VERSION committed or tag cut, push failed) the recipe exists to
-# prevent. Cases:
-#
-#   - no VERSION: refused by the explicit-version guard (proves the build
-#     version no longer shadows the argument);
-#   - malformed VERSION; not on main; unknown remote; unreachable remote;
-#   - tag already on the remote, or already local;
-#   - dirty working tree;
-#   - CHANGELOG heading present only inside a fenced code block;
-#   - agent-git.sh failing its commit: no tag is created and nothing pushed;
-#   - agent-git.sh not on PATH;
-#   - $(shell ...) payloads in every settable input, public and internal: none
-#     executes;
-#   - fragments pending in changelog.d/: release refused;
-#   - make changelog-assemble: refusals (no/bad/multi-line version, unclosed
-#     fence, dirty tree, heading
-#     already present, nothing to release, no [Unreleased], no wrapper, failed
-#     commit) change nothing; $(shell ...) payloads in its inputs never run;
-#     headings inside fenced code blocks stay content in every pass;
-#     and end to end it merges [Unreleased] and the fragments by subsection
-#     into a dated section in one agent-git.sh commit that removes the
-#     fragments, after which the release publishes exactly that CHANGELOG;
-#   - a successful release with push.followTags=true and an unrelated
-#     annotated tag present: exactly the release commit and the named,
-#     annotated tag reach the remote, VERSION is written unprefixed, and every
-#     git write went through agent-git.sh.
-#
-# No real signing key, remote or network is touched.
-#
-#   bash make/release-alpha_test.sh     (or: make test-release-alpha)
+# Regression tests for `make release-alpha` and `make changelog-assemble` against a local bare remote and a stub agent-git.sh; refusals must leave no tag, commit or push.
+# Run: bash make/release-alpha_test.sh (or make test-release-alpha)
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -271,13 +232,12 @@ new_case unclosed-fence '# Changelog
 release VERSION=v0.4.0-alpha
 expect_refused 'no "## [0.4.0-alpha]" section heading'
 
-# Named explicitly rather than by dropping the stub from PATH: a host with a
-# real agent-git.sh on PATH must never have it reached from this test.
+# Named explicitly so a real agent-git.sh on PATH is never reached.
 new_case no-agent-git
 release VERSION=v0.4.0-alpha "AGENT_GIT=$case_dir/missing/agent-git.sh"
 expect_refused "AGENT_GIT does not point at an executable"
 
-# A failed VERSION commit must stop the release: v1's `|| true` tagged anyway.
+# A failed VERSION commit must stop the release before any tag.
 new_case commit-fails
 export STUB_FAIL_ON=commit
 release VERSION=v0.4.0-alpha
@@ -289,13 +249,7 @@ fi
 
 # --- injection --------------------------------------------------------------
 
-# A $(shell ...) payload in any settable input must arrive as literal text,
-# never execute. Every case must be refused by a guard except REPO_NAME, which
-# no guard checks for shape; that one must still not execute, so it is run
-# against a remote whose tag already exists to stop it before any write.
-# The CL_* names belong to changelog-assemble, but a command-line variable is
-# exported into EVERY recipe's environment unless unexported, so they are
-# live on the release path too.
+# A $(shell ...) payload in any settable input, CL_* included, must arrive as text and never execute.
 for var in VERSION RELEASE_REMOTE REPO_NAME AGENT_GIT \
   REL_VERSION REL_REMOTE REL_REPO REL_AGENT_GIT \
   CL_VERSION CL_REPO CL_AGENT_GIT; do
@@ -457,12 +411,7 @@ for var in VERSION REPO_NAME AGENT_GIT CL_VERSION CL_REPO CL_AGENT_GIT; do
   pass "assemble-inject-$var"
 done
 
-# Headings quoted in fenced code blocks are content: a fenced `### ` must not
-# become a subsection, a fenced `## ` must not end [Unreleased] or the
-# section being replaced, and a fenced copy of the version heading or of
-# `## [Unreleased]` must not be mistaken for the real one. Includes a ````
-# fence holding a ``` line (a naive toggle would "close" it there), and a
-# tilde fence alongside backtick ones.
+# Headings inside fenced code blocks, backtick or tilde, nested or not, are content, never structure.
 FENCED_CHANGELOG='# Changelog
 
 Example headings, quoted:
@@ -596,10 +545,7 @@ with_fragment 17-a.md $'### Added\n- example:\n```\n### Fixed\n'
 assemble VERSION=v0.4.0-alpha
 expect_assemble_refused "is never closed"
 
-# End to end: [Unreleased] content and two fragments (one without a trailing
-# newline, one carrying two subsections) are merged by subsection in Keep a
-# Changelog order, committed as one change that removes the fragments but
-# keeps .gitkeep, and the release that follows publishes that CHANGELOG.
+# End to end: [Unreleased] and two fragments merge by subsection into one commit that removes the fragments, and the release publishes that CHANGELOG.
 new_case assemble-then-release "$CHANGELOG_UNRELEASED"
 printf '### Changed\n- fragment change\n  continued' >"$wt/changelog.d/20-b.md"
 printf '### Fixed\n- fragment fix\n\n### Added\n- fragment addition\n' >"$wt/changelog.d/10-a.md"

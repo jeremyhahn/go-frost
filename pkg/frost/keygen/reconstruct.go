@@ -8,27 +8,7 @@ import (
 	"github.com/jeremyhahn/go-frost/pkg/frost/helpers"
 )
 
-// Reconstruct recovers the original group secret from threshold shares.
-//
-// This function uses Lagrange interpolation to recover the secret polynomial's
-// constant term (the group secret) from a threshold number of participant shares.
-//
-// WARNING: This should only be used for key recovery scenarios. The whole point
-// of FROST is being able to generate signatures using only the shares, without
-// ever reconstructing the original secret.
-//
-// Inputs:
-//   - shares: At least minSigners shares from different participants
-//   - suite: The ciphersuite to use for cryptographic operations
-//
-// Outputs:
-//   - secret: The recovered group secret scalar
-//
-// Errors:
-//   - Returns error if fewer than minSigners shares are provided
-//   - Returns error if duplicate identifiers are found
-//   - Returns error if shares is empty
-//   - Returns error if any share is nil
+// Reconstruct recovers the group secret from at least minSigners distinct shares by Lagrange interpolation; for key recovery only.
 func Reconstruct(shares []ShareInput, suite ciphersuite.Ciphersuite) (group.Scalar, error) {
 	if len(shares) == 0 {
 		return nil, frost.NewParameterError("shares", "cannot be empty", frost.ErrInvalidParameters)
@@ -80,19 +60,7 @@ func Reconstruct(shares []ShareInput, suite ciphersuite.Ciphersuite) (group.Scal
 	return secret, nil
 }
 
-// VerifyReconstruction verifies that a reconstructed secret matches the group public key.
-//
-// This can be used to verify that a reconstruction was successful without
-// exposing the secret for signing operations.
-//
-// Inputs:
-//   - secret: The reconstructed secret scalar
-//   - groupPublicKey: The expected group public key
-//   - grp: The group to use for scalar base multiplication
-//
-// Returns:
-//   - nil if g^secret == groupPublicKey
-//   - error otherwise
+// VerifyReconstruction returns nil if g^secret equals groupPublicKey.
 func VerifyReconstruction(secret group.Scalar, groupPublicKey group.Element, grp group.Group) error {
 	if secret == nil {
 		return frost.NewParameterError("secret", "cannot be nil", frost.ErrInvalidParameters)

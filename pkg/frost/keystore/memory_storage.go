@@ -14,12 +14,7 @@ import (
 	"github.com/jeremyhahn/go-frost/pkg/storage"
 )
 
-// expiringBackend is the storage backend MemoryStorage needs: one that can
-// hand an entry over rather than copy it, so a plain value can be moved into
-// protected memory without leaving the original behind. Composing the
-// capability into a local interface keeps it off storage.Backend, which
-// backends with no notion of expiry - the file backend among them - could not
-// satisfy.
+// expiringBackend is a backend that can hand an entry over instead of copying it, so a plain value moves into protected memory.
 type expiringBackend interface {
 	storage.Backend
 
@@ -31,37 +26,11 @@ type expiringBackend interface {
 // guarantee rather than a runtime hope.
 var _ expiringBackend = (*storage.MemoryBackend)(nil)
 
-// MemoryStorage implements StorageBackend using in-memory storage.
-//
-// This adapter wraps the go-frost memory storage backend to provide
-// a compatible implementation of the StorageBackend interface.
-//
-// Thread-safe: Yes (provided by underlying storage implementation)
-//
-// WARNING: All data is lost when the process terminates.
-// This implementation is suitable for:
-//   - Testing
-//   - Development
-//   - Temporary storage
-//   - Caching layer
+// MemoryStorage is a thread-safe in-memory StorageBackend for tests, development and caching; data is lost on exit.
 type MemoryStorage struct {
 	backend expiringBackend
 
-	// mu guards secrets, which holds the payloads written through PutSecret.
-	// They are kept in enclaves rather than in the plain []byte map of the
-	// underlying backend so that a serialized key package is never resident
-	// in memory as plaintext.
-	//
-	// mu also serializes every operation on the backend, so that a key moving
-	// between the two keyspaces does so atomically. Put/PutSecret each have
-	// to touch both stores - one installs a value, the other clears whatever
-	// the key held in the other keyspace - and holding mu across the pair is
-	// what keeps two concurrent writers from interleaving into a state where
-	// both report success and the key holds nothing.
-	//
-	// It is an exclusive lock rather than an RWMutex because every operation
-	// mutates: a read opens and reseals an enclave, and any operation may reap
-	// an entry whose TTL has elapsed.
+	// mu guards secrets (PutSecret payloads in enclaves) and serializes every backend operation, so a key moves between keyspaces atomically.
 	mu      sync.Mutex
 	secrets map[string]*secretEntry
 }
@@ -78,15 +47,7 @@ func (e *secretEntry) expired(now time.Time) bool {
 	return !e.expiration.IsZero() && now.After(e.expiration)
 }
 
-// NewMemoryStorage creates a new in-memory storage backend.
-//
-// Returns:
-//   - StorageBackend: Memory storage implementation
-//
-// Example:
-//
-//	storage := keystore.NewMemoryStorage()
-//	defer storage.Close()
+// NewMemoryStorage returns an in-memory StorageBackend; Close it when done.
 func NewMemoryStorage() StorageBackend {
 	backend := storage.NewMemoryBackend()
 
@@ -96,10 +57,7 @@ func NewMemoryStorage() StorageBackend {
 	}
 }
 
-// dropSecret removes the secret entry for key, if there is one, destroying its
-// enclave. Destroying under the lock keeps a concurrent reader from observing a
-// half-removed entry.
-// The caller must hold m.mu for writing.
+// dropSecret destroys key's secret entry, if any; the caller must hold m.mu for writing.
 func (m *MemoryStorage) dropSecret(key string) {
 	entry, ok := m.secrets[key]
 	if !ok {
@@ -109,17 +67,7 @@ func (m *MemoryStorage) dropSecret(key string) {
 	entry.secret.Destroy()
 }
 
-// liveSecret returns the unexpired secret entry for key, if any, reaping the
-// entry on the way past if its TTL has elapsed.
-//
-// Reaping rather than merely hiding is the point: an expired payload that
-// stays in the map keeps its plaintext resident in protected memory for the
-// rest of the process's life, which is exactly the lifetime the TTL was set to
-// bound. Every path that can observe an entry goes through here or through
-// reapExpired, so nothing keeps an expired enclave alive until the next
-// explicit Delete, overwrite or Close.
-//
-// The caller must hold m.mu.
+// liveSecret returns key's unexpired secret entry, destroying it if its TTL has elapsed; the caller must hold m.mu.
 func (m *MemoryStorage) liveSecret(key string) *secretEntry {
 	entry, ok := m.secrets[key]
 	if !ok {
@@ -189,12 +137,7 @@ func (m *MemoryStorage) Put(key string, data []byte, opts *PutOptions) error {
 	return nil
 }
 
-// Get retrieves data for the given key.
-//
-// If the key was written through PutSecret, its plaintext is copied out of
-// protected memory into the returned slice: callers holding secret material
-// should prefer GetSecret and only reach for Get when plain bytes are what
-// they actually need.
+// Get returns data for key; a PutSecret value is copied out of protected memory, so prefer GetSecret for secrets.
 func (m *MemoryStorage) Get(key string) ([]byte, error) {
 	// Write lock: a protected hit opens and reseals its enclave, and the
 	// backend lookup must not race a key changing keyspaces.
@@ -290,10 +233,7 @@ func (m *MemoryStorage) List(prefix string) ([]string, error) {
 	return keys, nil
 }
 
-// PutSecret stores secret-bearing data at the given key.
-//
-// The payload is kept in an enclave of its own - an independent copy of the
-// caller's - and never enters the plain []byte map of the underlying backend.
+// PutSecret stores an independent protected copy of the payload, never in the plain backend map.
 func (m *MemoryStorage) PutSecret(key string, data *secmem.SecretBytes, opts *PutOptions) error {
 	if key == "" {
 		return ErrStorageBackend.Wrap(storage.ErrInvalidKey)
@@ -339,18 +279,7 @@ func (m *MemoryStorage) PutSecret(key string, data *secmem.SecretBytes, opts *Pu
 	return nil
 }
 
-// GetSecret retrieves secret-bearing data for the given key, returning an
-// independent copy in protected memory that the caller owns.
-//
-// A value written through Put is not merely copied out of the plain keyspace
-// but moved into the protected one, so that reading a key package written by
-// an older revision leaves no plaintext behind: the backend hands its entry
-// over rather than copying it, and NewSecretBytes zeroizes that one slice as
-// it seals it. Reading a legacy value therefore ends with the value held
-// exactly once, in an enclave, with its remaining TTL carried across intact.
-// Merely copying it out - as this did before - would have left the serialized
-// key package resident as a plain []byte for the rest of the process's life,
-// however many times it was read through the protected API.
+// GetSecret returns a protected copy the caller owns; a value written through Put is moved into protected memory, keeping its TTL.
 func (m *MemoryStorage) GetSecret(key string) (*secmem.SecretBytes, error) {
 	// Write lock: cloning opens and reseals the stored enclave, and promoting
 	// a plain value moves it between the two keyspaces.

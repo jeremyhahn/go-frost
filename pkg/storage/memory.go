@@ -20,22 +20,7 @@ type memoryEntry struct {
 	expiration time.Time // Zero value means no expiration
 }
 
-// MemoryBackend implements Backend using an in-memory map.
-//
-// This implementation is thread-safe and suitable for:
-//   - Testing
-//   - Development
-//   - Temporary storage
-//   - Caching layer
-//
-// Callers store secret material here - a serialized FROST key package among
-// other things - so an entry's data is zeroized whenever the backend drops it,
-// whether that is a delete, an overwrite, a close, or a TTL that has elapsed.
-// Dropping the map reference alone would leave the bytes in the backing array
-// until the allocator happened to reuse them. Take is the one path that does
-// not zeroize, because it hands the data to its caller rather than dropping it.
-//
-// Note: All data is lost when the process terminates.
+// MemoryBackend is a thread-safe in-memory Backend that zeroizes an entry's data whenever it drops it; Take hands data over instead.
 type MemoryBackend struct {
 	// mu is exclusive rather than an RWMutex because every operation mutates:
 	// any of them may reap an entry whose TTL has elapsed.
@@ -44,11 +29,7 @@ type MemoryBackend struct {
 	closed bool
 }
 
-// dropEntry removes the entry for key and zeroizes the data it held. Every
-// path that drops an entry without handing its data to someone goes through
-// here, so a path added later cannot quietly reintroduce the residue.
-//
-// The caller must hold m.mu.
+// dropEntry removes key's entry and zeroizes its data; the caller must hold m.mu.
 func (m *MemoryBackend) dropEntry(key string) {
 	entry, ok := m.data[key]
 	if !ok {
@@ -64,17 +45,7 @@ func (e *memoryEntry) expired(now time.Time) bool {
 	return !e.expiration.IsZero() && now.After(e.expiration)
 }
 
-// NewMemoryBackend creates a new in-memory storage backend.
-//
-// Returns:
-//   - Backend: In-memory storage implementation
-//
-// Example:
-//
-//	storage := storage.NewMemoryBackend()
-//	defer storage.Close()
-//
-//	err := storage.Put("key1", []byte("value1"), nil)
+// NewMemoryBackend returns an in-memory Backend; Close it when done.
 func NewMemoryBackend() Backend {
 	return &MemoryBackend{
 		data: make(map[string]*memoryEntry),
@@ -236,24 +207,7 @@ func (m *MemoryBackend) List(prefix string) ([]string, error) {
 	return keys, nil
 }
 
-// Take removes the entry for key and hands its data to the caller rather than
-// copying it: the backend keeps no reference to the returned slice once Take
-// returns. A caller holding secret material can therefore seal or zeroize what
-// it gets back knowing that no other copy of it survives here - which Get,
-// which returns a copy and leaves the original in the map, cannot offer.
-//
-// It also reports when the entry expires, so a caller moving the value
-// somewhere else can carry the remaining lifetime across with it. The zero
-// Time means the entry does not expire.
-//
-// An entry holding no data is left in place and reported as an empty slice.
-// Take exists to move a payload out of the backend, and an empty entry has
-// none to move; removing it would discard a value on what the caller meant as
-// a read.
-//
-// Returns ErrNotFound if the key does not exist or has already expired. An
-// expired entry is removed and its data zeroized on the way past, rather than
-// left resident for the rest of the process's life.
+// Take removes key's entry and returns its data and expiry without keeping a copy; an empty entry stays; ErrNotFound if absent or expired.
 func (m *MemoryBackend) Take(key string) ([]byte, time.Time, error) {
 	if key == "" {
 		return nil, time.Time{}, ErrInvalidKey
@@ -307,11 +261,7 @@ func (m *MemoryBackend) Close() error {
 	return nil
 }
 
-// cleanExpired removes expired entries from memory.
-// This should be called periodically if TTL is used extensively.
-//
-// Note: This is a utility method for memory management and is not part
-// of the Backend interface.
+// cleanExpired removes expired entries; not part of Backend.
 func (m *MemoryBackend) cleanExpired() {
 	m.mu.Lock()
 	defer m.mu.Unlock()

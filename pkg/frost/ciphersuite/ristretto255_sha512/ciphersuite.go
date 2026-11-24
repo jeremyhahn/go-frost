@@ -1,16 +1,4 @@
-// Package ristretto255_sha512 implements the FROST(ristretto255, SHA-512) ciphersuite.
-//
-// This ciphersuite uses ristretto255 for the prime-order group and SHA-512 for
-// all hash functions. It implements RFC 9591 Section 6.2.
-//
-// Context string: "FROST-RISTRETTO255-SHA512-v1"
-//
-// The ciphersuite provides five domain-separated hash functions:
-// - H1: Used for binding factor computation (domain: "rho")
-// - H2: Used for challenge computation (domain: "chal")
-// - H3: Used for nonce generation (domain: "nonce")
-// - H4: Used for message hashing (domain: "msg")
-// - H5: Used for commitment list hashing (domain: "com")
+// Package ristretto255_sha512 implements FROST(ristretto255, SHA-512) per RFC 9591 Section 6.2.
 package ristretto255_sha512
 
 import (
@@ -110,9 +98,7 @@ func (cs *Ristretto255SHA512) H5(data []byte) []byte {
 	return cs.Hash(input)
 }
 
-// HDKG is a domain-separated hash-to-scalar function for DKG operations.
-// Used for computing challenges in the Schnorr proof of knowledge during DKG.
-// Implements: H(contextString || "dkg" || data) -> Scalar
+// HDKG computes H(contextString || "dkg" || data) for the DKG proof of knowledge.
 func (cs *Ristretto255SHA512) HDKG(data []byte) group.Scalar {
 	return cs.hashToScalar("dkg", data)
 }
@@ -144,12 +130,7 @@ func (cs *Ristretto255SHA512) HashToCurve(data []byte) (group.Element, error) {
 	return ristretto255.NewElement(elem), nil
 }
 
-// VerifySignature verifies a FROST signature against a message and public key.
-// Implements Schnorr signature verification for ristretto255.
-//
-// Signature format: R (32 bytes) || z (32 bytes)
-// Verification equation: z * G == R + c * PK
-// where c = H2(R || PK || msg)
+// VerifySignature checks R || z (32+32 bytes): z*G == R + c*PK, c = H2(R || PK || msg).
 func (cs *Ristretto255SHA512) VerifySignature(message []byte, signature []byte, publicKey group.Element) error {
 	// Validate inputs
 	if publicKey == nil {
@@ -215,10 +196,7 @@ func (cs *Ristretto255SHA512) hashToScalar(domain string, data []byte) group.Sca
 	// Hash with SHA-512 (64 bytes output)
 	hash := cs.Hash(input)
 
-	// Use SetUniformBytes for proper wide reduction.
-	// SECURITY NOTE: SetUniformBytes requires exactly 64 bytes. SHA-512 always
-	// produces 64 bytes, so this should never fail. A failure here indicates
-	// a bug in the cryptographic library implementation.
+	// SetUniformBytes needs exactly 64 bytes, which SHA-512 always gives; an error is a library bug.
 	if len(hash) != 64 {
 		panic("FROST library bug: SHA-512 produced unexpected output length")
 	}

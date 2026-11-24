@@ -20,48 +20,14 @@ const (
 	groupKeySuffix   = ".json"
 )
 
-// KeychainStore implements KeyStore using a pluggable storage backend.
-//
-// The storage backend is injected via the Config struct, allowing applications
-// to provide their own implementations (file-based, DHT, cloud storage, etc.).
-//
-// Storage layout:
-//
-//	frost/keypackages/<keyID>.json       - Key package data
-//	frost/groups/<groupID>.json          - Group public key data
+// KeychainStore is a KeyStore over an injected backend, storing frost/keypackages/<keyID>.json and frost/groups/<groupID>.json.
 type KeychainStore struct {
 	storage StorageBackend
 	group   group.Group
 	config  *Config
 }
 
-// NewKeychainStore creates a new KeychainStore instance.
-//
-// The storage backend must be provided via config.Storage. Applications can use:
-//   - NewFileStorage() for file-based storage
-//   - Their own DHT implementation for distributed storage
-//   - Their own cloud storage implementation
-//
-// Example (file-based):
-//
-//	storage, err := keystore.NewFileStorage("/var/lib/frost/keystore")
-//	if err != nil {
-//	    return nil, err
-//	}
-//	config := &keystore.Config{
-//	    Group:   suite.Group(),
-//	    Storage: storage,
-//	}
-//	store, err := keystore.NewKeychainStore(config)
-//
-// Example (DHT-based):
-//
-//	dhtStorage := mydht.NewDHTStorage(dhtNode)
-//	config := &keystore.Config{
-//	    Group:   suite.Group(),
-//	    Storage: dhtStorage,
-//	}
-//	store, err := keystore.NewKeychainStore(config)
+// NewKeychainStore returns a KeychainStore over config.Storage, for example NewFileStorage or an application backend.
 func NewKeychainStore(config *Config) (KeyStore, error) {
 	if config == nil {
 		return nil, fmt.Errorf("config is required")
@@ -136,11 +102,7 @@ func (k *KeychainStore) StoreKeyPackage(keyID, groupID string, kp *frost.KeyPack
 	return nil
 }
 
-// readStoredKeyPackage reads a serialized key package out of the storage
-// backend and decodes it without the document ever existing as a plain
-// []byte: it is decoded from inside the enclave that the backend returns.
-//
-// Callers own the returned package and must Zeroize it.
+// readStoredKeyPackage decodes a key package from the backend's enclave; callers must Zeroize the result.
 func (k *KeychainStore) readStoredKeyPackage(storageKey string) (*StoredKeyPackage, error) {
 	payload, err := k.storage.GetSecret(storageKey)
 	if err != nil {

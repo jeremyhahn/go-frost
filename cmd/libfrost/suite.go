@@ -8,13 +8,7 @@ import (
 	"github.com/jeremyhahn/go-frost/pkg/frost/service"
 )
 
-// This file deliberately does not import "C". The ciphersuite mapping and the
-// status codes it returns are the security-relevant part of the C shim — a
-// swapped entry would sign on the wrong curve, or allow a suite FIPS policy
-// excludes — and a cgo file cannot be exercised from a test, because a test
-// file gets its own preamble and cannot see the enums declared in libfrost.go.
-// Keeping the logic in ordinary Go makes it testable; libfrost.go asserts at
-// compile time that the mirrors below still equal their C counterparts.
+// No import "C" here, so the ciphersuite mapping and status codes are testable; libfrost.go asserts the mirrors match the C enums.
 
 // Status codes mirroring frost_error_t.
 const (
@@ -42,13 +36,7 @@ var suiteIDs = map[int]ciphersuite.CiphersuiteID{
 	suiteSecp256k1SHA256:    ciphersuite.Secp256k1SHA256,
 }
 
-// resolveSuite resolves a frost_ciphersuite_t value to a ciphersuite, together
-// with the status code to hand back to the caller.
-//
-// An unrecognized value and a suite the FIPS 140-3 policy excludes are both
-// reported; neither substitutes ristretto255, as this used to do silently — a
-// caller that passed a value the library did not understand got keys on a
-// curve it never asked for.
+// resolveSuite resolves a frost_ciphersuite_t to a ciphersuite and status; unknown or FIPS-excluded values are reported, never substituted.
 func resolveSuite(cs int) (ciphersuite.Ciphersuite, int) {
 	id, ok := suiteIDs[cs]
 	if !ok {
@@ -65,10 +53,7 @@ func resolveSuite(cs int) (ciphersuite.Ciphersuite, int) {
 	return suite, statusOK
 }
 
-// resolveService resolves a frost_ciphersuite_t value to a FROST service. A
-// service is a thin wrapper over the ciphersuite, so it is built per call
-// rather than cached in a package map that C callers on several threads could
-// race on.
+// resolveService resolves a frost_ciphersuite_t to a FROST service, built per call so C threads cannot race on a cache.
 func resolveService(cs int) (service.FrostService, int) {
 	suite, status := resolveSuite(cs)
 	if status != statusOK {

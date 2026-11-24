@@ -21,15 +21,7 @@ import (
 	"github.com/jeremyhahn/go-frost/pkg/frost/signing"
 )
 
-// TestMultiCiphersuite_BasicWorkflow tests the complete FROST workflow
-// (keygen -> sign -> verify) for all 5 RFC 9591 ciphersuites.
-//
-// This ensures all ciphersuites work identically through:
-// 1. Dealer-based key generation
-// 2. Round 1: Nonce generation and commitments
-// 3. Round 2: frost.Signature share generation
-// 4. frost.Signature aggregation
-// 5. frost.Signature verification
+// TestMultiCiphersuite_BasicWorkflow runs dealer keygen, both signing rounds, aggregation and verification for all five RFC 9591 ciphersuites.
 func TestMultiCiphersuite_BasicWorkflow(t *testing.T) {
 	testCases := []struct {
 		name        string

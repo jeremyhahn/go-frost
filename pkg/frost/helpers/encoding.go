@@ -8,37 +8,13 @@ import (
 
 // CommitmentListEncoder encodes commitment lists for hashing.
 type CommitmentListEncoder interface {
-	// Encode serializes a commitment list into a byte string.
-	//
-	// Inputs:
-	// - commitmentList: Sorted list of participant commitments
-	//
-	// Outputs:
-	// - encoded: The serialized representation
-	//
-	// The encoding concatenates for each participant:
-	// identifier || hiding_nonce_commitment || binding_nonce_commitment
+	// Encode serializes identifier || hiding || binding commitments for each participant.
 	Encode(commitmentList frost.CommitmentList) ([]byte, error)
 
-	// GetParticipants extracts the list of participant identifiers from a commitment list.
-	//
-	// Inputs:
-	// - commitmentList: List of participant commitments
-	//
-	// Outputs:
-	// - identifiers: List of participant identifiers
+	// GetParticipants returns the identifiers in a commitment list.
 	GetParticipants(commitmentList frost.CommitmentList) []frost.Identifier
 
-	// ValidateCommitmentList validates that a commitment list is properly formatted.
-	// The list must be sorted in ascending order by identifier.
-	//
-	// Inputs:
-	// - commitmentList: List of participant commitments
-	//
-	// Errors:
-	// - Returns error if list is empty
-	// - Returns error if list is not sorted
-	// - Returns error if list contains duplicates
+	// ValidateCommitmentList rejects an empty, unsorted or duplicate commitment list.
 	ValidateCommitmentList(commitmentList frost.CommitmentList) error
 }
 
@@ -51,11 +27,7 @@ type commitmentListEncoder struct {
 	group group.Group
 }
 
-// Encode implements CommitmentListEncoder.Encode
-//
-// Serializes a commitment list into a byte string by concatenating:
-// identifier || hiding_nonce_commitment || binding_nonce_commitment
-// for each participant in the list.
+// Encode implements CommitmentListEncoder.Encode.
 func (e *commitmentListEncoder) Encode(commitmentList frost.CommitmentList) ([]byte, error) {
 	if len(commitmentList) == 0 {
 		return []byte{}, nil
@@ -121,12 +93,7 @@ func (e *commitmentListEncoder) GetParticipants(commitmentList frost.CommitmentL
 	return identifiers
 }
 
-// ValidateCommitmentList implements CommitmentListEncoder.ValidateCommitmentList
-//
-// Validates that a commitment list is properly formatted:
-// - Must not be empty
-// - Must be sorted in ascending order by identifier
-// - Must not contain duplicate identifiers
+// ValidateCommitmentList implements CommitmentListEncoder.ValidateCommitmentList.
 func (e *commitmentListEncoder) ValidateCommitmentList(commitmentList frost.CommitmentList) error {
 	// 1. Check if list is empty
 	if len(commitmentList) == 0 {
@@ -146,15 +113,7 @@ func (e *commitmentListEncoder) ValidateCommitmentList(commitmentList frost.Comm
 	return nil
 }
 
-// IdentifierToScalar converts a participant identifier to a scalar using the
-// group's native byte ordering.
-//
-// Per RFC 9591, identifiers must be encoded as scalars in the field.
-// Different groups use different byte orderings:
-// - P-256, secp256k1: big-endian
-// - Ed25519, Ed448, ristretto255: little-endian
-//
-// This function ensures consistent encoding across all FROST operations.
+// IdentifierToScalar encodes an identifier as a scalar in the group's byte order (big-endian for P-256 and secp256k1, little-endian otherwise).
 func IdentifierToScalar(grp group.Group, id frost.Identifier) (group.Scalar, error) {
 	idBytes := make([]byte, grp.ScalarLength())
 	idVal := uint32(id)

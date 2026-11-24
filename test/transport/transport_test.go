@@ -1,14 +1,6 @@
 //go:build integration
 
-// Package transport provides distributed network transport tests for the FROST protocol.
-//
-// These tests verify that FROST works correctly in a real distributed environment by:
-// - Running multiple independent HTTP servers (one per participant node)
-// - Using actual network transport for all communication
-// - Simulating realistic distributed scenarios including failures
-// - Testing concurrent distributed signatures
-//
-// All tests run in Docker containers to ensure isolation and reproducibility.
+// Package transport tests FROST over real HTTP between independent participant nodes, including failures and concurrent sessions.
 package transport
 
 import (
@@ -33,12 +25,7 @@ func addrsOf(nodes ...*Node) map[frost.Identifier]string {
 	return addrs
 }
 
-// unusedAddr returns a loopback address with nothing listening on it, by
-// binding an ephemeral port and immediately closing the listener. Tests that
-// need a deliberately unreachable peer use this rather than naming a port:
-// a hardcoded "nothing runs here" port is only unused until something else on
-// the host claims it, and then the test silently exercises a live stranger
-// instead of the failure path it is meant to cover.
+// unusedAddr returns a loopback address nothing listens on, for tests that need an unreachable peer.
 func unusedAddr(t *testing.T) string {
 	t.Helper()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")

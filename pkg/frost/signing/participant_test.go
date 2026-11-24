@@ -564,9 +564,7 @@ func TestParticipant_NonceReusePrevention(t *testing.T) {
 		t.Fatalf("First RoundTwo() failed: %v", err)
 	}
 
-	// Attempting to reuse same nonces should still work at the participant level
-	// (nonce reuse prevention is typically enforced at the coordinator level)
-	// But the implementation should handle it gracefully
+	// Reusing nonces still works at the participant level; reuse is prevented by the coordinator.
 	_, err = participant.RoundTwo(nonces, message2, commitmentList)
 	if err != nil {
 		// If the implementation prevents reuse, that's acceptable

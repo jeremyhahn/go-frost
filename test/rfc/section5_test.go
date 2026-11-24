@@ -250,8 +250,7 @@ func TestSection5_2_RoundTwoSignatureShareGeneration(t *testing.T) {
 			return commitments[i].Identifier < commitments[j].Identifier
 		})
 
-		// Round 2 - binding factors are computed internally
-		// We verify this by checking that different messages produce different shares
+		// Round 2: binding factors are internal, so check that different messages give different shares.
 		message1 := []byte("Message 1")
 		message2 := []byte("Message 2")
 
@@ -1270,10 +1269,7 @@ func TestSection5_CompleteProtocolFlow(t *testing.T) {
 	})
 
 	t.Run("CoordinatorIntegration", func(t *testing.T) {
-		// RFC 9591 Section 5: Test using the Coordinator to orchestrate the protocol
-		// Note: The current Coordinator implementation has a limitation where it doesn't
-		// properly store nonces between rounds. This test validates the RequestCommitments
-		// functionality which does work correctly.
+		// RFC 9591 Section 5: the Coordinator keeps no nonces between rounds, so only RequestCommitments is tested.
 
 		// Setup
 		participantIDs := []frost.Identifier{1, 2, 3}
@@ -1309,9 +1305,7 @@ func TestSection5_CompleteProtocolFlow(t *testing.T) {
 			t.Error("Commitments should be sorted by identifier")
 		}
 
-		// Note: We cannot test the full Sign method because the Coordinator implementation
-		// currently doesn't manage nonce state between rounds. This is a known limitation
-		// documented in the coordinator.go file at line 164-166.
+		// The Coordinator keeps no nonce state between rounds, so Sign is not tested.
 		t.Log("Coordinator.RequestCommitments works correctly. Full Sign() integration requires nonce state management.")
 	})
 }

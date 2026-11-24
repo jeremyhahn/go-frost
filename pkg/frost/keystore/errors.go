@@ -82,12 +82,7 @@ var (
 	// for example opening or copying an enclave holding secret material.
 	ErrProtectedMemory = &KeystoreError{Op: "protected memory"}
 
-	// ErrPlaintextSerialization is returned when a StoredKeyPackage is handed
-	// to encoding/json. A serialized key package carries the secret share, and
-	// encoding/json cannot produce or consume one without leaving plaintext on
-	// the ordinary heap, so the type refuses to be marshaled or unmarshaled
-	// that way. Use StoredKeyPackage.Seal and OpenStoredKeyPackage, which keep
-	// the serialized share in protected memory.
+	// ErrPlaintextSerialization is returned when encoding/json is handed a StoredKeyPackage; use Seal and OpenStoredKeyPackage.
 	ErrPlaintextSerialization = &KeystoreError{Op: "plaintext serialization"}
 )
 
@@ -127,10 +122,7 @@ var (
 	// this package would resolve differently from encoding/json.
 	errJSONDuplicateMember = errors.New("JSON member appears more than once")
 
-	// errJSONEscapedKey reports a member name carrying a JSON escape. Such a
-	// name reads as one thing to encoding/json, which unescapes it, and as
-	// another to a scan that compares raw bytes - so a document could carry
-	// the share twice and be seen as carrying it once.
+	// errJSONEscapedKey reports a member name with a JSON escape, which encoding/json and the raw scan would read differently.
 	errJSONEscapedKey = errors.New("JSON member name contains an escape")
 )
 

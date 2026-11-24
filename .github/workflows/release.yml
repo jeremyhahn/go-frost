@@ -1,10 +1,6 @@
 name: Release
 
-# workflow_dispatch carries a tag input so a Release object can be published
-# for a tag that ALREADY EXISTS. v0.3.0-alpha published as a Go module and then
-# lost its Release object to the failures described in #16, and a published tag
-# is immutable (release-versioning.md §3 rule 3) -- re-tagging to re-trigger is
-# exactly the thing that turns into a portfolio-wide go.sum cleanup.
+# workflow_dispatch takes a tag so a Release can be published for an existing, immutable tag.
 on:
   push:
     tags:
@@ -21,13 +17,7 @@ permissions:
   packages: write
 
 jobs:
-  # Nothing publishes until the tag, the VERSION file and the CHANGELOG agree.
-  # release-versioning.md §2 names this as a known unclosed gap -- "two sources
-  # of truth, and nothing reconciles them" -- and go-truststrap shipped two
-  # different releases identifying themselves as the same version because of
-  # it. The tag is v-prefixed and VERSION is not; that asymmetry is deliberate
-  # and portfolio-wide, so the check strips the prefix rather than demanding
-  # they be spelled identically.
+  # Nothing publishes until the tag, VERSION and CHANGELOG agree; the tag's v prefix is stripped for the comparison.
   validate:
     name: Validate release metadata
     runs-on: ubuntu-latest
@@ -66,12 +56,7 @@ jobs:
 
           echo "tag v${TAG} matches VERSION and has a CHANGELOG section"
 
-  # Binaries and libraries build in ONE job. They used to be two, passing files
-  # through actions/upload-artifact@v6 -- which is @actions/artifact v2, a
-  # GitHub-only service that refuses to run against a GHES-shaped host. That is
-  # what failed on v0.3.0-alpha (#16). Building both here means nothing has to
-  # cross a job boundary at all, and the libraries need cgo and build-essential
-  # anyway, so the split was buying an artifact hop and nothing else.
+  # Binaries and libraries build in one job so nothing crosses a job boundary.
   release:
     name: Build and publish
     runs-on: ubuntu-latest
@@ -86,13 +71,7 @@ jobs:
           ref: ${{ needs.validate.outputs.tag }}
           fetch-depth: 0
 
-      # The tag's tree is what gets built and released, but it does not
-      # necessarily contain this workflow's own release tooling: dispatching for
-      # a tag cut BEFORE the tooling existed checks out a tree with no
-      # .github/scripts/ at all, which is how the first attempt at republishing
-      # v0.3.0-alpha failed. Check the workflow's own ref out alongside it and
-      # run the script from there, leaving the build tree as the working
-      # directory so CHANGELOG.md and dist/ still resolve to the release.
+      # Check out the workflow's own ref beside the tag's tree, so tags older than .github/scripts/ can still be released.
       - uses: actions/checkout@v6
         with:
           ref: ${{ github.sha }}
@@ -166,10 +145,7 @@ jobs:
           files: dist/*
           generate_release_notes: true
 
-      # Gitea does not serve the GitHub Releases API -- softprops gets HTTP 405
-      # (go-truststrap#12, go-frost#16). Its own /api/v1 releases endpoint is
-      # GitHub-shaped, so plain curl is enough and nothing needs to be reachable
-      # on github.com at release time.
+      # The forge's /api/v1 releases endpoint is GitHub-shaped, so curl is enough.
       - name: Create Gitea Release
         if: github.server_url != 'https://github.com'
         env:
@@ -194,10 +170,7 @@ jobs:
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
 
-      # ghcr.io on GitHub, Gitea's own registry (same host and port as its web
-      # UI) on the internal network -- derived, never hardcoded (devops.md §2).
-      # ghcr.io does not exist on the internal network, so a release built there
-      # had nowhere to push (lessons.md).
+      # ghcr.io on GitHub, the forge's own registry elsewhere; derived, never hardcoded.
       - name: Resolve registry
         id: registry
         run: |
@@ -218,9 +191,7 @@ jobs:
             type=semver,pattern={{major}},value=${{ env.TAG }},enable=${{ !contains(env.TAG, '-') }}
             type=raw,value=latest,enable=${{ !contains(env.TAG, '-') }}
 
-      # devops.md §8: every image is gated on CRITICAL/HIGH before it can reach
-      # a registry. Build the amd64 leg locally, scan it, then publish the
-      # multi-arch manifest from the same layer cache.
+      # Gate the image on CRITICAL/HIGH before publishing: build amd64 locally, scan, then push the multi-arch manifest.
       - name: Build image for scanning
         uses: docker/build-push-action@v6
         with:
@@ -234,17 +205,7 @@ jobs:
             VERSION=${{ env.VERSION }}
           cache-from: type=gha
 
-      # The upstream install.sh resolves its version through the unauthenticated
-      # GitHub API, which rate-limits when the whole portfolio builds at once --
-      # it timed out here (curl exit 28) and took the job with it. Fetching the
-      # pinned release asset avoids the API entirely and keeps the version
-      # visible in this file rather than resolved at run time. The checksum is
-      # verified because an unverified binary fetched over the network is then
-      # handed an entire image to scan. Same shape as go-xkms#43.
-      #
-      # Bump TRIVY_VERSION deliberately; `curl -sI
-      # https://github.com/aquasecurity/trivy/releases/latest` shows the current
-      # tag without an API call.
+      # Fetch the pinned trivy release asset and verify its checksum instead of the rate-limited install script; bump TRIVY_VERSION deliberately.
       - name: Install trivy CLI
         env:
           TRIVY_VERSION: '0.74.0'
@@ -261,19 +222,11 @@ jobs:
           rm -rf "$tmp"
           trivy --version
 
-      # --ignore-unfixed on the OS layer (devops.md §8): base images carry
-      # unfixable advisories at any moment, so a raw gate would be permanently
-      # red and would train people to ignore it. This gate means "a rebuild
-      # fixes this" -- actionable, so enforceable.
+      # --ignore-unfixed on the OS layer: the gate means a rebuild fixes it.
       - name: Trivy image gate (fail on CRITICAL/HIGH)
         run: trivy image --scanners vuln --severity CRITICAL,HIGH --ignore-unfixed --exit-code 1 go-frost:scan
 
-      # Everything above is a hard gate. Only publication is tolerant, and it is
-      # tolerant deliberately: the ephemeral Actions token carries repository
-      # scopes, not write:package, so the internal registry rejects it until a
-      # scoped token is provisioned (company decision 2c). The internal registry
-      # is also plain HTTP, which needs insecure-registries on every daemon that
-      # pushes or pulls.
+      # Only publication tolerates failure: the Actions token lacks write:package for the private registry, which is also plain HTTP.
       - name: Log in to the container registry
         id: login
         continue-on-error: true

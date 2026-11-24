@@ -289,15 +289,7 @@ func TestSecretBytes_Reseal_CannotResurrectDestroyed(t *testing.T) {
 	assert.Equal(t, 0, secret.Size())
 }
 
-// TestWithSecret_OpenUseResealIsOneCriticalSection is the deterministic form of
-// TestClone_ConcurrentDestroy: rather than racing a Destroy against an open
-// secret and hoping to hit the window, it parks a caller inside the cycle and
-// asserts the mutex is held at that moment.
-//
-// That is the property destruction being final rests on. If the mutex were
-// free mid-cycle, a Destroy could run between the open and the reseal, and the
-// reseal would then seal the plaintext back into the secret it had just
-// destroyed. Clone runs through the same cycle, so this covers it too.
+// TestWithSecret_OpenUseResealIsOneCriticalSection checks deterministically that the mutex is held inside the cycle.
 func TestWithSecret_OpenUseResealIsOneCriticalSection(t *testing.T) {
 	Init()
 

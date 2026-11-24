@@ -1,12 +1,4 @@
-// Package ed25519 implements the FROST group interface using the Ed25519 group.
-//
-// Ed25519 is based on the edwards25519 curve, providing:
-// - 128-bit security level
-// - Fast, constant-time operations
-// - Compatible with RFC 8032 (Ed25519 signatures)
-//
-// This implementation uses filippo.io/edwards25519 for the underlying
-// cryptographic primitives.
+// Package ed25519 implements the FROST group interface on edwards25519 using filippo.io/edwards25519.
 package ed25519
 
 import (
@@ -151,15 +143,7 @@ func (s *Scalar) Copy() group.Scalar {
 	return &Scalar{scalar: result}
 }
 
-// Compare compares this scalar with another scalar.
-// Returns -1 if this < other, 0 if equal, 1 if this > other.
-//
-// IMPORTANT: This implementation is NOT constant-time for ordering (< or >).
-// However, equality checks use constant-time comparison.
-// This method should NOT be used with secret scalar values for ordering comparisons.
-// For equality checks with secrets, use Equal() which is fully constant-time.
-//
-// Note: Currently unused in production code. Provided for interface completeness.
+// Compare returns -1, 0 or 1; ordering is not constant-time, so use Equal for secrets.
 func (s *Scalar) Compare(other group.Scalar) int {
 	otherScalar := other.(*Scalar)
 

@@ -1,18 +1,4 @@
-// Package refresh implements key refresh for FROST.
-//
-// Key refresh allows participants to update their secret shares without changing
-// the group public key. This is useful for:
-//   - Proactive security: Periodically refreshing shares limits the window
-//     of vulnerability if a share is compromised
-//   - Adding/removing participants: Combined with share redistribution
-//
-// The refresh process works by adding shares of a "zero" polynomial to each
-// participant's existing share. Since the polynomial evaluates to zero at x=0,
-// the sum of all a_0 coefficients remains unchanged, preserving the group secret.
-//
-// Two approaches are supported:
-//  1. Trusted Dealer Refresh: A trusted party generates and distributes refresh shares
-//  2. DKG-Based Refresh: Participants jointly generate refresh shares (more secure)
+// Package refresh refreshes FROST shares, by trusted dealer or DKG, by adding shares of a zero-constant polynomial so the group key is unchanged.
 package refresh
 
 import (
@@ -39,10 +25,7 @@ type RefreshShare struct {
 	Commitment []group.Element
 }
 
-// Zeroize securely erases the refresh share from memory.
-//
-// This method should be called after the refresh share has been applied
-// to reduce the risk of memory disclosure attacks.
+// Zeroize erases the refresh share; call it once the share is applied.
 func (rs *RefreshShare) Zeroize() {
 	runtime.KeepAlive(rs.Share)
 	if rs.Share != nil {
@@ -53,23 +36,7 @@ func (rs *RefreshShare) Zeroize() {
 	runtime.KeepAlive(rs.Share)
 }
 
-// ComputeRefreshingShares generates refresh shares using a trusted dealer.
-//
-// This creates shares of a polynomial with zero constant term, meaning the
-// sum of all refreshed shares evaluates to the same group secret.
-//
-// Inputs:
-//   - currentPublicKeyPackage: The current group's public key package
-//   - maxSigners: Total number of participants
-//   - minSigners: Threshold required to sign
-//   - identifiers: Participant identifiers to generate refresh shares for
-//   - suite: The ciphersuite to use
-//
-// Outputs:
-//   - refreshShares: One refresh share per participant
-//   - newPublicKeyPackage: Updated public key package with new verifying shares
-//
-// Note: The VerifyingKey in the new PublicKeyPackage should be identical to the old one.
+// ComputeRefreshingShares returns one dealer refresh share per identifier and the updated public key package; the verifying key is unchanged.
 func ComputeRefreshingShares(
 	currentPublicKeyPackage *dkg.PublicKeyPackage,
 	maxSigners, minSigners uint32,
@@ -162,20 +129,7 @@ func ComputeRefreshingShares(
 	return refreshShares, newPublicKeyPackage, nil
 }
 
-// ApplyRefreshShare applies a refresh share to update a participant's key package.
-//
-// This adds the refresh share to the existing signing share and updates the
-// verifying share accordingly.
-//
-// Inputs:
-//   - refreshShare: The refresh share received from the dealer
-//   - currentKeyPackage: The participant's current key package
-//   - suite: The ciphersuite to use
-//
-// Outputs:
-//   - newKeyPackage: Updated key package with refreshed shares
-//
-// Note: The GroupPublicKey in the new KeyPackage should be identical to the old one.
+// ApplyRefreshShare adds a refresh share to the key package's signing and verifying shares; the group key is unchanged.
 func ApplyRefreshShare(
 	refreshShare RefreshShare,
 	currentKeyPackage *frost.KeyPackage,

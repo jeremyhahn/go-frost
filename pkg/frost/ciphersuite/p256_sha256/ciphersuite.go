@@ -1,16 +1,4 @@
-// Package p256_sha256 implements the FROST(P-256, SHA-256) ciphersuite.
-//
-// This ciphersuite uses P-256 (secp256r1) for the prime-order group and SHA-256 for
-// all hash functions. It implements RFC 9591 Section 6.4.
-//
-// Context string: "FROST-P256-SHA256-v1"
-//
-// The ciphersuite provides five domain-separated hash functions:
-// - H1: Used for binding factor computation (domain: "rho")
-// - H2: Used for challenge computation (domain: "chal")
-// - H3: Used for nonce generation (domain: "nonce")
-// - H4: Used for message hashing (domain: "msg")
-// - H5: Used for commitment list hashing (domain: "com")
+// Package p256_sha256 implements FROST(P-256, SHA-256) per RFC 9591 Section 6.4.
 package p256_sha256
 
 import (
@@ -110,9 +98,7 @@ func (cs *P256SHA256) H5(data []byte) []byte {
 	return cs.Hash(input)
 }
 
-// HDKG is a domain-separated hash-to-scalar function for DKG operations.
-// Used for computing challenges in the Schnorr proof of knowledge during DKG.
-// Implements: H(contextString || "dkg" || data) -> Scalar
+// HDKG computes H(contextString || "dkg" || data) for the DKG proof of knowledge.
 func (cs *P256SHA256) HDKG(data []byte) group.Scalar {
 	return cs.hashToScalar("dkg", data)
 }
@@ -124,10 +110,7 @@ func (cs *P256SHA256) HID(data []byte) group.Scalar {
 	return cs.hashToScalar("id", data)
 }
 
-// HashToCurve maps arbitrary byte strings to group elements.
-// This uses a hash-and-increment approach for P-256.
-// We hash the input and attempt to decode it as a point. If that fails,
-// we increment a counter and try again until we find a valid point.
+// HashToCurve maps bytes to a group element by hash-and-increment.
 func (cs *P256SHA256) HashToCurve(data []byte) (group.Element, error) {
 	// Use a domain-separated hash for hash-to-curve
 	input := cs.domainSeparate("h2c", data)
@@ -179,12 +162,7 @@ func (cs *P256SHA256) tryFindPoint(x *big.Int) group.Element {
 	return nil
 }
 
-// VerifySignature verifies a FROST signature against a message and public key.
-// Implements Schnorr signature verification for P-256.
-//
-// Signature format: R (33 bytes) || z (32 bytes)
-// Verification equation: z * G == R + c * PK
-// where c = H2(R || PK || msg)
+// VerifySignature checks R || z (33+32 bytes): z*G == R + c*PK, c = H2(R || PK || msg).
 func (cs *P256SHA256) VerifySignature(message []byte, signature []byte, publicKey group.Element) error {
 	// Validate inputs
 	if publicKey == nil {
@@ -260,12 +238,7 @@ func (cs *P256SHA256) hashToScalar(domain string, data []byte) group.Scalar {
 	return p256.NewScalarFromBigInt(hashInt)
 }
 
-// expandMessageXMD implements expand_message_xmd from RFC 9380 Section 5.3.1.
-// This is used for hash_to_field to produce uniform random bytes.
-//
-// Parameters (for SHA-256):
-// - b_in_bytes = 32 (SHA-256 output size)
-// - s_in_bytes = 64 (SHA-256 input block size)
+// expandMessageXMD implements RFC 9380 Section 5.3.1 expand_message_xmd for SHA-256 (b=32, s=64).
 func expandMessageXMD(msg, dst []byte, lenInBytes int) []byte {
 	const (
 		bInBytes = 32 // SHA-256 output size
@@ -275,9 +248,7 @@ func expandMessageXMD(msg, dst []byte, lenInBytes int) []byte {
 	// Step 1: ell = ceil(len_in_bytes / b_in_bytes)
 	ell := (lenInBytes + bInBytes - 1) / bInBytes
 
-	// Step 2: Abort checks (len(DST) <= 255, ell <= 255, len_in_bytes <= 65535)
-	// SECURITY NOTE: These conditions should never fail with internal calls.
-	// A failure here indicates a bug in the FROST library implementation.
+	// Step 2: abort checks; internal calls never fail them, so an error is a library bug.
 	if ell > 255 || len(dst) > 255 || lenInBytes > 65535 {
 		panic("FROST library bug: expandMessageXMD called with invalid parameters")
 	}

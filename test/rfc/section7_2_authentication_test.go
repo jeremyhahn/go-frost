@@ -1,23 +1,4 @@
-// RFC 9591 Section 7.2: Participant Authentication (Authenticated Channels)
-//
-// This file tests the participant authentication mechanisms required by RFC 9591 Section 7.2.
-// It verifies that:
-// 1. Commitments can be authenticated with Ed25519 signatures
-// 2. Signature shares can be authenticated with Ed25519 signatures
-// 3. Invalid authentication proofs are rejected
-// 4. Missing authenticator is handled correctly
-//
-// RFC 9591 Section 7.2 Requirements:
-// - "Implementations MUST ensure that participants in the protocol are authenticated"
-// - "This prevents impersonation attacks where an attacker could inject malicious messages"
-// - "Authentication can be achieved using digital signatures, MACs, or TLS with client authentication"
-//
-// Test Coverage:
-// - H-1: Participant Authentication (RFC 9591 Section 7.2)
-// - Authentication of commitments
-// - Authentication of signature shares
-// - Integration with reputation tracking
-// - Error handling for authentication failures
+// RFC 9591 Section 7.2 tests: Ed25519 authentication of commitments and shares, rejected proofs and a missing authenticator.
 package rfc
 
 import (

@@ -1,30 +1,4 @@
-// Package p256 implements the FROST group interface using the P-256 (secp256r1) group.
-//
-// P-256 is based on the NIST secp256r1 curve, providing:
-// - 128-bit security level
-// - FIPS 186-4 compliant operations
-// - Compatible with ECDSA P-256 signatures
-//
-// This implementation uses crypto/ecdsa and crypto/elliptic for the underlying
-// cryptographic primitives.
-//
-// # Security Considerations
-//
-// This implementation provides FULL constant-time guarantees for all operations:
-//
-// CONSTANT-TIME:
-//   - Point operations (ScalarMult, ScalarBaseMult) - Go's crypto/elliptic uses
-//     constant-time assembly implementations for P-256
-//   - Scalar field arithmetic (Add, Sub, Mul, Inv) - uses filippo.io/bigmod which
-//     provides constant-time modular arithmetic re-exported from Go's internal
-//     crypto/internal/fips140/bigmod package
-//
-// Per RFC 9591 Section 7.3, implementations SHOULD use constant-time operations.
-// This implementation satisfies that requirement.
-//
-// Note: Scalar.Inv() uses InverseVarTime which may leak timing information about
-// whether the input is zero. However, in FROST this is only used for Lagrange
-// coefficient computation with public participant identifiers, not secret values.
+// Package p256 implements the FROST group interface on P-256 with constant-time point and scalar arithmetic; Scalar.Inv is variable-time and only sees public identifiers.
 package p256
 
 import (
@@ -175,10 +149,7 @@ func (s *Scalar) Mul(other group.Scalar) group.Scalar {
 	return &Scalar{nat: result}
 }
 
-// Inv returns the multiplicative inverse of this scalar modulo the group order.
-// Note: Uses InverseVarTime which may leak timing info about zero check.
-// This is acceptable because Inv is only used for Lagrange coefficient computation
-// with public participant identifiers, not secret values.
+// Inv returns the inverse modulo the group order; variable-time, used only on public identifiers.
 func (s *Scalar) Inv() (group.Scalar, error) {
 	if s.IsZero() {
 		return nil, frost.ErrZeroScalar
@@ -224,11 +195,7 @@ func (s *Scalar) Copy() group.Scalar {
 	return &Scalar{nat: copyNat(s.nat)}
 }
 
-// Compare compares this scalar with another scalar.
-// Returns -1 if this < other, 0 if equal, 1 if this > other.
-// Note: This comparison is NOT constant-time for ordering.
-// However, equality is checked using constant-time comparison.
-// This method should NOT be used with secret scalar values for ordering.
+// Compare returns -1, 0 or 1; ordering is not constant-time, so not for secrets.
 func (s *Scalar) Compare(other group.Scalar) int {
 	otherScalar := other.(*Scalar)
 

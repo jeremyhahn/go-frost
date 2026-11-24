@@ -35,9 +35,7 @@ COVERAGE_HTML=$(COVERAGE_DIR)/coverage.html
 DOCKER_IMAGE=go-frost
 DOCKER_TAG=latest
 
-# Version info. The build version is BUILD_VERSION, not VERSION: VERSION is the
-# explicit argument of `make release-alpha VERSION=vX.Y.Z-alpha`, and a build
-# definition under that name would shadow it (release-alpha template v2.3.6(b)).
+# The build version is BUILD_VERSION so it never shadows `make release-alpha VERSION=...`.
 BUILD_VERSION ?= $(shell cat VERSION 2>/dev/null || echo "dev")
 GIT_COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "none")
 BUILD_DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -122,19 +120,7 @@ test:
 
 .PHONY: integration-test
 ## integration-test: Run the build-tagged integration suite (devops.md §4)
-# Runs the distributed transport suite directly rather than through Docker.
-# The nodes bind port 0 and peers are told the address the kernel assigned, so
-# concurrent runs on one host — several CI jobs, or a developer alongside CI —
-# cannot collide. test-transport below runs the same suite inside a container
-# when that extra isolation is wanted.
-#
-# Scoped to ./test/transport/ rather than ./test/... deliberately. The other
-# two packages under test/ carry no build tag and are not part of this suite:
-# test/testvectors passes, but test/rfc's side-channel tests measure
-# nanosecond timing differences and call a leak at an 8ns delta, which a
-# CPU-capped shared runner produces as noise. Both were already unrun by any
-# workflow (the unit job covers ./pkg/... only); wiring them in is a separate
-# decision, not a side effect of enabling the transport suite.
+# Runs ./test/transport/ directly; nodes bind port 0, so concurrent runs cannot collide.
 integration-test:
 	@echo "Running integration tests..."
 	@$(GOTEST) -tags=integration -race -timeout 300s ./test/transport/
@@ -261,8 +247,7 @@ modverify:
 
 .PHONY: trivy
 ## trivy: Filesystem CVE/secret scan, gated on CRITICAL/HIGH
-# test/ holds the transport harness and RFC vectors; nothing under it ships to
-# a consumer of the library, so its dependencies are out of scope for the gate.
+# test/ ships to no consumer, so it is out of scope for the gate.
 trivy:
 	@command -v trivy >/dev/null 2>&1 || { \
 		echo "trivy not installed - skipping filesystem scan (see https://trivy.dev/latest/getting-started/installation/)"; \
@@ -369,33 +354,10 @@ coverage-rfc:
 	$(GOCMD) tool cover -func=$(COVERAGE_DIR)/rfc.out
 
 SUBMODULE_TAGS := 
-# Builds never resolve through a workspace: modules come from Gitea tags
-# (dependency-resolution.md §2). Immunizes against stray go.work files.
+# Builds never resolve through a workspace (dependency-resolution.md §2).
 export GOWORK=off
 
-# ---- dependency-resolution.md targets (2026-08-13 cutover) ----
-# SUBMODULE_TAGS lists nested modules tagged in lockstep with the root
-# (release-versioning.md P2); go-frost has none. deps-latest runs before
-# compiling in a consumer repo; it picks the highest tag INCLUDING -alpha
-# prereleases — bare 'go get @latest' ignores prereleases and would downgrade
-# to legacy v0.0.0.
-#
-# release-alpha is the company template v2.3.9, vendored verbatim in
-# make/release-alpha.mk: `make release-alpha VERSION=vX.Y.Z-alpha`.
-#
-# Its inputs are defined BEFORE the include: the template reads them in
-# target-specific `:=` assignments, which expand at parse time.
-#
-# AGENT_GIT is resolved from PATH, never a baked absolute path (template
-# v2.3.6(a)); an unresolved wrapper leaves it empty and the recipe's -x guard
-# fails before VERSION is written. It is resolved to a plain value because the
-# recipe reads its inputs with $(value ...), which would not expand a deferred
-# reference. It is resolved with $(wildcard ...), NOT $(shell command -v ...):
-# GNU Make 4.4 builds an exported environment for every $(shell), and building
-# it expands each command-line variable — a parse-time $(shell) here, ahead of
-# the template's `unexport` line, made
-# `make release-alpha 'RELEASE_REMOTE=$(shell cmd)origin'` run cmd (measured on
-# GNU Make 4.4.1 while adopting v2.3.9). $(wildcard) runs no process.
+# release-alpha is the vendored template in make/release-alpha.mk; its inputs are defined before the include, AGENT_GIT resolved from PATH with $(wildcard), which runs no process.
 ifeq ($(origin AGENT_GIT),undefined)
 AGENT_GIT := $(firstword $(wildcard $(addsuffix /agent-git.sh,$(subst :, ,$(PATH)))))
 endif
@@ -404,23 +366,7 @@ RELEASE_REMOTE ?= origin
 
 include make/release-alpha.mk
 
-# CHANGELOG fragments (release-versioning.md §5): a PR adds
-# changelog.d/<issue>-<slug>.md instead of editing CHANGELOG.md, and assembly
-# is a COMMITTED step before tagging. The release is two commands:
-#
-#   make changelog-assemble VERSION=vX.Y.Z-alpha   # folds [Unreleased] + fragments
-#   make release-alpha      VERSION=vX.Y.Z-alpha   # into "## [X.Y.Z-alpha] - date"
-#
-# release-alpha refuses while any fragment remains, so entries can never be
-# stranded in changelog.d/ behind a published tag. The vendored template is
-# untouched: the refusal is a repo-specific prerequisite, as the template
-# provides for lockstep checks.
-#
-# changelog-assemble takes its inputs exactly as the template does, and for the
-# same reason: once, via override + export of $(value ...), with every name
-# (public and internal) unexported, so a $(shell ...) in a command-line value
-# arrives as text instead of running. VERSION, REPO_NAME and AGENT_GIT are
-# already unexported by make/release-alpha.mk.
+# A PR adds changelog.d/<issue>-<slug>.md; `make changelog-assemble VERSION=...` folds the fragments, then `make release-alpha VERSION=...` (release-versioning.md §5).
 .PHONY: changelog-assemble check-changelog-fragments
 unexport CL_VERSION CL_REPO CL_AGENT_GIT
 ## changelog-assemble: Fold [Unreleased] and changelog.d/ into a release section and commit (VERSION=vX.Y.Z-alpha)

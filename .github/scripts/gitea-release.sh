@@ -1,26 +1,6 @@
 #!/usr/bin/env bash
-#
-# Publishes a release to a Gitea instance: creates (or reuses) the release for
-# the tag, then uploads everything in dist/ as assets.
-#
-# This exists because softprops/action-gh-release talks to the GitHub Releases
-# API, which Gitea does not serve -- it answers HTTP 405. That, plus the v4
-# artifact actions refusing to run against a GHES-shaped host, is what left
-# v0.3.0-alpha with a published Go module and no Release object (#16). Gitea's
-# own release API under /api/v1 is GitHub-shaped, so plain curl is enough and
-# nothing has to be fetchable from github.com at release time.
-#
-# Adapted from go-truststrap's, which published its v0.2.0-alpha this way.
-#
-# The body comes from the tag's CHANGELOG section. The validate job has already
-# proved that section exists, so a missing one here is a bug rather than a
-# routine case.
-#
-# Required environment:
-#   GITEA_TOKEN         token with write access to the repository
-#   TAG                 e.g. v0.2.0-alpha
-#   GITHUB_SERVER_URL   the Gitea instance, e.g. http://<gitea-host>:3001
-#   GITHUB_REPOSITORY   owner/name
+# Publishes dist/ as release assets through the forge's GitHub-shaped /api/v1 releases API; the body is the tag's CHANGELOG section.
+# Required environment: GITEA_TOKEN, TAG, GITHUB_SERVER_URL, GITHUB_REPOSITORY.
 set -euo pipefail
 
 : "${GITEA_TOKEN:?}"; : "${TAG:?}"

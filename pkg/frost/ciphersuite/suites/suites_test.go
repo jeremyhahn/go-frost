@@ -131,8 +131,7 @@ func TestGet_UnknownIsTyped(t *testing.T) {
 	}
 }
 
-// TestGet_P256IsAlwaysSelectable pins the property issue #12 exists for: the
-// one FIPS-approved suite resolves in every runtime mode, never nil.
+// TestGet_P256IsAlwaysSelectable checks that P-256 resolves in every runtime mode.
 func TestGet_P256IsAlwaysSelectable(t *testing.T) {
 	suite, err := suites.Get(ciphersuite.P256SHA256)
 	if err != nil {
@@ -232,10 +231,7 @@ func TestShortName(t *testing.T) {
 	}
 }
 
-// TestDefault_TracksTheRuntimeMode covers both halves of the owner ruling: a
-// FIPS-active runtime defaults new ceremonies to P-256, and every other
-// runtime keeps the RFC-aligned ristretto255 default so existing shares are
-// unaffected.
+// TestDefault_TracksTheRuntimeMode checks P-256 under FIPS and ristretto255 otherwise.
 func TestDefault_TracksTheRuntimeMode(t *testing.T) {
 	got := suites.Default()
 

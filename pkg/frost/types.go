@@ -1,9 +1,4 @@
-// Package frost implements the Flexible Round-Optimized Schnorr Threshold (FROST)
-// signature scheme as specified in RFC 9591.
-//
-// FROST is a threshold signature scheme that allows a threshold number of participants
-// to cooperatively generate a signature, providing improved distribution of trust and
-// redundancy with respect to secret keys.
+// Package frost implements the FROST threshold Schnorr signature scheme of RFC 9591.
 package frost
 
 import (
@@ -28,12 +23,7 @@ func (id Identifier) Serialize() []byte {
 	}
 }
 
-// DeserializeIdentifier decodes a byte slice into an Identifier.
-// Expects big-endian 4-byte encoding.
-//
-// Errors:
-//   - Returns error if data length is not 4
-//   - Returns error if the resulting identifier is zero
+// DeserializeIdentifier decodes a non-zero 4-byte big-endian Identifier.
 func DeserializeIdentifier(data []byte) (Identifier, error) {
 	if len(data) != 4 {
 		return 0, NewParameterError("data", "must be exactly 4 bytes", ErrDeserializationFailed)
@@ -82,31 +72,7 @@ type SigningNonces struct {
 	Commitments SigningCommitments
 }
 
-// Zeroize securely erases the secret nonces from memory.
-//
-// This method should be called immediately after the nonces have been used
-// in RoundTwo to prevent them from remaining in memory longer than necessary.
-// Per RFC 9591 Section 7.3, nonces must not be reused, and they should be
-// cleared from memory after use to reduce the risk of memory disclosure attacks.
-//
-// The method uses runtime.KeepAlive() to prevent the garbage collector from
-// collecting the nonces before they are properly zeroed.
-//
-// Security considerations:
-// - This provides defense-in-depth against memory disclosure attacks
-// - Nonce reuse would lead to complete secret key recovery
-// - Even with proper nonce generation, limiting exposure time is critical
-//
-// Example usage:
-//
-//	nonces, commitments, err := participant.RoundOne()
-//	if err != nil {
-//	    return err
-//	}
-//	defer nonces.Zeroize()  // Ensure cleanup even on error
-//
-//	share, err := participant.RoundTwo(nonces, msg, commitmentList)
-//	// nonces will be zeroized when function returns
+// Zeroize erases the nonces; defer it right after RoundOne, since reuse reveals the key (RFC 9591 Section 7.3).
 func (n *SigningNonces) Zeroize() {
 	// Prevent GC from collecting before we zero the memory
 	runtime.KeepAlive(n.HidingNonce)
@@ -174,15 +140,7 @@ type SecretKeyShare struct {
 	SecretShare group.Scalar
 }
 
-// Zeroize securely erases the secret share from memory.
-//
-// This method should be called when the secret share is no longer needed
-// to reduce the risk of memory disclosure attacks.
-// Zeroize securely erases the secret share from memory.
-//
-// Note: Go's GC may copy scalar internals before this is called.
-// For full protection of key material at rest, use hardware-backed
-// key storage or the secmem package for raw byte data.
+// Zeroize erases the secret share; the GC may already have copied scalar internals.
 func (s *SecretKeyShare) Zeroize() {
 	runtime.KeepAlive(s.SecretShare)
 	if s.SecretShare != nil {
@@ -224,17 +182,7 @@ type KeyPackage struct {
 	MaxSigners uint32
 }
 
-// Zeroize securely erases the secret share from the key package.
-//
-// This method should be called when the key package is no longer needed
-// to reduce the risk of memory disclosure attacks. Note that this only
-// clears the secret share; the public key and verification shares are
-// not sensitive and are left intact.
-// Zeroize securely erases the secret share from the key package.
-//
-// Note: Go's GC may copy scalar internals before this is called.
-// For full protection of key material at rest, use hardware-backed
-// key storage or the secmem package for raw byte data.
+// Zeroize erases the key package's secret share; the GC may already have copied scalar internals.
 func (kp *KeyPackage) Zeroize() {
 	runtime.KeepAlive(kp.SecretShare)
 	if kp.SecretShare != nil {
@@ -262,17 +210,7 @@ type Polynomial struct {
 	Coefficients []group.Scalar
 }
 
-// Zeroize securely erases all polynomial coefficients from memory.
-//
-// This method should be called after key generation or DKG is complete
-// to prevent the secret polynomial coefficients from remaining in memory.
-// The constant term (coefficient[0]) is particularly sensitive as it
-// represents the secret being shared.
-// Zeroize securely erases all polynomial coefficients from memory.
-//
-// Note: Go's GC may copy scalar internals before this is called.
-// For full protection of key material at rest, use hardware-backed
-// key storage or the secmem package for raw byte data.
+// Zeroize erases the polynomial coefficients after keygen or DKG; the GC may already have copied scalar internals.
 func (p *Polynomial) Zeroize() {
 	for i, coeff := range p.Coefficients {
 		runtime.KeepAlive(coeff)

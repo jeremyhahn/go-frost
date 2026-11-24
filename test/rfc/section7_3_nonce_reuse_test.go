@@ -1,24 +1,4 @@
-// RFC 9591 Section 7.3: Nonce Reuse Prevention
-//
-// This file tests the nonce reuse prevention mechanisms required by RFC 9591 Section 7.3.
-// It verifies that:
-// 1. Signing commitments are tracked per session and participant
-// 2. Nonce reuse is detected and rejected
-// 3. Sessions can be cleared after successful completion
-// 4. Commitment counting and monitoring works correctly
-//
-// RFC 9591 Section 7.3 Requirements:
-// - "Implementations MUST ensure that signing nonces are never reused"
-// - "Nonce reuse leads to complete private key recovery"
-// - "This is the most critical security requirement in threshold signature schemes"
-// - "Implementations SHOULD track used nonces to prevent accidental reuse"
-//
-// Test Coverage:
-// - C-1: Nonce Tracking (RFC 9591 Section 7.3) - CRITICAL
-// - Nonce commitment recording
-// - Nonce reuse detection
-// - Session lifecycle management
-// - Commitment counting and monitoring
+// RFC 9591 Section 7.3 tests: per-session commitment tracking, nonce reuse rejection and session clearing.
 package rfc
 
 import (

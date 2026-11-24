@@ -1,24 +1,4 @@
-// Package ed448_shake256 implements the FROST(Ed448, SHAKE256) ciphersuite.
-//
-// This ciphersuite uses Ed448 for the prime-order group and SHAKE256 for
-// all hash functions. It implements RFC 9591 Section 6.3.
-//
-// Context string: "FROST-ED448-SHAKE256-v1"
-//
-// CRITICAL DIFFERENCE from other ciphersuites:
-// SHAKE256 is an extendable-output function (XOF), not a fixed-output hash.
-// We use SHAKE256 to generate variable-length output as needed.
-//
-// Per RFC 9591 Section 6.3, H2 uses the prefix "SigEd448" || 0x00 || 0x00
-// for compatibility with RFC 8032 Ed448 signatures. This is different from
-// Ed25519 which has no prefix at all.
-//
-// The ciphersuite provides five domain-separated hash functions:
-// - H1: Used for binding factor computation (domain: "rho")
-// - H2: Used for challenge computation (prefix: "SigEd448" || 0x00 || 0x00)
-// - H3: Used for nonce generation (domain: "nonce")
-// - H4: Used for message hashing (domain: "msg")
-// - H5: Used for commitment list hashing (domain: "com")
+// Package ed448_shake256 implements FROST(Ed448, SHAKE256) per RFC 9591 Section 6.3; H2 uses the "SigEd448" || 0x00 || 0x00 prefix of RFC 8032.
 package ed448_shake256
 
 import (
@@ -156,9 +136,7 @@ func (cs *Ed448SHAKE256) H5(data []byte) []byte {
 	return cs.Hash(input)
 }
 
-// HDKG is a domain-separated hash-to-scalar function for DKG operations.
-// Used for computing challenges in the Schnorr proof of knowledge during DKG.
-// Implements: SHAKE256(contextString || "dkg" || data) -> Scalar
+// HDKG computes SHAKE256(contextString || "dkg" || data) for the DKG proof of knowledge.
 func (cs *Ed448SHAKE256) HDKG(data []byte) group.Scalar {
 	return cs.hashToScalar("dkg", data)
 }
@@ -170,10 +148,7 @@ func (cs *Ed448SHAKE256) HID(data []byte) group.Scalar {
 	return cs.hashToScalar("id", data)
 }
 
-// HashToCurve maps arbitrary byte strings to group elements.
-// This uses a hash-and-increment approach for edwards448.
-// We hash the input and attempt to decode it as a point. If that fails,
-// we increment a counter and try again until we find a valid point.
+// HashToCurve maps bytes to a group element by hash-and-increment.
 func (cs *Ed448SHAKE256) HashToCurve(data []byte) (group.Element, error) {
 	// Use a domain-separated hash for hash-to-curve
 	input := cs.domainSeparate("h2c", data)
@@ -210,12 +185,7 @@ func (cs *Ed448SHAKE256) HashToCurve(data []byte) (group.Element, error) {
 	return nil, frost.NewParameterError("data", "failed to find valid curve point after 256 attempts", frost.ErrDeserializationFailed)
 }
 
-// VerifySignature verifies a FROST signature against a message and public key.
-// Implements Schnorr signature verification for Ed448.
-//
-// Signature format: R (57 bytes) || z (57 bytes)
-// Verification equation: z * G == R + c * PK
-// where c = H2(R || PK || msg)
+// VerifySignature checks R || z (57+57 bytes): z*G == R + c*PK, c = H2(R || PK || msg).
 func (cs *Ed448SHAKE256) VerifySignature(message []byte, signature []byte, publicKey group.Element) error {
 	// Validate inputs
 	if publicKey == nil {

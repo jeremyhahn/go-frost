@@ -1,12 +1,4 @@
-// Package ed448 implements the FROST group interface using the Ed448 group.
-//
-// Ed448 is based on the edwards448 curve (Goldilocks), providing:
-// - 224-bit security level (highest of all RFC 9591 ciphersuites)
-// - Fast, constant-time operations
-// - Compatible with RFC 8032 (Ed448 signatures)
-//
-// This implementation uses github.com/cloudflare/circl/ecc/goldilocks for the
-// underlying cryptographic primitives.
+// Package ed448 implements the FROST group interface on edwards448 using circl's goldilocks package.
 package ed448
 
 import (
@@ -70,11 +62,7 @@ func (e *Element) Add(other group.Element) group.Element {
 func (e *Element) Negate() group.Element {
 	curve := goldilocks.Curve{}
 	identity := curve.Identity()
-	// Negate by computing 0 - P
-	// We need to use the curve's negation: -P has the same x but negated y
-	// For Goldilocks, we can compute identity - P = -P
-	// However, circl doesn't have a direct Sub operation
-	// We need to use the Add with a negated point
+	// Negate as identity - P, since circl has no Sub.
 
 	// Get the bytes, negate the sign bit, and reconstruct
 	pointBytes, _ := e.point.MarshalBinary()
@@ -180,10 +168,7 @@ func (s *Scalar) Mul(other group.Scalar) group.Scalar {
 	return &Scalar{value: result}
 }
 
-// Inv returns the multiplicative inverse of this scalar modulo p.
-// Note: Uses big.Int for modular inverse computation. This is acceptable
-// because Inv is only used for Lagrange coefficient computation with public
-// participant identifiers, not secret values.
+// Inv returns the inverse modulo p using big.Int; only used on public participant identifiers.
 func (s *Scalar) Inv() (group.Scalar, error) {
 	if s.IsZero() {
 		return nil, frost.ErrZeroScalar
@@ -243,10 +228,7 @@ func (s *Scalar) Copy() group.Scalar {
 	return &Scalar{value: result}
 }
 
-// Compare compares this scalar with another scalar.
-// Returns -1 if this < other, 0 if equal, 1 if this > other.
-// Note: This comparison is NOT constant-time and should only be used for
-// sorting public values, not for comparisons involving secrets.
+// Compare returns -1, 0 or 1; not constant-time, so only for public values.
 func (s *Scalar) Compare(other group.Scalar) int {
 	otherScalar := other.(*Scalar)
 	// Convert to big.Int for comparison (big-endian for proper ordering)
@@ -392,10 +374,7 @@ func (g *Group) DeserializeElement(data []byte) (group.Element, error) {
 		return nil, frost.ErrIdentityElement
 	}
 
-	// Verify the point is in the prime-order subgroup by checking [l]P == Identity,
-	// where l is the group order. Ed448 has cofactor 4, so points on the curve
-	// may be in a subgroup of order 4*l. Without this check, small-order or
-	// mixed-order points could be accepted, which would compromise VSS/DKG security.
+	// Require [l]P == identity so small- or mixed-order points are rejected (cofactor 4).
 	orderScalar := &Scalar{}
 	copy(orderScalar.value[:], groupOrderBytes[:internalScalarSize])
 	lP := g.curve.ScalarMult(&orderScalar.value, point)

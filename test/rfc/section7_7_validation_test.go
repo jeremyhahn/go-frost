@@ -1,24 +1,4 @@
-// RFC 9591 Section 7.7: Input Validation
-//
-// This file tests the input validation mechanisms required by RFC 9591 Section 7.7.
-// It verifies that:
-// 1. Message size validation works correctly
-// 2. Message structure validation works correctly
-// 3. Composite validators combine multiple validation checks
-// 4. Validators reject invalid inputs as required
-//
-// RFC 9591 Section 7.7 Requirements:
-// - "Implementations MUST validate all inputs before processing"
-// - "Invalid inputs MUST be rejected with appropriate errors"
-// - "Implementations SHOULD validate message size to prevent DoS attacks"
-// - "Implementations SHOULD validate message structure and format"
-//
-// Test Coverage:
-// - H-4: Message Validation (RFC 9591 Section 7.7)
-// - M-3: Participant ID Validation (RFC 9591 Section 7.7)
-// - Size validation
-// - Structure validation
-// - Composite validation
+// RFC 9591 Section 7.7 tests: message size, structure and composite validation.
 package rfc
 
 import (

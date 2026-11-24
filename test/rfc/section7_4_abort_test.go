@@ -1,27 +1,4 @@
-// RFC 9591 Section 7.4: Protocol Failures and Abort (Misbehavior Tracking)
-//
-// This file tests the misbehavior tracking and participant exclusion mechanisms
-// required by RFC 9591 Section 7.4.
-// It verifies that:
-// 1. Participant misbehavior is recorded and tracked
-// 2. Automatic exclusion occurs after threshold violations
-// 3. Manual exclusion and reinstatement work correctly
-// 4. Misbehavior history can be queried
-// 5. Old records can be cleaned up
-//
-// RFC 9591 Section 7.4 Requirements:
-// - "Implementations SHOULD track participant misbehavior"
-// - "Participants who repeatedly misbehave SHOULD be excluded from future operations"
-// - "The protocol MUST abort if insufficient participants remain"
-// - "Implementations SHOULD support identifiable abort to detect malicious parties"
-//
-// Test Coverage:
-// - H-3: Identifiable Abort (RFC 9591 Section 7.4)
-// - M-5: Misbehavior Tracking (RFC 9591 Section 7.4)
-// - Automatic exclusion after threshold violations
-// - Manual exclusion and reinstatement
-// - Reputation queries
-// - History tracking and cleanup
+// RFC 9591 Section 7.4 tests: misbehavior tracking, automatic and manual exclusion, reinstatement, history and cleanup.
 package rfc
 
 import (

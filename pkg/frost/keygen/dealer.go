@@ -1,7 +1,4 @@
-// Package keygen implements key generation for FROST.
-//
-// This package implements the trusted dealer key generation approach using
-// Verifiable Secret Sharing (VSS) as specified in RFC 9591 Appendix C.
+// Package keygen implements trusted dealer key generation with VSS per RFC 9591 Appendix C.
 package keygen
 
 import (
@@ -13,55 +10,13 @@ import (
 
 // Dealer generates secret shares for FROST participants using a trusted dealer.
 type Dealer interface {
-	// GenerateShares creates secret shares for participants using Verifiable Secret Sharing.
-	//
-	// Inputs:
-	// - secret: The group secret key (optional, generated if nil)
-	// - minSigners: Minimum number of participants required to sign (threshold t)
-	// - maxSigners: Total number of participants (n)
-	// - participantIDs: List of participant identifiers (must be unique and non-zero)
-	//
-	// Outputs:
-	// - keyPackages: Key packages for each participant
-	// - groupPublicKey: The group's public key
-	//
-	// The dealer:
-	// 1. Generates or uses provided secret
-	// 2. Creates polynomial of degree (minSigners - 1) with secret as constant term
-	// 3. Evaluates polynomial at each participant's identifier to get secret shares
-	// 4. Computes verification shares (public commitments to polynomial coefficients)
-	// 5. Creates key packages with secret shares and verification data
-	//
-	// Errors:
-	// - Returns error if minSigners > maxSigners
-	// - Returns error if participantIDs contains duplicates or zeros
-	// - Returns error if minSigners < 2
+	// GenerateShares splits secret (generated if nil) into VSS shares for unique non-zero participantIDs, with 2 <= minSigners <= maxSigners.
 	GenerateShares(secret group.Scalar, minSigners, maxSigners uint32, participantIDs []frost.Identifier) ([]frost.KeyPackage, group.Element, error)
 
-	// VerifyShare verifies a secret share against verification shares.
-	//
-	// Inputs:
-	// - identifier: The participant's identifier
-	// - secretShare: The secret share to verify
-	// - verificationShares: List of verification shares (polynomial commitments)
-	//
-	// Outputs:
-	// - valid: True if the share is valid
-	//
-	// Verification checks:
-	// ScalarBaseMult(secret_share) == product_{j=0}^{t} (verification_share_j^{identifier^j})
+	// VerifyShare checks a secret share against the polynomial commitments.
 	VerifyShare(identifier frost.Identifier, secretShare group.Scalar, verificationShares []frost.VerificationShare) error
 
-	// RecoverSecret recovers the group secret from threshold shares.
-	// This should only be used for testing or key recovery scenarios.
-	//
-	// Inputs:
-	// - shares: Map of participant identifiers to their secret shares (must have >= minSigners)
-	//
-	// Outputs:
-	// - secret: The recovered group secret
-	//
-	// Uses Lagrange interpolation to reconstruct the polynomial's constant term.
+	// RecoverSecret reconstructs the group secret from at least minSigners shares; for testing and key recovery only.
 	RecoverSecret(shares map[frost.Identifier]group.Scalar) (group.Scalar, error)
 }
 

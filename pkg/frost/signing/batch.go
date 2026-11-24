@@ -20,23 +20,7 @@ type BatchItem struct {
 	Challenge group.Scalar
 }
 
-// BatchVerifier accumulates multiple signatures for efficient batch verification.
-//
-// Batch verification uses a randomized linear combination to verify multiple
-// signatures in a single multi-scalar multiplication, which is more efficient
-// than verifying each signature individually.
-//
-// Verification equation (for single signature):
-//
-//	z * G == R + c * VK
-//
-// Batch verification equation:
-//
-//	sum(blind_i * z_i) * G == sum(blind_i * R_i) + sum(blind_i * c_i * VK_i)
-//
-// This is rearranged to check:
-//
-//	-sum(blind_i * z_i) * G + sum(blind_i * R_i) + sum(blind_i * c_i * VK_i) == 0
+// BatchVerifier verifies many signatures with one randomized multi-scalar check: -sum(b_i z_i) G + sum(b_i R_i) + sum(b_i c_i VK_i) == 0.
 type BatchVerifier struct {
 	items []BatchItem
 	suite ciphersuite.Ciphersuite
@@ -50,16 +34,7 @@ func NewBatchVerifier(suite ciphersuite.Ciphersuite) *BatchVerifier {
 	}
 }
 
-// Add adds a signature to the batch for verification.
-//
-// Inputs:
-//   - verifyingKey: The public key for this signature
-//   - signature: The FROST signature to verify
-//   - message: The message that was signed
-//
-// Errors:
-//   - Returns error if the verifying key is nil or identity
-//   - Returns error if the signature components are invalid
+// Add queues a signature; errors on a nil or identity key or invalid signature components.
 func (bv *BatchVerifier) Add(
 	verifyingKey group.Element,
 	signature frost.Signature,
@@ -99,18 +74,7 @@ func (bv *BatchVerifier) Add(
 	return nil
 }
 
-// Verify performs batch verification of all accumulated signatures.
-//
-// The batch verification uses random blinds to combine multiple verification
-// equations into a single check. This is sound because a malformed signature
-// would fail with overwhelming probability due to the random blinds.
-//
-// Outputs:
-//   - nil if all signatures are valid
-//   - error if any signature is invalid (doesn't identify which one)
-//
-// Note: If batch verification fails and you need to identify the invalid
-// signature(s), you should verify each signature individually.
+// Verify checks every queued signature at once; on failure verify individually to find the invalid one.
 func (bv *BatchVerifier) Verify() error {
 	if len(bv.items) == 0 {
 		return frost.NewParameterError("items", "batch is empty", frost.ErrInvalidParameters)
@@ -195,15 +159,7 @@ func (bv *BatchVerifier) Clear() {
 	bv.items = make([]BatchItem, 0)
 }
 
-// VerifyAll is a convenience function that verifies multiple signatures in a batch.
-//
-// Inputs:
-//   - signatures: Slice of (verifyingKey, signature, message) tuples
-//   - suite: The ciphersuite to use
-//
-// Outputs:
-//   - nil if all signatures are valid
-//   - error if any signature is invalid
+// VerifyAll batch-verifies the given (verifyingKey, signature, message) tuples.
 func VerifyAll(
 	verifyingKeys []group.Element,
 	signatures []frost.Signature,

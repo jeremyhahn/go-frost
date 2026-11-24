@@ -9,62 +9,13 @@ import (
 
 // Aggregator aggregates signature shares from participants into a complete signature.
 type Aggregator interface {
-	// Aggregate combines signature shares from threshold participants into a complete signature.
-	//
-	// Inputs:
-	// - groupPublicKey: The group's public key (needed for binding factor computation)
-	// - commitmentList: Sorted list of participant commitments from round one
-	// - msg: The message being signed
-	// - signatureShares: List of signature shares from round two
-	//
-	// Outputs:
-	// - signature: The complete FROST threshold signature
-	//
-	// The aggregated signature is (R, z) where:
-	// - R is the group commitment point
-	// - z is the sum of all signature shares
-	//
-	// Errors:
-	// - Returns error if insufficient signature shares
-	// - Returns error if commitment list is invalid
+	// Aggregate combines the signature shares into (R, z), R the group commitment and z the sum of the shares.
 	Aggregate(groupPublicKey group.Element, commitmentList frost.CommitmentList, msg []byte, signatureShares []frost.SignatureShare) (frost.Signature, error)
 
-	// AggregateWithVerification combines signature shares with identifiable abort protection.
-	//
-	// This method verifies each signature share before aggregation, enabling
-	// identification of malicious participants who provide invalid shares.
-	// This implements RFC 9591 Section 7.4 (Identifiable Abort).
-	//
-	// Inputs:
-	// - groupPublicKey: The group's public key (needed for binding factor computation)
-	// - commitmentList: Sorted list of participant commitments from round one
-	// - msg: The message being signed
-	// - signatureShares: List of signature shares from round two
-	// - verificationShares: Public key shares for all participants (for share verification)
-	//
-	// Outputs:
-	// - signature: The complete FROST threshold signature
-	//
-	// Errors:
-	// - Returns error if any signature share fails verification (identifies malicious participant)
-	// - Returns error if insufficient signature shares
-	// - Returns error if commitment list is invalid
-	//
-	// Security: Enabling identifiable abort prevents malicious participants from causing
-	// signature failure without detection. The cost is additional verification overhead.
+	// AggregateWithVerification verifies each share before aggregating, identifying a participant with an invalid share (RFC 9591 Section 7.4).
 	AggregateWithVerification(groupPublicKey group.Element, commitmentList frost.CommitmentList, msg []byte, signatureShares []frost.SignatureShare, verificationShares []frost.VerificationShare) (frost.Signature, error)
 
-	// Verify verifies a FROST signature against a message and public key.
-	//
-	// Inputs:
-	// - msg: The message that was signed
-	// - signature: The FROST signature to verify
-	// - publicKey: The group's public key
-	//
-	// Errors:
-	// - Returns error if signature verification fails
-	//
-	// Verification checks: ScalarBaseMult(z) == R + challenge * publicKey
+	// Verify checks ScalarBaseMult(z) == R + challenge * publicKey.
 	Verify(msg []byte, signature frost.Signature, publicKey group.Element) error
 }
 
@@ -81,21 +32,7 @@ type aggregator struct {
 	minSigners uint32
 }
 
-// Aggregate implements Aggregator.Aggregate
-//
-// Combines signature shares from threshold participants into a complete signature.
-// The aggregated signature is (R, z) where:
-// - R is the group commitment point
-// - z is the sum of all signature shares
-//
-// Algorithm (from RFC 9591 Section 5.3):
-// 1. Validate commitment list (must be sorted and non-empty)
-// 2. Check that len(signatureShares) >= minSigners
-// 3. Compute binding factors for all participants
-// 4. Compute group commitment R
-// 5. Initialize z = 0
-// 6. For each signature share: z = z + signature_share
-// 7. Return signature (R, z)
+// Aggregate implements Aggregator.Aggregate per RFC 9591 Section 5.3.
 func (a *aggregator) Aggregate(groupPublicKey group.Element, commitmentList frost.CommitmentList, msg []byte, signatureShares []frost.SignatureShare) (frost.Signature, error) {
 	// Create helper instances
 	encoder := helpers.NewCommitmentListEncoder(a.suite.Group())
@@ -151,19 +88,7 @@ func (a *aggregator) Aggregate(groupPublicKey group.Element, commitmentList fros
 	}, nil
 }
 
-// AggregateWithVerification implements Aggregator.AggregateWithVerification
-//
-// Combines signature shares with identifiable abort protection by verifying
-// each share before aggregation. This implements RFC 9591 Section 7.4.
-//
-// Algorithm:
-// 1-4. Same as Aggregate (validate, compute binding factors, group commitment)
-//  5. For each signature share:
-//     a. Find participant's verification key
-//     b. Verify share using verification equation
-//     c. If verification fails, return error identifying the malicious participant
-//  6. Sum all signature shares into z (only if all shares verified)
-//  7. Return signature (R, z)
+// AggregateWithVerification implements Aggregator.AggregateWithVerification per RFC 9591 Section 7.4.
 func (a *aggregator) AggregateWithVerification(groupPublicKey group.Element, commitmentList frost.CommitmentList, msg []byte, signatureShares []frost.SignatureShare, verificationShares []frost.VerificationShare) (frost.Signature, error) {
 	// Create helper instances
 	encoder := helpers.NewCommitmentListEncoder(a.suite.Group())
@@ -281,10 +206,7 @@ func (a *aggregator) AggregateWithVerification(groupPublicKey group.Element, com
 				"failed to compute interpolating value", err)
 		}
 
-		// Verify signature share using equation:
-		// sig_share * G == hiding_commitment + binding_factor * binding_commitment + lambda_i * verification_key * challenge
-		//
-		// Left side: sig_share * G
+		// Check sig_share * G == hiding + binding_factor * binding + lambda_i * verification_key * challenge; left side first.
 		left := grp.ScalarBaseMult(share.SignatureShare)
 
 		// Right side components:
@@ -322,18 +244,7 @@ func (a *aggregator) AggregateWithVerification(groupPublicKey group.Element, com
 	}, nil
 }
 
-// Verify implements Aggregator.Verify
-//
-// Verifies a FROST signature against a message and public key.
-// Verification checks: ScalarBaseMult(z) == R + challenge * publicKey
-//
-// Algorithm (from RFC 9591 Section 5.3):
-// 1. Validate inputs (signature R and Z, public key)
-// 2. Compute challenge = H2(R || publicKey || msg)
-// 3. Compute left = ScalarBaseMult(z)
-// 4. Compute right = R + ScalarMult(publicKey, challenge)
-// 5. Verify left == right
-// 6. Return error if verification fails
+// Verify implements Aggregator.Verify per RFC 9591 Section 5.3.
 func (a *aggregator) Verify(msg []byte, signature frost.Signature, publicKey group.Element) error {
 	// 1. Validate inputs
 	if signature.R == nil {

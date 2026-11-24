@@ -13,15 +13,7 @@ import (
 	"github.com/jeremyhahn/go-frost/pkg/frost"
 )
 
-// FrostNonceTracker wraps CommitmentTracker to provide FROST-specific nonce tracking.
-// It tracks both hiding and binding nonce commitments per participant per session
-// to prevent the catastrophic nonce reuse vulnerability.
-//
-// Security considerations:
-//   - Each signing session gets a unique session ID
-//   - Each participant's hiding and binding commitments are tracked separately
-//   - Nonce reuse detection is CRITICAL - reuse leads to complete key recovery
-//   - Sessions should be cleared after successful completion to free memory
+// FrostNonceTracker tracks each participant's hiding and binding commitments per session to detect nonce reuse; clear sessions when done.
 type FrostNonceTracker struct {
 	tracker CommitmentTracker
 }
@@ -40,9 +32,7 @@ func NewDefaultFrostNonceTracker() *FrostNonceTracker {
 	return NewFrostNonceTracker(NewInMemoryCommitmentTracker())
 }
 
-// RecordSigningCommitments records both hiding and binding commitments for a participant.
-// This is called when a participant generates commitments (Round 1).
-// Returns error if any commitment was already recorded (nonce reuse detected).
+// RecordSigningCommitments records a participant's round 1 commitments, returning an error on reuse.
 func (t *FrostNonceTracker) RecordSigningCommitments(
 	ctx context.Context,
 	sessionID string,
@@ -150,11 +140,7 @@ func (t *FrostNonceTracker) ClearParticipant(
 	_ string,
 	_ frost.Identifier,
 ) error {
-	// Clear both hiding and binding commitments
-	// We don't have a direct "clear by participant" method, so we record empty
-	// commitments and then clear the session. For now, we'll just document this
-	// limitation. A production implementation might add a ClearParticipant method
-	// to CommitmentTracker.
+	// CommitmentTracker has no per-participant clear, so participant commitments stay until the session is cleared.
 
 	// For now, this is a no-op. The commitments will be cleared when the session
 	// is cleared. If we need finer-grained control, we can extend CommitmentTracker

@@ -18,17 +18,7 @@ import (
 	"github.com/jeremyhahn/go-frost/pkg/frost/signing"
 )
 
-// TestEndianness_DealerToSigningConsistency verifies that dealer-generated shares
-// work correctly in the signing protocol, ensuring identifier encoding is consistent
-// across key generation and signing.
-//
-// This test addresses the critical requirement that participant identifiers must
-// be encoded the same way when:
-// 1. Generating shares from polynomial evaluation (dealer)
-// 2. Computing Lagrange coefficients (signing)
-//
-// The RFC requires little-endian encoding, and this test validates that
-// the round-trip keygen → signing → verification works correctly.
+// TestEndianness_DealerToSigningConsistency checks that identifiers encode the same way in dealer keygen and signing.
 func TestEndianness_DealerToSigningConsistency(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -332,13 +322,7 @@ func computeLagrangeCoefficient(grp group.Group, i frost.Identifier, participant
 	return result
 }
 
-// TestIdentifierToScalar_AllCiphersuites tests that the IdentifierToScalar helper
-// function works correctly with all supported ciphersuites.
-//
-// This test verifies:
-// 1. Little-endian encoding for Ed25519, Ed448, ristretto255
-// 2. Big-endian encoding for P-256, secp256k1
-// 3. Correct round-trip behavior for each group
+// TestIdentifierToScalar_AllCiphersuites checks IdentifierToScalar's byte order and round trip for every suite.
 func TestIdentifierToScalar_AllCiphersuites(t *testing.T) {
 	testCases := []struct {
 		name        string

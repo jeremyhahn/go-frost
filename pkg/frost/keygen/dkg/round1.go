@@ -10,25 +10,7 @@ import (
 	"github.com/jeremyhahn/go-frost/pkg/secmem"
 )
 
-// Part1 executes round 1 of the DKG protocol.
-//
-// Each participant generates a random secret polynomial, computes commitments
-// to its coefficients, and creates a Schnorr proof of knowledge of the
-// constant term (their contribution to the group secret).
-//
-// Inputs:
-//   - identifier: This participant's unique identifier (must be non-zero)
-//   - maxSigners: Total number of participants (n)
-//   - minSigners: Threshold required to sign (t)
-//   - suite: The ciphersuite to use
-//
-// Outputs:
-//   - secretPackage: Secret data to keep for round 2 (MUST NOT be shared)
-//   - package_: Public data to broadcast to all participants
-//
-// Errors:
-//   - Returns error if parameters are invalid
-//   - Returns error if random number generation fails
+// Part1 runs DKG round 1: a random polynomial, coefficient commitments and a proof of knowledge; the secret package must not be shared.
 func Part1(
 	identifier frost.Identifier,
 	maxSigners, minSigners uint32,
@@ -85,13 +67,7 @@ func Part1(
 	return secretPackage, publicPackage, nil
 }
 
-// computeProofOfKnowledge creates a Schnorr signature proving knowledge of the secret.
-//
-// The proof is: sigma = (R, z) where:
-//   - k is a random nonce
-//   - R = g^k
-//   - c = HDKG(identifier || commitment || R)
-//   - z = k + secret * c
+// computeProofOfKnowledge returns the Schnorr proof (R = g^k, z = k + secret*c) with c = HDKG(identifier || commitment || R).
 func computeProofOfKnowledge(
 	identifier frost.Identifier,
 	secret group.Scalar,
@@ -119,8 +95,7 @@ func computeProofOfKnowledge(
 	return &Signature{R: R, Z: z}, nil
 }
 
-// computeChallenge computes the DKG challenge hash.
-// challenge = HDKG(identifier || commitment || R)
+// computeChallenge returns HDKG(identifier || commitment || R).
 func computeChallenge(
 	identifier frost.Identifier,
 	commitment group.Element,
@@ -161,19 +136,7 @@ func computeChallenge(
 	return result
 }
 
-// VerifyProofOfKnowledge verifies a participant's proof of knowledge.
-//
-// Verification equation: g^z == R + commitment^c
-// where c = HDKG(identifier || commitment || R)
-//
-// Inputs:
-//   - identifier: The participant's identifier
-//   - package_: The round 1 package containing commitment and proof
-//   - suite: The ciphersuite to use
-//
-// Returns:
-//   - nil if proof is valid
-//   - error if proof is invalid
+// VerifyProofOfKnowledge checks g^z == R + commitment^c for a round 1 package.
 func VerifyProofOfKnowledge(
 	identifier frost.Identifier,
 	pkg *Round1Package,

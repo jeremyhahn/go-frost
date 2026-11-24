@@ -1,20 +1,5 @@
 #!/usr/bin/env bash
-#
-# Regression test for verify-baked-tool.sh and its wiring into ci.yml
-# (issue #19). Runs the real guard script against stub tools on a PATH that
-# contains nothing else of consequence, and asserts:
-#
-#   - a matching version proceeds;
-#   - an absent tool, a mismatched version, a foreign module, missing build
-#     metadata, unreadable build info and a missing go toolchain all fail;
-#   - in no case is the tool itself executed (the guard runs before analysis)
-#     and in no case is a network install attempted (`go install`/`go get`,
-#     curl, wget are stubbed to record any call);
-#   - ci.yml guards golangci-lint, gosec and govulncheck with this script, in a
-#     step before the one that runs the tool, and installs them only on
-#     GitHub, at their pins, in a step before the guard.
-#
-#   bash .github/scripts/verify-baked-tool_test.sh
+# Tests verify-baked-tool.sh against stub tools and its ci.yml wiring; run: bash .github/scripts/verify-baked-tool_test.sh
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -65,10 +50,7 @@ EOF
   chmod +x "$1/bin/$2"
 }
 
-# stub_go <dir> <mode> [build info]: `go version -m` answers per <mode>:
-#   info    print the given build info and exit 0
-#   error   print a go-style error and exit 1 (not a Go binary)
-# Any other go subcommand (install, get, ...) is recorded and fails.
+# stub_go <dir> <mode> [build info]: `go version -m` prints build info (info) or fails (error); other subcommands are recorded and fail.
 stub_go() {
   local dir="$1" mode="$2" info="${3:-}"
   printf '%s' "$info" >"$dir/buildinfo"
@@ -135,8 +117,7 @@ d="$(new_case no-mod-line)"; stub_tool "$d" gosec
 stub_go "$d" info "$(printf 'gosec: go1.27.0\n\tpath\tcommand-line-arguments\n')"
 run_guard "$d" fail gosec "$mod" v2.29.0
 
-# Build info far over the 64 KiB pipe buffer with the module line early must
-# still pass under pipefail (an early-exiting reader on a pipe died of SIGPIPE).
+# Build info larger than the pipe buffer must still pass under pipefail.
 big="$(buildinfo gosec "$mod" v2.29.0)"
 for ((i = 0; i < 40000; i++)); do
   big+=$'\n'"$(printf '\tdep\texample.com/padding/module%05d\tv1.0.0\th1:CCCCCCCCCCCCCCCCCCCCCCCCCCCC=' "$i")"

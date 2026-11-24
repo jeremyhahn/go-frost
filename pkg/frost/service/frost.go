@@ -1,8 +1,4 @@
-// Package service provides the service layer for FROST operations.
-//
-// The service layer provides clean separation between the public API and
-// business logic. It orchestrates operations across multiple components
-// (key generation, signing, verification) and enforces business rules.
+// Package service orchestrates FROST key generation, signing and verification behind the public API.
 package service
 
 import (
@@ -18,47 +14,16 @@ import (
 // FrostService provides high-level FROST protocol operations.
 // This is the main service interface that applications should use.
 type FrostService interface {
-	// GenerateKeys generates key shares for participants using a trusted dealer.
-	//
-	// Inputs:
-	// - config: FROST configuration (min/max signers, group)
-	// - participantIDs: List of participant identifiers
-	//
-	// Outputs:
-	// - keyPackages: Key packages for each participant
-	// - groupPublicKey: The group's public key
+	// GenerateKeys returns trusted dealer key packages and the group public key.
 	GenerateKeys(config frost.Configuration, participantIDs []frost.Identifier) ([]frost.KeyPackage, group.Element, error)
 
-	// Sign generates a FROST threshold signature.
-	//
-	// Inputs:
-	// - keyPackages: Key packages for signing participants
-	// - msg: The message to sign
-	//
-	// Outputs:
-	// - signature: The FROST threshold signature
-	//
-	// This orchestrates the complete two-round signing protocol.
+	// Sign runs both signing rounds and returns the threshold signature.
 	Sign(keyPackages []frost.KeyPackage, msg []byte) (frost.Signature, error)
 
-	// Verify verifies a FROST signature.
-	//
-	// Inputs:
-	// - msg: The message that was signed
-	// - signature: The signature to verify
-	// - publicKey: The group's public key
-	//
-	// Errors:
-	// - Returns error if signature verification fails
+	// Verify returns an error if signature is not valid for msg and publicKey.
 	Verify(msg []byte, signature frost.Signature, publicKey group.Element) error
 
-	// VerifyKeyShare verifies a participant's key share.
-	//
-	// Inputs:
-	// - keyPackage: The key package to verify
-	//
-	// Errors:
-	// - Returns error if verification fails
+	// VerifyKeyShare returns an error if the key package's share does not verify.
 	VerifyKeyShare(keyPackage frost.KeyPackage) error
 
 	// GetCiphersuite returns the ciphersuite being used.
@@ -107,10 +72,7 @@ func (s *frostService) Sign(keyPackages []frost.KeyPackage, msg []byte) (frost.S
 		return frost.Signature{}, err
 	}
 
-	// Get min signers from first key package's verification shares length
-	// The threshold is len(verificationShares) - 1 + 1 = len(verificationShares)
-	// Actually, minSigners should be derived from polynomial degree
-	// For simplicity, we check that we have enough participants
+	// Check that there are enough participants.
 	if len(keyPackages) < 2 {
 		return frost.Signature{}, frost.NewParameterError("keyPackages", "must have at least 2 participants", frost.ErrInsufficientParticipants)
 	}

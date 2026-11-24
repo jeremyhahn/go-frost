@@ -41,29 +41,7 @@ func (s CheaterDetectionStrategy) String() string {
 	}
 }
 
-// AggregateWithStrategy combines signature shares using the specified cheater detection strategy.
-//
-// Strategies:
-//   - CheaterDetectionDisabled: No verification, fastest but no attribution
-//   - CheaterDetectionFirstCheater: Stop at first invalid share
-//   - CheaterDetectionAllCheaters: Verify all shares, collect all cheaters
-//
-// Inputs:
-//   - groupPublicKey: The group's public key
-//   - commitmentList: Sorted list of participant commitments
-//   - msg: The message being signed
-//   - signatureShares: List of signature shares
-//   - verificationShares: Public key shares for verification (required unless strategy is Disabled)
-//   - strategy: The cheater detection strategy to use
-//   - suite: The ciphersuite to use
-//   - minSigners: Minimum number of signers required
-//
-// Outputs:
-//   - signature: The complete FROST threshold signature
-//
-// Errors:
-//   - Returns SignatureShareError with culprits if any invalid shares detected
-//   - Returns error if insufficient signature shares
+// AggregateWithStrategy aggregates shares with no verification, stop at the first cheater, or collect all cheaters, returning SignatureShareError with the culprits.
 func AggregateWithStrategy(
 	groupPublicKey group.Element,
 	commitmentList frost.CommitmentList,

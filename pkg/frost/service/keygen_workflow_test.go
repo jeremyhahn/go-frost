@@ -14,14 +14,7 @@ import (
 	"github.com/jeremyhahn/go-frost/pkg/frost/signing"
 )
 
-// TestKeygenSigningIntegration_2of3 tests the complete end-to-end workflow
-// for a 2-of-3 threshold with dealer keygen and multiple signing sessions.
-//
-// This test validates:
-// 1. Dealer generates valid shares for all participants
-// 2. Multiple signing sessions with the same keys work correctly
-// 3. All participant combinations can create valid signatures
-// 4. Signatures verify correctly
+// TestKeygenSigningIntegration_2of3 checks dealer keygen and signing by every 2-of-3 participant combination.
 func TestKeygenSigningIntegration_2of3(t *testing.T) {
 	suite := ristretto255_sha512.New()
 	grp := suite.Group()

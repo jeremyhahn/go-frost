@@ -1,12 +1,4 @@
-// Package ciphersuite defines the ciphersuite interface for FROST.
-//
-// A ciphersuite specifies the prime-order group and hash function to use
-// for FROST operations. RFC 9591 defines five standard ciphersuites:
-// - FROST(Ed25519, SHA-512)
-// - FROST(ristretto255, SHA-512)
-// - FROST(Ed448, SHAKE256)
-// - FROST(P-256, SHA-256)
-// - FROST(secp256k1, SHA-256)
+// Package ciphersuite defines the FROST ciphersuite interface for the five RFC 9591 suites.
 package ciphersuite
 
 import (
@@ -42,9 +34,7 @@ type Ciphersuite interface {
 	// Used for commitment list hashing in binding factor computation.
 	H5(data []byte) []byte
 
-	// HDKG is a domain-separated hash-to-scalar function for DKG operations.
-	// Used for computing challenges in the Schnorr proof of knowledge during DKG.
-	// Implements: H(contextString || "dkg" || data) -> Scalar
+	// HDKG computes H(contextString || "dkg" || data) for the DKG proof of knowledge.
 	HDKG(data []byte) group.Scalar
 
 	// HID is a domain-separated hash-to-scalar function for identifier derivation.
@@ -107,43 +97,21 @@ type Registry interface {
 	List() []CiphersuiteID
 }
 
-// Hooks defines optional customization points for FROST operations.
-// Ciphersuites can implement this interface to modify behavior at key points
-// in the signing and verification process.
-//
-// This is useful for:
-// - Message pre-hashing (e.g., Ed448 pre-hashes with SHAKE256)
-// - Custom signature transformations
-// - Protocol-specific modifications
+// Hooks are optional points where a ciphersuite can transform messages, shares or signatures, such as Ed448 pre-hashing.
 type Hooks interface {
-	// PreSign is called before signing begins.
-	// It receives the message and can return a modified message.
-	// This is useful for message pre-hashing.
-	// Return the original message unchanged for default behavior.
+	// PreSign may transform the message before signing; return it unchanged by default.
 	PreSign(msg []byte) ([]byte, error)
 
-	// PreAggregate is called before signature aggregation.
-	// It receives the message and group commitment and can return modified values.
-	// This is useful for custom binding or format transformations.
-	// Return the original values unchanged for default behavior.
+	// PreAggregate may transform the message and group commitment before aggregation; return them unchanged by default.
 	PreAggregate(msg []byte, groupCommitment group.Element) ([]byte, group.Element, error)
 
-	// PreVerify is called before signature verification.
-	// It receives the message, signature R and z components, and public key.
-	// This is useful for signature format conversions or custom validation.
-	// Return the original values unchanged for default behavior.
+	// PreVerify may transform the message, R, z and public key before verification; return them unchanged by default.
 	PreVerify(msg []byte, r group.Element, z group.Scalar, publicKey group.Element) ([]byte, group.Element, group.Scalar, group.Element, error)
 
-	// PostDKG is called after DKG completes successfully.
-	// It receives the participant's secret share and the group public key.
-	// This is useful for share validation or format conversion.
-	// Return the original values unchanged for default behavior.
+	// PostDKG may validate or convert the secret share and group key after DKG; return them unchanged by default.
 	PostDKG(secretShare group.Scalar, groupPublicKey group.Element) (group.Scalar, group.Element, error)
 
-	// PostGenerate is called after trusted dealer key generation.
-	// It receives the participant's secret share and the group public key.
-	// This is useful for share validation or format conversion.
-	// Return the original values unchanged for default behavior.
+	// PostGenerate may validate or convert the secret share and group key after dealer keygen; return them unchanged by default.
 	PostGenerate(secretShare group.Scalar, groupPublicKey group.Element) (group.Scalar, group.Element, error)
 }
 

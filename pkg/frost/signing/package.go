@@ -5,9 +5,7 @@ import (
 	"github.com/jeremyhahn/go-frost/pkg/frost/group"
 )
 
-// SigningPackage bundles the data needed for round 2 of the signing protocol.
-// It combines the message with the commitment list, making it convenient to
-// pass signing context between participants.
+// SigningPackage bundles the message and commitment list for round 2.
 type SigningPackage struct {
 	// Message is the message being signed
 	Message []byte
@@ -19,16 +17,7 @@ type SigningPackage struct {
 	GroupPublicKey group.Element
 }
 
-// NewSigningPackage creates a new SigningPackage.
-//
-// Inputs:
-//   - message: The message to be signed
-//   - commitmentList: Sorted list of participant commitments
-//   - groupPublicKey: The group's public key (can be nil)
-//
-// Errors:
-//   - Returns error if commitment list is empty
-//   - Returns error if commitment list is not sorted
+// NewSigningPackage returns a SigningPackage; the commitment list must be non-empty and sorted, groupPublicKey may be nil.
 func NewSigningPackage(
 	message []byte,
 	commitmentList frost.CommitmentList,
@@ -121,11 +110,7 @@ func (b *SigningPackageBuilder) AddCommitments(commitments []frost.SigningCommit
 	return b
 }
 
-// Build creates the SigningPackage, sorting the commitment list by identifier.
-//
-// Errors:
-//   - Returns error if no commitments have been added
-//   - Returns error if duplicate identifiers are found
+// Build returns the SigningPackage with commitments sorted by identifier; errors if empty or duplicated.
 func (b *SigningPackageBuilder) Build() (*SigningPackage, error) {
 	if len(b.commitments) == 0 {
 		return nil, frost.ErrEmptyCommitmentList

@@ -20,21 +20,7 @@ import (
 	"github.com/jeremyhahn/go-frost/pkg/secmem"
 )
 
-// TestSeal_LeavesNoPlaintextInOrdinaryMemory is the behavioral half of the
-// protected-memory guarantee, and the reason this package serializes key
-// packages itself instead of handing them to encoding/json.
-//
-// It runs a share through the whole serialization boundary - seal, then open -
-// destroys every protected object involved, and then searches the process's
-// writable anonymous memory for the share and for its base64 encoding. Once
-// everything protected has been destroyed, a hit can only be an unprotected
-// copy left behind on the ordinary heap, where it cannot be zeroized and can
-// be swapped to disk.
-//
-// encoding/json fails this test. json.Marshal assembles its output in a buffer
-// it takes from a package-level sync.Pool and returns to that pool with the
-// plaintext still in it, so the base64 share survives in memory this package
-// cannot reach - which is what the protected boundary replaced.
+// TestSeal_LeavesNoPlaintextInOrdinaryMemory seals and opens a share, destroys the protected objects and scans anonymous memory for the share or its base64.
 func TestSeal_LeavesNoPlaintextInOrdinaryMemory(t *testing.T) {
 	// A share long enough that a match cannot be chance, and random so that no
 	// earlier test can have left the same bytes behind.
@@ -99,12 +85,7 @@ func TestSeal_LeavesNoPlaintextInOrdinaryMemory(t *testing.T) {
 	}
 }
 
-// TestSeal_ResidueScanDetectsAnUnprotectedCopy is the control for
-// TestSeal_LeavesNoPlaintextInOrdinaryMemory. It runs the same share through
-// encoding/json the way this package used to, and requires the scan to find
-// the result. Without it, a scan that silently found nothing - because it was
-// looking in the wrong place, or because the needle was wrong - would read as
-// a pass.
+// TestSeal_ResidueScanDetectsAnUnprotectedCopy is the control: an encoding/json copy must be found by the scan.
 func TestSeal_ResidueScanDetectsAnUnprotectedCopy(t *testing.T) {
 	share := heapNeedle(t, 1024)
 
@@ -143,15 +124,7 @@ func TestSeal_ResidueScanDetectsAnUnprotectedCopy(t *testing.T) {
 // needleSink is what makes heapNeedle's allocations escape.
 var needleSink []byte
 
-// heapNeedle returns n random bytes whose address will not change.
-//
-// The heap is what makes it stable. A slice that stays on the goroutine stack
-// moves when that stack grows, because Go grows a stack by copying it, and a
-// needle that moves breaks the scan twice over: the address range excluded for
-// it goes stale, and a copy of it is left behind at the address it came from.
-// The scan then reports the needle as its own finding - a false positive whose
-// appearance depends on how much allocation happened first, which is to say it
-// looks exactly like a flaky test.
+// heapNeedle returns n random heap bytes, whose address cannot move as a stack would.
 func heapNeedle(t *testing.T, n int) []byte {
 	t.Helper()
 
@@ -197,14 +170,7 @@ func (r addressRange) contains(addr uint64) bool {
 	return r.start != 0 && addr >= r.start && addr < r.end
 }
 
-// findInProcessMemory searches this process's writable anonymous mappings for
-// needle, ignoring any match inside one of the excluded spans, and returns the
-// address of the first hit.
-//
-// Only anonymous mappings are searched: that is where the Go heap, goroutine
-// stacks and every ordinary allocation live. memguard's protected buffers are
-// anonymous too, which is the point - a share still readable there after its
-// SecretBytes was destroyed would be just as much a finding.
+// findInProcessMemory returns the first address of needle in writable anonymous mappings outside the excluded spans.
 func findInProcessMemory(t *testing.T, needle []byte, exclude []addressRange) (uint64, bool) {
 	t.Helper()
 
@@ -225,16 +191,7 @@ func findInProcessMemory(t *testing.T, needle []byte, exclude []addressRange) (u
 
 	buf := make([]byte, chunkSize+len(needle)-1)
 
-	// Two ranges the scan must never report, both computed here rather than
-	// taken from the caller so that neither can have gone stale:
-	//
-	//   - the needle itself. A match at its own address is the needle, not a
-	//     copy of it.
-	//   - buf, which holds a copy of the window the scan read last. Once the
-	//     scan reaches the region buf lives in, that copy looks exactly like a
-	//     residue. Excluding it hides nothing: a genuine residue in a region
-	//     scanned before buf's is found at its own address first, and one in a
-	//     region scanned after has not been read into buf yet.
+	// Never report the needle itself or buf, which holds the last window read.
 	exclude = append(append([]addressRange(nil), exclude...), rangeOf(needle), rangeOf(buf))
 
 	for _, region := range writableAnonymousRegions(t) {
@@ -245,12 +202,7 @@ func findInProcessMemory(t *testing.T, needle []byte, exclude []addressRange) (u
 			}
 			window := buf[:end-offset]
 
-			// A mapping can be torn down between reading the map and reading
-			// the memory; a failed read is not a finding. Skip only the chunk
-			// that failed rather than abandoning the rest of the region: a
-			// residue living past a torn-down page would otherwise go unseen,
-			// and a scan that quietly stops covering memory is how this test
-			// would come to pass without proving anything.
+			// A mapping can vanish between reads; skip only the failed chunk.
 			if _, err := mem.ReadAt(window, int64(offset)); err != nil {
 				continue
 			}
@@ -340,15 +292,7 @@ func writableAnonymousRegions(t *testing.T) []addressRange {
 	return regions
 }
 
-// TestMemoryStorage_LegacyReadLeavesNoPlaintext is the behavioral proof that
-// reading a legacy plain value through GetSecret moves it into protected
-// memory rather than copying it out.
-//
-// The structural half lives in TestMemoryStorage_GetSecret_PromotesPlainValue,
-// which asserts the backend no longer holds the key. Removal from the map is
-// not the whole property though: a removed entry's []byte keeps its contents
-// until the allocator reuses it, so this scans for the value itself once every
-// protected object is destroyed. Nothing may remain.
+// TestMemoryStorage_LegacyReadLeavesNoPlaintext checks that no plaintext remains after GetSecret promotes a plain value.
 func TestMemoryStorage_LegacyReadLeavesNoPlaintext(t *testing.T) {
 	// Random and long enough that a match cannot be chance.
 	needle := heapNeedle(t, 1024)
@@ -389,15 +333,7 @@ func TestMemoryStorage_LegacyReadLeavesNoPlaintext(t *testing.T) {
 	}
 }
 
-// TestMemoryStorage_OverwriteLeavesNoPlaintext covers the overwrite sibling of
-// the promotion path: a key written through the plain Put path and then
-// replaced by PutSecret.
-//
-// The promotion path moves the value out of the backend; this one drops it,
-// and dropping is where a plaintext copy is easiest to leave behind. Removing
-// the map reference does not touch the bytes, so the serialized key package
-// the key used to hold would stay readable in the heap for the rest of the
-// process's life even though the key now holds protected material.
+// TestMemoryStorage_OverwriteLeavesNoPlaintext checks that replacing a plain value with PutSecret leaves no plaintext.
 func TestMemoryStorage_OverwriteLeavesNoPlaintext(t *testing.T) {
 	needle := heapNeedle(t, 1024)
 
@@ -443,20 +379,7 @@ func TestMemoryStorage_OverwriteLeavesNoPlaintext(t *testing.T) {
 	}
 }
 
-// TestFromKeyPackage_LeavesNoPlaintextShare holds the bound on the one
-// protected-memory window this package cannot close.
-//
-// Serializing a scalar allocates the raw share on the ordinary heap, because
-// that is the only thing the scalar implementations can hand back - none of
-// the dependencies behind them export an encoding that fills a destination the
-// caller provides. FromKeyPackage documents the boundary in full.
-//
-// What can be held is that the allocation does not outlive the call: it goes
-// straight into NewSecretBytes, which copies it into mlock'd memory and
-// zeroizes the transient in place. This scans process memory for the share
-// afterwards and requires it to be gone. The in-flight window remains, and no
-// test can remove it; a copy that survived the call would be a different and
-// fixable defect, and this is what would catch it.
+// TestFromKeyPackage_LeavesNoPlaintextShare checks that the transient serialized share does not outlive FromKeyPackage.
 func TestFromKeyPackage_LeavesNoPlaintextShare(t *testing.T) {
 	g := ristretto255.NewGroup()
 

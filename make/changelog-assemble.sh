@@ -1,30 +1,6 @@
 #!/bin/sh
-#
-# Folds CHANGELOG fragments into a stamped release section and commits the
-# result through agent-git.sh: the "assembly is a committed step performed
-# before tagging" of release-versioning.md §5. Run by `make changelog-assemble
-# VERSION=vX.Y.Z-alpha`, before `make release-alpha VERSION=vX.Y.Z-alpha`
-# (issue #17).
-#
-# Inputs arrive ONLY as environment parameters set by the Makefile target
-# (CL_VERSION, CL_REPO, CL_AGENT_GIT), never as Make text, for the same
-# injection reason as the release-alpha template's REL_* names.
-#
-# What it does, fail-closed and before any write:
-#   - the release body is the current `## [Unreleased]` content (which the
-#     convention releases normally at the next tag) followed by every file in
-#     changelog.d/ except .gitkeep, in file-name order;
-#   - `### ` subsections with the same heading are merged, and ordered as Keep
-#     a Changelog orders them (Added, Changed, Deprecated, Removed, Fixed,
-#     Security; anything else after, in order of first appearance);
-#   - the body becomes `## [X.Y.Z-alpha] - YYYY-MM-DD` directly below an
-#     emptied `## [Unreleased]`, the fragments are removed, and the change is
-#     one commit: `chore(release): assemble CHANGELOG for vX.Y.Z-alpha`.
-# Headings inside fenced code blocks are content, never structure, in every
-# pass. It refuses on a malformed (or multi-line) version, an unclosed fence
-# in [Unreleased] or a fragment, a dirty tree, a version whose heading
-# already exists, a CHANGELOG with no `## [Unreleased]` heading, or nothing to
-# release.
+# Folds [Unreleased] and changelog.d/ fragments into `## [X.Y.Z-alpha] - date` and commits through agent-git.sh; run by `make changelog-assemble VERSION=...`.
+# Inputs arrive only as CL_VERSION, CL_REPO, CL_AGENT_GIT; fails closed before any write; headings inside fences are content.
 set -eu
 
 die() {
@@ -37,9 +13,7 @@ repo="${CL_REPO:-}"
 agent_git="${CL_AGENT_GIT:-}"
 
 test -n "$ver" || die 'state the version explicitly: make changelog-assemble VERSION=vX.Y.Z-alpha'
-# grep matches line by line, so on its own it would accept "v0.4.0-alpha" +
-# newline + anything. Refuse every character a version cannot hold FIRST, so
-# the whole value is one line before the grammar is checked.
+# Reject any character a version cannot hold first, so the value is one line before the grammar check.
 case "$ver" in
 *[!v0-9a-z.-]*) die 'VERSION holds characters a vX.Y.Z-alpha version cannot (a newline, space or similar)' ;;
 esac
@@ -54,13 +28,7 @@ bare="${ver#v}"
 heading="## [$bare]"
 unreleased='## [Unreleased]'
 
-# Fenced code blocks. Every pass below reads a heading only OUTSIDE a fence, so
-# a `## ` or `### ` line quoted in an example is content, never structure. The
-# rules are the release-alpha template's (v2.3.9 (b)), which follow CommonMark:
-# 0-3 spaces of indent, 3+ backticks or tildes, closed only by the SAME
-# character at least as long with nothing after it, a backtick fence's info
-# string holding no backtick, and an unclosed fence running to the end of its
-# source. code($0) is 1 for a fence delimiter or a line inside a fence.
+# CommonMark fences: code($0) is 1 for a fence delimiter or a line inside a fence; headings count only outside fences.
 FENCE_AWK='
   function fence(s,   i, n) {
     i = 1; while (i <= 3 && substr(s, i, 1) == " ") i++
@@ -108,10 +76,7 @@ awk -v u="$unreleased" "$FENCE_AWK"'
   inside && !c && /^## / { exit }
   inside { print }' CHANGELOG.md >"$tmp/body"
 
-# 2. Fragments, each preceded by a separator line (a control character no
-#    Markdown source contains) so text before a fragment's first `### ` is not
-#    filed under the previous source's subsection, and a missing trailing
-#    newline cannot splice two entries onto one line.
+# 2. Fragments, each preceded by a control-character separator line so subsections and missing newlines cannot merge entries.
 sep="$(printf '\001')"
 for f in $fragments; do
   {

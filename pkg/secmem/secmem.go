@@ -1,11 +1,4 @@
-// Package secmem provides secure memory management for cryptographic key material.
-//
-// It wraps the memguard library to provide mlock'd memory (protected from swap),
-// encrypted at-rest storage via Enclave, and guard pages for sensitive byte slices.
-//
-// Key constraint: group.Scalar values used for arithmetic cannot be wrapped in
-// memguard since they are managed by external crypto libraries. This package
-// focuses on protecting raw []byte key material.
+// Package secmem protects raw []byte key material with memguard (mlock, enclaves, guard pages); group.Scalar values cannot be protected.
 package secmem
 
 import (
@@ -31,10 +24,7 @@ var (
 	ErrEmptySecret = errors.New("secmem: secret is empty")
 )
 
-// Init initializes the secure memory subsystem.
-// It installs an interrupt handler that will purge all secure memory on
-// termination signals. This function is idempotent and safe to call
-// multiple times.
+// Init installs a handler that purges secure memory on termination signals; idempotent.
 func Init() {
 	initOnce.Do(func() {
 		memguard.CatchInterrupt()
@@ -57,11 +47,7 @@ type SecretBytes struct {
 	size    int
 }
 
-// NewSecretBytes creates a new SecretBytes from the given data.
-// The data is copied into a mlock'd LockedBuffer, then sealed into an
-// Enclave. The original data slice is zeroed before returning.
-//
-// Returns nil if data is nil or empty.
+// NewSecretBytes seals a copy of data into an Enclave and zeroes data; nil for empty input.
 func NewSecretBytes(data []byte) *SecretBytes {
 	if len(data) == 0 {
 		return nil
@@ -84,26 +70,7 @@ func NewSecretBytes(data []byte) *SecretBytes {
 	}
 }
 
-// NewSecret builds a secret in place inside protected memory. It allocates a
-// mlock'd, guard-paged buffer of size bytes, passes it to fill, and seals the
-// prefix fill reports having written.
-//
-// Use it wherever secret material has to be assembled or decoded rather than
-// simply copied: the working buffer is protected from the moment it is
-// allocated, so the material never exists as an ordinary heap allocation that
-// the runtime may swap out and that this package cannot reach to zeroize.
-// NewSecretBytes, by contrast, can only seal what is already on the heap.
-//
-// fill returns the number of bytes it wrote. Writing fewer than size bytes is
-// allowed - the exact length of a decoded secret is not always known up front -
-// and the shorter secret is re-sealed through a second protected buffer, so a
-// short write does not put the material on the heap either. Every buffer
-// involved is destroyed before NewSecret returns.
-//
-// fill must write only into dst and must not retain it. If fill returns an
-// error the buffer is destroyed and that error is returned unwrapped;
-// ErrEmptySecret is returned when size is not positive or fill reports a
-// length outside (0, size].
+// NewSecret seals what fill writes into a protected size-byte buffer, so assembled secrets never touch the heap; ErrEmptySecret for a bad size or length.
 func NewSecret(size int, fill func(dst []byte) (int, error)) (*SecretBytes, error) {
 	if size <= 0 {
 		return nil, ErrEmptySecret
@@ -111,11 +78,7 @@ func NewSecret(size int, fill func(dst []byte) (int, error)) (*SecretBytes, erro
 
 	buf := memguard.NewBuffer(size)
 
-	// fill is caller-supplied, so it can panic. Without this the buffer would
-	// be left mlock'd holding whatever fill had written into it before the
-	// panic, with nothing left alive to wipe it. Destroy is idempotent and
-	// reads buf at the time it runs, so it covers the reassignment below and
-	// costs nothing on the path where Seal has already destroyed the buffer.
+	// Destroy the buffer even if fill panics; Destroy is idempotent.
 	defer func() { buf.Destroy() }()
 
 	n, err := fill(buf.Bytes())
@@ -144,18 +107,7 @@ func NewSecret(size int, fill func(dst []byte) (int, error)) (*SecretBytes, erro
 	}, nil
 }
 
-// Open decrypts the SecretBytes into a mlock'd LockedBuffer for use.
-// The caller MUST call Reseal() when done to re-encrypt the data,
-// or use WithSecret() for automatic open/reseal lifecycle management.
-//
-// The returned LockedBuffer is protected by mlock (won't be swapped to disk)
-// and surrounded by guard pages.
-//
-// Open and Reseal are two separate critical sections, so a Destroy can land
-// between them: the plaintext in the returned buffer stays readable until the
-// caller reseals it, and Reseal then discards it rather than sealing it back.
-// Prefer WithSecret, whose open/use/reseal cycle is atomic with respect to
-// Destroy.
+// Open decrypts into a protected LockedBuffer the caller must Reseal; prefer WithSecret, which is atomic with Destroy.
 func (s *SecretBytes) Open() (*memguard.LockedBuffer, error) {
 	if s == nil {
 		return nil, ErrNilSecret
@@ -176,13 +128,7 @@ func (s *SecretBytes) Open() (*memguard.LockedBuffer, error) {
 	return buf, nil
 }
 
-// Reseal re-encrypts a LockedBuffer back into the Enclave after use.
-// The LockedBuffer is destroyed (zeroed and munlock'd) in the process.
-//
-// Destruction is final: if the secret was destroyed while this buffer was
-// open, the plaintext is discarded instead of being sealed back, because
-// installing a fresh enclave over the destroyed one would resurrect secret
-// material the caller explicitly destroyed.
+// Reseal re-encrypts and destroys the buffer; if the secret was destroyed meanwhile, the plaintext is discarded.
 func (s *SecretBytes) Reseal(buf *memguard.LockedBuffer) {
 	if s == nil || buf == nil {
 		return
@@ -233,18 +179,7 @@ func (s *SecretBytes) Size() int {
 	return s.size
 }
 
-// withOpen runs fn against the plaintext of the secret, holding s.mu for the
-// entire open/use/reseal cycle.
-//
-// Holding the mutex across the whole cycle is what makes the cycle atomic with
-// respect to Destroy: a concurrent Destroy lands either entirely before it (fn
-// is never called and ErrDestroyed is returned) or entirely after it. Were the
-// reseal able to interleave with a Destroy, it would install a fresh enclave
-// over the nil one Destroy left behind, resurrecting secret material the
-// caller had explicitly destroyed.
-//
-// fn must not call any method on s - s.mu is not reentrant - and must not
-// retain the byte slice it is given.
+// withOpen runs fn on the plaintext holding s.mu for the whole cycle, atomic with Destroy; fn must not call s or retain the slice.
 func (s *SecretBytes) withOpen(fn func([]byte) error) error {
 	if s == nil {
 		return ErrNilSecret
@@ -269,17 +204,7 @@ func (s *SecretBytes) withOpen(fn func([]byte) error) error {
 	return fn(buf.Bytes())
 }
 
-// WithSecret opens a SecretBytes, passes the raw bytes to the provided
-// function, and re-seals the data when the function returns.
-// This is the recommended way to access secret data as it ensures
-// the data is always re-encrypted after use.
-//
-// The open/use/reseal cycle is atomic with respect to Destroy: a concurrent
-// Destroy either prevents fn from running at all (ErrDestroyed) or takes
-// effect once the cycle has finished, and can never be undone by the reseal.
-//
-// The byte slice passed to fn must not be retained after fn returns, and fn
-// must not call any method on secret.
+// WithSecret runs fn on the plaintext and reseals it, atomically with Destroy; fn must not retain the slice or call secret.
 func WithSecret(secret *SecretBytes, fn func([]byte) error) error {
 	return secret.withOpen(fn)
 }
@@ -295,18 +220,7 @@ func ZeroBytes(b []byte) {
 	subtle.ConstantTimeCopy(1, b, zeros)
 }
 
-// Clone returns an independent copy of a SecretBytes. The plaintext is copied
-// between mlock'd buffers and never exists as a plain heap []byte: the source
-// enclave is opened, its contents are copied into a fresh LockedBuffer, and
-// that buffer is sealed into the returned enclave.
-//
-// The caller owns the returned SecretBytes and is responsible for destroying
-// it; destroying it does not affect the source.
-//
-// The copy is made inside a single open/use/reseal cycle, so cloning a secret
-// cannot be interleaved with destroying it.
-//
-// Returns ErrNilSecret if s is nil, or ErrDestroyed if s has been destroyed.
+// Clone returns an independent protected copy the caller destroys; ErrNilSecret or ErrDestroyed on bad input.
 func Clone(s *SecretBytes) (*SecretBytes, error) {
 	var clone *SecretBytes
 

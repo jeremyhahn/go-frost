@@ -3,17 +3,7 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 
-// Package signer provides cryptographic signer abstractions compatible with
-// crypto.Signer for use with HSM, TPM, and other hardware-backed keys.
-//
-// This package allows go-frost to work with keys stored in:
-//   - Software (standard crypto/ed25519)
-//   - Hardware Security Modules (HSM)
-//   - Trusted Platform Modules (TPM)
-//   - Cloud Key Management Systems (KMS)
-//   - go-xkms backed signers
-//
-// All signer implementations are compatible with Go's crypto.Signer interface.
+// Package signer provides crypto.Signer-compatible signers for software, HSM, TPM and KMS keys.
 package signer
 
 import (
@@ -27,17 +17,7 @@ import (
 	"github.com/jeremyhahn/go-frost/pkg/secmem"
 )
 
-// Signer defines the interface for cryptographic signing operations.
-//
-// This interface extends crypto.Signer with additional methods specific
-// to FROST authentication needs.
-//
-// Compatible implementations:
-//   - Ed25519 software keys (crypto/ed25519)
-//   - HSM-backed signers
-//   - TPM-backed signers
-//   - Cloud KMS signers (AWS KMS, Google Cloud KMS, Azure Key Vault)
-//   - go-xkms signers
+// Signer extends crypto.Signer with PublicKeyBytes and SignBytes for FROST authentication.
 type Signer interface {
 	crypto.Signer
 
@@ -45,54 +25,17 @@ type Signer interface {
 	// For Ed25519, this returns the 32-byte public key.
 	PublicKeyBytes() []byte
 
-	// SignBytes signs the given message and returns the signature.
-	// This is a convenience method that wraps crypto.Signer.Sign.
-	//
-	// Parameters:
-	//   - message: The message to sign
-	//
-	// Returns:
-	//   - signature: The signature bytes
-	//   - error: Any error that occurred during signing
+	// SignBytes signs message through crypto.Signer.Sign.
 	SignBytes(message []byte) ([]byte, error)
 }
 
-// Ed25519Signer implements Signer for Ed25519 software keys.
-//
-// This signer uses crypto/ed25519 for signing operations and is suitable
-// for development, testing, and production use where hardware backing is
-// not required.
-//
-// The private key is stored in memguard-protected memory (mlock'd, encrypted
-// at rest) when available. Use Destroy() to securely erase the key when
-// the signer is no longer needed.
+// Ed25519Signer signs with an Ed25519 key held in memguard memory; Destroy erases it.
 type Ed25519Signer struct {
 	secret    *secmem.SecretBytes
 	publicKey ed25519.PublicKey
 }
 
-// NewEd25519Signer creates a new Ed25519 signer from a private key.
-//
-// Parameters:
-//   - privateKey: Ed25519 private key (64 bytes)
-//
-// Returns:
-//   - Signer: Ed25519 signer implementation
-//   - error: Any error that occurred during initialization
-//
-// Example:
-//
-//	pub, priv, err := ed25519.GenerateKey(rand.Reader)
-//	if err != nil {
-//	    return err
-//	}
-//
-//	signer, err := signer.NewEd25519Signer(priv)
-//	if err != nil {
-//	    return err
-//	}
-//
-//	signature, err := signer.SignBytes(message)
+// NewEd25519Signer returns a Signer for a 64-byte Ed25519 private key.
 func NewEd25519Signer(privateKey ed25519.PrivateKey) (Signer, error) {
 	if len(privateKey) != ed25519.PrivateKeySize {
 		return nil, fmt.Errorf("invalid private key size: expected %d, got %d",
@@ -111,18 +54,7 @@ func NewEd25519Signer(privateKey ed25519.PrivateKey) (Signer, error) {
 	}, nil
 }
 
-// GenerateEd25519Signer generates a new Ed25519 key pair and returns a signer.
-//
-// Returns:
-//   - Signer: Ed25519 signer implementation
-//   - error: Any error that occurred during key generation
-//
-// Example:
-//
-//	signer, err := signer.GenerateEd25519Signer()
-//	if err != nil {
-//	    return err
-//	}
+// GenerateEd25519Signer returns a Signer for a new Ed25519 key pair.
 func GenerateEd25519Signer() (Signer, error) {
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
@@ -143,11 +75,7 @@ func (s *Ed25519Signer) Public() crypto.PublicKey {
 	return s.publicKey
 }
 
-// Sign implements crypto.Signer.Sign.
-//
-// For Ed25519, the opts parameter is ignored and can be nil.
-// The rand parameter is also ignored as Ed25519 signing is deterministic.
-// The private key is temporarily decrypted from secure memory for signing.
+// Sign implements crypto.Signer.Sign; rand and opts are ignored, the key is decrypted only for signing.
 func (s *Ed25519Signer) Sign(_ io.Reader, digest []byte, _ crypto.SignerOpts) ([]byte, error) {
 	var signature []byte
 	err := secmem.WithSecret(s.secret, func(keyBytes []byte) error {
@@ -176,11 +104,9 @@ func (s *Ed25519Signer) SignBytes(message []byte) ([]byte, error) {
 	return s.Sign(nil, message, crypto.Hash(0))
 }
 
-// PrivateKey returns a temporary copy of the underlying Ed25519 private key.
+// PrivateKey returns a copy of the Ed25519 private key; zero it with secmem.ZeroBytes.
 //
-// Deprecated: This method exposes raw private key material in unprotected memory.
-// The returned copy should be zeroed with secmem.ZeroBytes() when no longer needed.
-// Prefer using Sign() or SignBytes() which access the key through secure memory.
+// Deprecated: exposes raw key material; use Sign or SignBytes.
 func (s *Ed25519Signer) PrivateKey() ed25519.PrivateKey {
 	log.Println("WARNING: Ed25519Signer.PrivateKey() exposes raw key material in unprotected memory")
 	var key ed25519.PrivateKey
@@ -203,47 +129,12 @@ func (s *Ed25519Signer) Destroy() {
 	}
 }
 
-// VerifySignature verifies an Ed25519 signature.
-//
-// This is a utility function for verifying signatures without needing
-// to create a Signer instance.
-//
-// Parameters:
-//   - publicKey: Ed25519 public key (32 bytes)
-//   - message: The message that was signed
-//   - signature: The signature to verify
-//
-// Returns:
-//   - bool: true if the signature is valid, false otherwise
+// VerifySignature reports whether signature is a valid Ed25519 signature of message by publicKey.
 func VerifySignature(publicKey ed25519.PublicKey, message, signature []byte) bool {
 	return ed25519.Verify(publicKey, message, signature)
 }
 
-// FromCryptoSigner wraps a crypto.Signer to implement the Signer interface.
-//
-// This adapter allows any crypto.Signer (including HSM/TPM backed signers)
-// to be used with go-frost.
-//
-// Parameters:
-//   - cryptoSigner: A crypto.Signer implementation
-//
-// Returns:
-//   - Signer: Wrapped signer
-//   - error: Any error that occurred (e.g., unsupported key type)
-//
-// Example using an HSM-backed signer:
-//
-//	// Assuming you have an HSM-backed crypto.Signer
-//	hsmSigner := getHSMSigner()
-//
-//	// Wrap it for use with go-frost
-//	signer, err := signer.FromCryptoSigner(hsmSigner)
-//	if err != nil {
-//	    return err
-//	}
-//
-//	// Use with FROST authentication
-//	signature, err := signer.SignBytes(message)
+// FromCryptoSigner wraps any crypto.Signer, HSM or TPM backed included, as a Signer.
 func FromCryptoSigner(cryptoSigner crypto.Signer) (Signer, error) {
 	// Check if it's already our Signer type
 	if s, ok := cryptoSigner.(Signer); ok {
@@ -304,10 +195,7 @@ func (a *cryptoSignerAdapter) SignBytes(message []byte) ([]byte, error) {
 	return a.signer.Sign(rand.Reader, message, opts)
 }
 
-// MultiSigner manages multiple signers for different participants.
-//
-// This is useful for coordinator implementations that need to manage
-// authentication keys for multiple participants.
+// MultiSigner holds the authentication signers of several participants.
 type MultiSigner struct {
 	signers map[uint32]Signer // Map participant ID to signer
 }
@@ -351,10 +239,7 @@ func (m *MultiSigner) PublicKeys() map[uint32][]byte {
 	return keys
 }
 
-// Ed25519PublicKeys returns all Ed25519 public keys as a map.
-//
-// This is a convenience method for use with Ed25519Authenticator.
-// Returns nil for non-Ed25519 signers.
+// Ed25519PublicKeys returns the Ed25519 public keys by participant, or nil for non-Ed25519 signers.
 func (m *MultiSigner) Ed25519PublicKeys() map[uint32]ed25519.PublicKey {
 	keys := make(map[uint32]ed25519.PublicKey)
 	for id, signer := range m.signers {

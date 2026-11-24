@@ -13,9 +13,7 @@ import (
 	"github.com/jeremyhahn/go-frost/pkg/frost/group"
 )
 
-// =====================================
-// COFACTOR VERIFICATION TESTS
-// =====================================
+// Cofactor verification tests.
 
 // TestCofactor_Ed25519 verifies Ed25519 has cofactor 8
 func TestCofactor_Ed25519(t *testing.T) {
@@ -155,9 +153,7 @@ func TestCofactor_NonZero(t *testing.T) {
 	}
 }
 
-// =====================================
-// IDENTITY ELEMENT REJECTION TESTS
-// =====================================
+// Identity element rejection tests.
 
 // TestIdentityRejection_SerializeElement tests that identity element cannot be serialized
 func TestIdentityRejection_SerializeElement(t *testing.T) {
@@ -254,9 +250,7 @@ func TestIdentityRejection_PublicKey(t *testing.T) {
 	}
 }
 
-// =====================================
-// ZEROIZATION EFFECTIVENESS TESTS
-// =====================================
+// Zeroization tests.
 
 // TestZeroization_KeyPackage tests KeyPackage.Zeroize() effectiveness
 func TestZeroization_KeyPackage(t *testing.T) {
@@ -406,9 +400,7 @@ func TestZeroization_MultipleCallsSafe(t *testing.T) {
 	}
 }
 
-// =====================================
-// HOOK CUSTOMIZATION TESTS
-// =====================================
+// Hook customization tests.
 
 // TestHooks_DefaultHooks tests that DefaultHooks pass through values unchanged
 func TestHooks_DefaultHooks(t *testing.T) {
@@ -490,9 +482,7 @@ func TestHooks_GetHooks(t *testing.T) {
 	}
 }
 
-// =====================================
-// BYTE ORDER CORRECTNESS TESTS
-// =====================================
+// Byte order tests.
 
 // TestByteOrder_LittleEndian tests little-endian groups
 func TestByteOrder_LittleEndian(t *testing.T) {
@@ -622,9 +612,7 @@ func TestByteOrder_AllGroups(t *testing.T) {
 	}
 }
 
-// =====================================
-// ELEMENT LENGTH AND SCALAR LENGTH TESTS
-// =====================================
+// Element and scalar length tests.
 
 // TestElementScalarLengths tests that element and scalar lengths are correct
 func TestElementScalarLengths(t *testing.T) {

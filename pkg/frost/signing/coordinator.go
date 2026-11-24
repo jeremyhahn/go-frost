@@ -11,45 +11,15 @@ import (
 	"github.com/jeremyhahn/go-frost/pkg/frost/security"
 )
 
-// Coordinator orchestrates the signing protocol among participants.
-// The coordinator role is optional and can be removed for a fully distributed protocol.
+// Coordinator runs the signing protocol among participants; the role is optional.
 type Coordinator interface {
-	// RequestCommitments initiates round one by requesting commitments from participants.
-	//
-	// Inputs:
-	// - participantIDs: List of participant identifiers to include in signing
-	// - msg: The message to be signed
-	//
-	// Outputs:
-	// - commitmentList: Aggregated and sorted commitment list
-	//
-	// The coordinator collects commitments from all participants and ensures
-	// the list is properly sorted by identifier.
+	// RequestCommitments runs round one and returns the sorted commitment list.
 	RequestCommitments(participantIDs []frost.Identifier, msg []byte) (frost.CommitmentList, error)
 
-	// RequestSignatureShares initiates round two by requesting signature shares.
-	//
-	// Inputs:
-	// - commitmentList: The commitment list from round one
-	// - msg: The message being signed
-	//
-	// Outputs:
-	// - signatureShares: List of signature shares from participants
-	//
-	// The coordinator distributes the commitment list to all participants and
-	// collects their signature shares.
+	// RequestSignatureShares runs round two and returns the participants' signature shares.
 	RequestSignatureShares(commitmentList frost.CommitmentList, msg []byte) ([]frost.SignatureShare, error)
 
-	// Sign orchestrates the complete signing protocol.
-	//
-	// Inputs:
-	// - participantIDs: List of participant identifiers to include
-	// - msg: The message to sign
-	//
-	// Outputs:
-	// - signature: The complete FROST signature
-	//
-	// This is a convenience method that runs both rounds and aggregation.
+	// Sign runs both rounds and aggregation.
 	Sign(participantIDs []frost.Identifier, msg []byte) (frost.Signature, error)
 }
 
@@ -72,14 +42,7 @@ func NewCoordinatorWithPublicKey(suite ciphersuite.Ciphersuite, participants map
 	}
 }
 
-// NewCoordinatorWithAuthenticator creates a new signing coordinator with participant authentication.
-//
-// The authenticator is used to verify that commitments and signature shares
-// come from legitimate participants, preventing impersonation attacks.
-// This implements RFC 9591 Section 7.2 (authenticated channels).
-//
-// Production deployments should use Ed25519Authenticator or equivalent.
-// For testing, use NoOpAuthenticator (insecure, skips authentication).
+// NewCoordinatorWithAuthenticator returns a coordinator that authenticates commitments and shares (RFC 9591 Section 7.2).
 func NewCoordinatorWithAuthenticator(suite ciphersuite.Ciphersuite, participants map[frost.Identifier]Participant, aggregator Aggregator, groupPublicKey group.Element, authenticator security.ParticipantAuthenticator) Coordinator {
 	return &coordinator{
 		suite:          suite,
@@ -90,21 +53,7 @@ func NewCoordinatorWithAuthenticator(suite ciphersuite.Ciphersuite, participants
 	}
 }
 
-// NewCoordinatorWithSecurity creates a new signing coordinator with full security features.
-//
-// This constructor enables both authentication and reputation tracking for production deployments.
-//
-// Parameters:
-//   - suite: The ciphersuite to use for cryptographic operations
-//   - participants: Map of participant IDs to Participant instances
-//   - aggregator: The signature aggregator
-//   - groupPublicKey: The group's public verification key
-//   - authenticator: Participant authenticator (use Ed25519Authenticator for production)
-//   - reputationTracker: Reputation tracker for misbehavior tracking and DoS prevention
-//
-// Production deployments should use:
-//   - Ed25519Authenticator for authentication
-//   - InMemoryReputationTracker (or persistent implementation) for reputation tracking
+// NewCoordinatorWithSecurity returns a coordinator with participant authentication and reputation tracking.
 func NewCoordinatorWithSecurity(suite ciphersuite.Ciphersuite, participants map[frost.Identifier]Participant, aggregator Aggregator, groupPublicKey group.Element, authenticator security.ParticipantAuthenticator, reputationTracker security.ReputationTracker) Coordinator {
 	return &coordinator{
 		suite:             suite,
@@ -129,19 +78,7 @@ type coordinator struct {
 	noncesMap map[frost.Identifier]frost.SigningNonces
 }
 
-// RequestCommitments implements Coordinator.RequestCommitments
-//
-// Initiates round one by requesting commitments from participants.
-// The coordinator collects commitments from all participants and ensures
-// the list is properly sorted by identifier.
-//
-// Algorithm (from RFC 9591 Section 5.1):
-// 1. Validate participant IDs exist
-// 2. Request commitments from each participant (RoundOne)
-// 3. Collect commitments
-// 4. Sort commitment list by identifier
-// 5. Validate commitment list
-// 6. Return sorted list
+// RequestCommitments implements Coordinator.RequestCommitments per RFC 9591 Section 5.1.
 func (c *coordinator) RequestCommitments(participantIDs []frost.Identifier, _ []byte) (frost.CommitmentList, error) {
 	// 1. Validate participant IDs exist
 	if len(participantIDs) == 0 {
@@ -208,20 +145,7 @@ func (c *coordinator) RequestCommitments(participantIDs []frost.Identifier, _ []
 	return commitments, nil
 }
 
-// RequestSignatureShares implements Coordinator.RequestSignatureShares
-//
-// Initiates round two by requesting signature shares.
-// The coordinator distributes the commitment list to all participants and
-// collects their signature shares.
-//
-// Algorithm (from RFC 9591 Section 5.2):
-//  1. Validate commitment list
-//  2. For each participant in commitment list:
-//     a. Look up participant
-//     b. Request signature share with commitment list and message
-//     c. Optionally verify signature share (identifiable abort)
-//  3. Collect all signature shares
-//  4. Return signature shares
+// RequestSignatureShares implements Coordinator.RequestSignatureShares per RFC 9591 Section 5.2.
 func (c *coordinator) RequestSignatureShares(commitmentList frost.CommitmentList, msg []byte) ([]frost.SignatureShare, error) {
 	// 1. Validate commitment list
 	encoder := helpers.NewCommitmentListEncoder(c.suite.Group())
@@ -266,10 +190,7 @@ func (c *coordinator) RequestSignatureShares(commitmentList frost.CommitmentList
 			return nil, frost.NewParticipantError(commitment.Identifier, "failed to generate signature share", err)
 		}
 
-		// d. Optionally verify signature share (identifiable abort)
-		// Per RFC 9591 Section 7.4, share verification is optional but enables identifying
-		// malicious participants. Use AggregateWithVerification() instead of Aggregate()
-		// to enable signature share verification with identifiable abort support.
+		// Share verification (RFC 9591 Section 7.4) happens in AggregateWithVerification.
 
 		// 3. Collect signature share
 		signatureShares = append(signatureShares, share)
@@ -279,17 +200,7 @@ func (c *coordinator) RequestSignatureShares(commitmentList frost.CommitmentList
 	return signatureShares, nil
 }
 
-// Sign implements Coordinator.Sign
-//
-// Orchestrates the complete signing protocol by running both rounds and aggregation.
-// This is a convenience method that combines RequestCommitments, RequestSignatureShares,
-// and Aggregate into a single operation.
-//
-// Algorithm (from RFC 9591 Section 5):
-// 1. Request commitments from participants (Round 1)
-// 2. Request signature shares using commitment list (Round 2)
-// 3. Aggregate signature shares into final signature
-// 4. Return signature
+// Sign implements Coordinator.Sign: commitments, shares, then aggregation.
 func (c *coordinator) Sign(participantIDs []frost.Identifier, msg []byte) (frost.Signature, error) {
 	// Validate group public key is set
 	if c.groupPublicKey == nil {
@@ -318,22 +229,7 @@ func (c *coordinator) Sign(participantIDs []frost.Identifier, msg []byte) (frost
 	return signature, nil
 }
 
-// AuthenticateCommitment verifies the authenticity of a commitment from a participant.
-//
-// This method should be called when receiving commitments from remote participants
-// to prevent impersonation attacks (RFC 9591 Section 7.2).
-//
-// In a distributed FROST system, this would be called by the network/transport layer
-// when a commitment message is received, before passing it to RequestCommitments.
-//
-// Parameters:
-//   - participantID: The claimed sender of the commitment
-//   - commitment: The signing commitments to verify
-//   - proof: Authentication proof (e.g., digital signature over the commitment)
-//
-// Returns error if:
-//   - No authenticator is configured
-//   - Authentication fails (invalid proof, unknown participant, etc.)
+// AuthenticateCommitment verifies a remote participant's commitment before RequestCommitments; errors without an authenticator.
 func (c *coordinator) AuthenticateCommitment(participantID frost.Identifier, commitment frost.SigningCommitments, proof []byte) error {
 	if c.authenticator == nil {
 		return frost.NewParameterError("authenticator", "no authenticator configured", frost.ErrInvalidParameters)
@@ -349,22 +245,7 @@ func (c *coordinator) AuthenticateCommitment(participantID frost.Identifier, com
 	return err
 }
 
-// AuthenticateSignatureShare verifies the authenticity of a signature share from a participant.
-//
-// This method should be called when receiving signature shares from remote participants
-// to prevent impersonation attacks (RFC 9591 Section 7.2).
-//
-// In a distributed FROST system, this would be called by the network/transport layer
-// when a signature share message is received, before passing it to RequestSignatureShares.
-//
-// Parameters:
-//   - participantID: The claimed sender of the signature share
-//   - share: The signature share to verify
-//   - proof: Authentication proof (e.g., digital signature over the share)
-//
-// Returns error if:
-//   - No authenticator is configured
-//   - Authentication fails (invalid proof, unknown participant, etc.)
+// AuthenticateSignatureShare verifies a remote participant's share before RequestSignatureShares; errors without an authenticator.
 func (c *coordinator) AuthenticateSignatureShare(participantID frost.Identifier, share frost.SignatureShare, proof []byte) error {
 	if c.authenticator == nil {
 		return frost.NewParameterError("authenticator", "no authenticator configured", frost.ErrInvalidParameters)

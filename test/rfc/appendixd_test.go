@@ -279,9 +279,7 @@ func TestAppendixD_SecurityProperties(t *testing.T) {
 		scalar2, _ := grp.RandomScalar()
 		scalar3, _ := grp.RandomScalar()
 
-		// Knowing two scalars should not allow predicting the third
-		// This is a basic sanity check - true unpredictability requires
-		// proper CSPRNG
+		// Two scalars must not predict a third; a basic sanity check only.
 		if scalar1.Equal(scalar2) || scalar1.Equal(scalar3) || scalar2.Equal(scalar3) {
 			t.Error("Random scalars should be unpredictable")
 		}

@@ -1,26 +1,4 @@
-// RFC 9591 Section 7.5: Error Handling (Error Sanitization)
-//
-// This file tests the error sanitization mechanisms required by RFC 9591 Section 7.5.
-// It verifies that:
-// 1. Error messages don't leak sensitive cryptographic information
-// 2. Different sanitization modes work correctly (Production/Development/Disabled)
-// 3. Cryptographic values are redacted in error messages
-// 4. Session and participant IDs are handled according to configuration
-// 5. Known error types are preserved through sanitization
-//
-// RFC 9591 Section 7.5 Requirements:
-// - "Implementations MUST sanitize error messages to prevent information leakage"
-// - "Error messages MUST NOT contain sensitive cryptographic material"
-// - "Implementations SHOULD provide different error detail levels for production vs development"
-// - "Error handling MUST NOT leak timing information or other side channels"
-//
-// Test Coverage:
-// - M-1: Input Sanitization (RFC 9591 Section 7.5)
-// - M-4: Error Information Leakage (RFC 9591 Section 7.5)
-// - Production mode sanitization
-// - Development mode sanitization
-// - Disabled mode behavior
-// - Pattern-based redaction
+// RFC 9591 Section 7.5 tests: error sanitization in production, development and disabled modes.
 package rfc
 
 import (

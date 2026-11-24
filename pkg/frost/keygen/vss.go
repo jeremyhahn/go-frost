@@ -8,38 +8,13 @@ import (
 
 // VSS implements Verifiable Secret Sharing operations.
 type VSS interface {
-	// CreateCommitments creates verification shares (commitments) from a polynomial.
-	//
-	// Inputs:
-	// - polynomial: The secret sharing polynomial
-	//
-	// Outputs:
-	// - commitments: List of commitments to polynomial coefficients
-	//
-	// For each coefficient c_j, computes verification_share_j = ScalarBaseMult(c_j)
+	// CreateCommitments returns ScalarBaseMult(c_j) for each polynomial coefficient.
 	CreateCommitments(polynomial frost.Polynomial) ([]frost.VerificationShare, error)
 
-	// VerifyShare verifies a secret share against verification shares.
-	//
-	// Inputs:
-	// - identifier: The participant's identifier
-	// - share: The secret share to verify
-	// - commitments: The verification shares
-	//
-	// Outputs:
-	// - valid: True if verification succeeds
-	//
-	// Verifies: ScalarBaseMult(share) == sum_{j=0}^{degree} commitment_j * identifier^j
+	// VerifyShare checks ScalarBaseMult(share) == sum(commitment_j * identifier^j).
 	VerifyShare(identifier frost.Identifier, share group.Scalar, commitments []frost.VerificationShare) error
 
-	// CombineShares combines multiple secret shares into a single share.
-	// This is used in distributed key generation scenarios.
-	//
-	// Inputs:
-	// - shares: List of secret shares to combine
-	//
-	// Outputs:
-	// - combinedShare: The sum of all input shares
+	// CombineShares returns the sum of the given shares.
 	CombineShares(shares []group.Scalar) (group.Scalar, error)
 }
 

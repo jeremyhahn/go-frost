@@ -1,22 +1,6 @@
 package keystore
 
-// wire.go implements the serialization boundary for stored key packages.
-//
-// A stored key package carries a secret share, so its serialized form is
-// secret too - the document holds the share base64-encoded in plain sight.
-// encoding/json cannot produce or consume such a document without leaving the
-// share on the ordinary heap: Marshal assembles its result in a buffer drawn
-// from a package-level sync.Pool, returns a second heap copy, and puts the
-// buffer back in the pool with the plaintext still in it, out of reach of any
-// zeroization this package could perform. Decoding a base64 member likewise
-// allocates the decoded bytes on the heap.
-//
-// So the secret-bearing document is assembled inside protected memory instead,
-// and read back the same way. encoding/json is still used - for the public
-// half of the document, which carries no secret material, and to validate a
-// document before its share is located. The wire format is exactly what
-// encoding/json produced when the share was a plaintext field, so stores
-// written by earlier versions read back unchanged.
+// wire.go assembles and reads the stored key package document in protected memory; the format matches encoding/json's.
 
 import (
 	"bytes"
@@ -42,10 +26,7 @@ const (
 // jsonNull is the JSON literal for a member with no value.
 var jsonNull = []byte("null")
 
-// storedKeyPackagePublic is the half of a stored key package that carries no
-// secret material, and so the only half encoding/json is allowed to see. Its
-// fields mirror StoredKeyPackage's public fields in declaration order, which
-// is the order they appear in the document.
+// storedKeyPackagePublic is the public half of the document, in member order; only it goes through encoding/json.
 type storedKeyPackagePublic struct {
 	Identifier         frost.Identifier
 	GroupPublicKey     []byte
@@ -53,17 +34,7 @@ type storedKeyPackagePublic struct {
 	Metadata           KeyMetadata
 }
 
-// Seal serializes the stored key package into protected memory and returns the
-// sealed document. The document is assembled inside a mlock'd buffer: the
-// share is base64-encoded straight out of its enclave into that buffer, and
-// the public members are spliced in around it. No plaintext copy of the share,
-// and no plaintext copy of the document, exists on the ordinary heap at any
-// point.
-//
-// The caller owns the returned payload and must Destroy it.
-//
-// Seal returns ErrMissingSecretShare when the package carries no protected
-// share; a package without a share has nothing to serialize.
+// Seal returns the document assembled in a protected buffer, which the caller must Destroy; ErrMissingSecretShare if there is no share.
 func (s *StoredKeyPackage) Seal() (*secmem.SecretBytes, error) {
 	if s == nil || s.SecretShareProtected == nil {
 		return nil, ErrMissingSecretShare
@@ -79,11 +50,7 @@ func (s *StoredKeyPackage) Seal() (*secmem.SecretBytes, error) {
 		return nil, ErrMarshalJSON.Wrap(err)
 	}
 
-	// The share member goes back exactly where encoding/json put it: after
-	// Identifier, the member the struct declared before the share. head is
-	// the document up to the end of that member, tail is everything after it,
-	// starting at the comma or the closing brace. Neither holds secret
-	// material.
+	// The share member goes after Identifier, between head and tail.
 	head, tail, err := splitAfterFirstMember(public)
 	if err != nil {
 		return nil, ErrMarshalJSON.Wrap(err)
@@ -136,12 +103,7 @@ func (s *StoredKeyPackage) Seal() (*secmem.SecretBytes, error) {
 	return payload, nil
 }
 
-// OpenStoredKeyPackage decodes a document sealed by Seal. The document is
-// decoded from inside its enclave and the share is base64-decoded straight
-// into a protected buffer of its own, so neither the document nor the share
-// exists as an ordinary heap allocation at any point.
-//
-// Callers own the returned package and must Zeroize it.
+// OpenStoredKeyPackage decodes a Seal document from its enclave into a protected share; callers must Zeroize the result.
 func OpenStoredKeyPackage(payload *secmem.SecretBytes) (*StoredKeyPackage, error) {
 	var (
 		stored    *StoredKeyPackage
@@ -164,10 +126,7 @@ func OpenStoredKeyPackage(payload *secmem.SecretBytes) (*StoredKeyPackage, error
 // decodeStoredKeyPackage decodes a key-package document held in protected
 // memory. document must not be retained: it belongs to an open enclave.
 func decodeStoredKeyPackage(document []byte) (*StoredKeyPackage, error) {
-	// The public members first. storedKeyPackagePublic has no share field, so
-	// the decoder skips the share member without ever decoding its value - the
-	// share is not copied here. This pass also validates the document, which
-	// the scan below is entitled to assume.
+	// Decode and validate the public members first; the share member is skipped, not copied.
 	var public storedKeyPackagePublic
 	if err := json.Unmarshal(document, &public); err != nil {
 		return nil, ErrUnmarshalJSON.Wrap(err)
@@ -184,10 +143,7 @@ func decodeStoredKeyPackage(document []byte) (*StoredKeyPackage, error) {
 		return nil, ErrMissingSecretShare
 	}
 
-	// Decode straight into a protected buffer. NewSecret destroys that buffer
-	// on a failed decode, so a partially decoded share does not survive; the
-	// base64 error itself is dropped for errShareNotBase64, since it quotes
-	// the input it rejected.
+	// Decode into a protected buffer, destroyed on failure; the base64 error quotes input, so it is dropped.
 	protected, err := secmem.NewSecret(base64.StdEncoding.DecodedLen(len(encoded)), func(dst []byte) (int, error) {
 		n, err := base64.StdEncoding.Decode(dst, encoded)
 		if err != nil {
@@ -211,16 +167,7 @@ func decodeStoredKeyPackage(document []byte) (*StoredKeyPackage, error) {
 	}, nil
 }
 
-// splitAfterFirstMember splits a JSON object just past its first member's
-// value: head is the object up to and including that value, tail is the rest,
-// beginning with the separating comma or with the closing brace when the
-// member is the only one. Splicing a member in between the two puts it second,
-// which is where encoding/json emitted the share while it was a plaintext
-// field declared after Identifier.
-//
-// document is what json.Marshal produced for storedKeyPackagePublic, so it is
-// a valid object with at least one member; anything else is rejected rather
-// than spliced into something malformed.
+// splitAfterFirstMember splits a JSON object just past its first member's value; malformed input is rejected.
 func splitAfterFirstMember(document []byte) (head, tail []byte, err error) {
 	if len(document) < 2 || document[0] != '{' || document[len(document)-1] != '}' {
 		return nil, nil, errMalformedDocument
@@ -255,34 +202,7 @@ func splitAfterFirstMember(document []byte) (head, tail []byte, err error) {
 	return document[:i], document[i:], nil
 }
 
-// jsonStringMember returns the raw bytes of a top-level string member's value
-// as a sub-slice of document rather than as a copy. Returning a copy is
-// precisely what this file exists to avoid: document is protected memory, and
-// a copy of a secret member would be the heap allocation encoding/json was
-// replaced to prevent.
-//
-// The member must appear exactly once. encoding/json resolves a duplicate
-// member to the last occurrence, so a document carrying two would decode its
-// public and secret halves from different occurrences; such a document is
-// rejected instead.
-//
-// No member name may carry a JSON escape, whichever member it belongs to.
-// encoding/json unescapes names and this scan compares raw bytes, so
-// "\u0053ecretShare" is a second SecretShare to the decoder and an unrelated
-// member to the scan: the document would carry the share twice while looking
-// to this function as though it carried it once, and the two parsers would
-// disagree about which share it holds. Rejecting every escaped name closes
-// that difference without an unescaping pass through the heap. Nothing this
-// package writes has one - encoding/json escapes only <, > and & in strings,
-// and the field names are plain ASCII.
-//
-// The value must not contain a JSON escape either. Base64 never produces one,
-// so an escape means the member is not what this package wrote, and
-// unescaping it would need a pass through the heap.
-//
-// document is expected to be valid JSON - decodeStoredKeyPackage validates it
-// with encoding/json first - but the scan rejects what it does not understand
-// rather than trusting that.
+// jsonStringMember returns a sub-slice of a unique, unescaped top-level string member; duplicates and escaped names or values are rejected.
 func jsonStringMember(document []byte, name string) ([]byte, error) {
 	i := skipJSONSpace(document, 0)
 	if i >= len(document) || document[i] != '{' {
@@ -419,10 +339,7 @@ func skipJSONValue(document []byte, i int) (int, error) {
 		return next, err
 
 	case '{', '[':
-		// Track nesting depth, skipping over strings so that a brace or
-		// bracket inside one is not mistaken for structure. Openers and
-		// closers are not matched by kind; the document has already been
-		// validated as JSON.
+		// Track nesting depth, skipping strings; the document is already valid JSON.
 		depth := 0
 		for i < len(document) {
 			switch document[i] {

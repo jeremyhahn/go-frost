@@ -1,43 +1,4 @@
-// Package suites resolves the RFC 9591 ciphersuites from an identifier, so a
-// suite can be chosen from a configuration file, a command-line flag or a
-// peer's session information instead of by importing one implementation
-// package directly.
-//
-// Selection is the only place FIPS 140-3 policy is applied. Get refuses a
-// ciphersuite that is not FIPSSelectable while the module is enforcing
-// approved-only operation, and Default names FROST(P-256, SHA-256) whenever
-// the module is active, so a ceremony started under FIPS produces shares that
-// remain usable under FIPS.
-//
-// # No part of this package is a FIPS approval claim
-//
-// Read this before repeating anything here to an auditor.
-//
-// FROST IS NOT A FIPS-APPROVED SIGNATURE SCHEME. FIPS 186-5 approves ECDSA,
-// EdDSA and RSA; FROST is threshold Schnorr, which is none of them. NIST's
-// threshold cryptography work (the NISTIR 8214 series) is a project, not an
-// approved standard. Producing a FROST signature is therefore a non-approved
-// operation whatever curve and hash it is built on, and selecting P-256 here
-// does not make the resulting signature FIPS-compliant.
-//
-// Nor is the implementation inside a validated boundary. go-frost is not a
-// validated cryptographic module. Its P-256 point arithmetic comes from
-// crypto/elliptic, but its scalar field arithmetic runs through
-// filippo.io/bigmod (pkg/frost/group/p256) — a re-export of Go's internal
-// fips140/bigmod, and outside the validated boundary all the same.
-//
-// FIPSSelectable is therefore named for what it does: it decides which suite
-// this library will hand out while FIPS enforcement is active. It reports a
-// local policy, not an approval, not a validation, and not a compliance
-// guarantee. See issue #14, which asks the owner what go-frost should do here.
-//
-// The set is closed: it holds exactly the five ciphersuites RFC 9591 defines
-// and nothing can be added at run time. That is deliberate rather than an
-// omission — an extensible registry would admit a suite the FIPS policy table
-// knows nothing about, and the gate above would pass it. Code that genuinely
-// needs a non-standard suite constructs it directly and passes the
-// ciphersuite.Ciphersuite value along; it just does not get to be selectable
-// by name.
+// Package suites resolves the five RFC 9591 ciphersuites by identifier and applies the FIPS 140-3 selection policy; FROST is not FIPS-approved and nothing here is a compliance claim.
 package suites
 
 import (
@@ -91,27 +52,12 @@ var longNames = map[ciphersuite.CiphersuiteID]string{
 	ciphersuite.Secp256k1SHA256:    "secp256k1-sha256",
 }
 
-// fipsSelectable records which ciphersuites this library hands out while FIPS
-// enforcement is active. FROST(P-256, SHA-256) is the only one, because P-256
-// and SHA-256 are the only underlying primitives FIPS approves at all — the
-// other four are built on Curve25519, Ed448 or secp256k1, which are not
-// approved curves in any scheme.
-//
-// That is a comparative statement, not an approval: FROST itself is not an
-// approved signature scheme, so no entry in this table is FIPS-compliant. The
-// table exists so that a deployment which has chosen to run FROST under FIPS
-// at least does so on the approved primitives rather than on Curve25519.
-// Whether this library should run under enforcement at all is issue #14, an
-// open question for the owner.
+// fipsSelectable lists the suites handed out under FIPS enforcement: only P-256/SHA-256, whose primitives are approved; FROST itself is not.
 var fipsSelectable = map[ciphersuite.CiphersuiteID]struct{}{
 	ciphersuite.P256SHA256: {},
 }
 
-// aliases maps every accepted spelling, lower-cased, to a canonical
-// identifier. Matching is deliberately case-insensitive: RFC 9591 spells the
-// secp256k1 context string in lower case and the other four in upper, so a
-// consumer that upper-cases them uniformly would otherwise name a suite that
-// does not exist.
+// aliases maps every accepted lower-cased spelling to a canonical identifier; matching is case-insensitive.
 var aliases = buildAliases()
 
 func buildAliases() map[string]ciphersuite.CiphersuiteID {
@@ -126,11 +72,7 @@ func buildAliases() map[string]ciphersuite.CiphersuiteID {
 	return a
 }
 
-// Parse resolves a ciphersuite name to its canonical RFC 9591 identifier. It
-// accepts the context string Ciphersuite.ID reports, the short name used on a
-// command line, and the "<group>-<hash>" long form, in any case and with
-// surrounding space trimmed. The empty string means "no preference" and
-// resolves to Default.
+// Parse resolves a context string, short name or "<group>-<hash>" form, in any case, to its RFC 9591 identifier; empty means Default.
 func Parse(name string) (ciphersuite.CiphersuiteID, error) {
 	trimmed := strings.TrimSpace(name)
 	if trimmed == "" {
@@ -144,18 +86,7 @@ func Parse(name string) (ciphersuite.CiphersuiteID, error) {
 	return id, nil
 }
 
-// Get returns a new instance of the ciphersuite with the given canonical
-// identifier.
-//
-// While the FIPS 140-3 module is enforcing approved-only operation
-// (GODEBUG=fips140=only), a ciphersuite that fails FIPSSelectable is refused
-// here with ErrNotFIPSSelectable rather than left to fail somewhere deeper in
-// the protocol. Under GODEBUG=fips140=on the module permits unapproved
-// algorithms, so an explicit choice is honored and only Default shifts.
-//
-// Passing this gate means this library was willing to hand the suite over. It
-// is not an approval, not a validation, and not a compliance guarantee — see
-// the package comment.
+// Get returns a new ciphersuite for the identifier, refusing a non-FIPSSelectable suite with ErrNotFIPSSelectable under GODEBUG=fips140=only.
 func Get(id ciphersuite.CiphersuiteID) (ciphersuite.Ciphersuite, error) {
 	newSuite, ok := constructors[id]
 	if !ok {
@@ -193,28 +124,13 @@ func ShortName(id ciphersuite.CiphersuiteID) string {
 	return string(id)
 }
 
-// FIPSSelectable reports whether this library will hand out a ciphersuite
-// while FIPS enforcement is active, independent of whether it currently is.
-// Only FROST(P-256, SHA-256) is, because only its underlying primitives are
-// FIPS-approved ones.
-//
-// The name is deliberately about selection rather than approval. FROST is not
-// a FIPS-approved signature scheme and go-frost is not a validated module, so
-// there is no sense in which a true result here makes an operation compliant.
-// Read the package comment before repeating this to an auditor.
+// FIPSSelectable reports whether this library hands out the suite under FIPS enforcement (only P-256/SHA-256); it is not an approval.
 func FIPSSelectable(id ciphersuite.CiphersuiteID) bool {
 	_, ok := fipsSelectable[id]
 	return ok
 }
 
-// Default returns the identifier a new ceremony uses when the caller
-// expresses no preference: FROST(ristretto255, SHA-512) normally, and
-// FROST(P-256, SHA-256) whenever the FIPS 140-3 module is active
-// (GODEBUG=fips140=on or fips140=only). Shares outlive the ceremony that
-// produced them, so a ceremony run under FIPS must not mint shares that a
-// FIPS deployment then cannot use. Owner ruling 2026-08-20 (go-frost#12).
-//
-// Get(Default()) always succeeds.
+// Default returns ristretto255/SHA-512, or P-256/SHA-256 whenever the FIPS 140-3 module is active, so FIPS ceremonies mint usable shares; Get(Default()) always succeeds.
 func Default() ciphersuite.CiphersuiteID {
 	if fips140.Enabled() {
 		return ciphersuite.P256SHA256

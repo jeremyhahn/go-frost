@@ -17,8 +17,7 @@ type PreprocessedNonces struct {
 	Commitments []frost.SigningCommitments
 }
 
-// Zeroize securely erases all nonces from memory.
-// This should be called when the preprocessed nonces are no longer needed.
+// Zeroize erases every preprocessed nonce.
 func (p *PreprocessedNonces) Zeroize() {
 	for i := range p.Nonces {
 		p.Nonces[i].Zeroize()
@@ -47,25 +46,7 @@ func (p *PreprocessedNonces) Next() (frost.SigningNonces, frost.SigningCommitmen
 	return nonces, commitments, true
 }
 
-// Preprocess generates multiple nonces and commitments for future signing operations.
-// This enables 1-round FROST by allowing nonces to be generated before the message is known.
-//
-// Security Note: Each nonce MUST only be used once. Reusing a nonce will compromise
-// the participant's secret key. The PreprocessedNonces.Next() method ensures each
-// nonce is only returned once.
-//
-// Inputs:
-//   - count: Number of nonces to generate
-//   - identifier: The participant's identifier
-//   - secretShare: The participant's secret share (used for deterministic nonce generation)
-//   - suite: The ciphersuite to use
-//
-// Outputs:
-//   - preprocessed: The generated nonces and commitments
-//
-// Errors:
-//   - Returns error if count is 0
-//   - Returns error if random generation fails
+// Preprocess generates count nonces and commitments before the message is known; Next returns each nonce once, since reuse reveals the key.
 func Preprocess(
 	count int,
 	identifier frost.Identifier,
@@ -147,22 +128,7 @@ func Preprocess(
 	}, nil
 }
 
-// PreprocessDeterministic generates nonces deterministically from a seed.
-// This is useful for applications that need reproducible nonce generation
-// or want to derive nonces from a master secret.
-//
-// WARNING: Using the same seed twice will result in nonce reuse, which
-// compromises the secret key. Only use this if you have a secure way
-// to ensure unique seeds.
-//
-// Inputs:
-//   - count: Number of nonces to generate
-//   - identifier: The participant's identifier
-//   - seed: Seed for deterministic generation (must be unique per signing session)
-//   - suite: The ciphersuite to use
-//
-// Outputs:
-//   - preprocessed: The generated nonces and commitments
+// PreprocessDeterministic derives count nonces from seed; reusing a seed reuses nonces and reveals the key.
 func PreprocessDeterministic(
 	count int,
 	identifier frost.Identifier,

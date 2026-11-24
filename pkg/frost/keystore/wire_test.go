@@ -13,12 +13,7 @@ import (
 	"github.com/jeremyhahn/go-frost/pkg/secmem"
 )
 
-// goldenDocument pins the wire format byte for byte. It was produced by
-// running json.Marshal against the pre-change StoredKeyPackage - the one that
-// still carried the share as a plaintext SecretShare field declared after
-// Identifier - so a store written by any earlier version of this package is
-// exactly this shape, member order included. Seal must keep producing it and
-// OpenStoredKeyPackage must keep reading it.
+// goldenDocument pins the wire format, member order included, that Seal must produce and OpenStoredKeyPackage read.
 const goldenDocument = `{"Identifier":7,"SecretShare":"AQIDBA==",` +
 	`"GroupPublicKey":"BQYH","VerificationShares":[{"Identifier":9,"VerificationKey":"CAk="}],` +
 	`"Metadata":{"KeyID":"k","GroupID":"g","MinSigners":2,"MaxSigners":3,` +
@@ -359,13 +354,7 @@ func TestJSONStringMember_ReturnsSubSlice(t *testing.T) {
 	}
 }
 
-// legacyKeyPackageDocument builds a key-package document the way encoding/json
-// built it when StoredKeyPackage still carried the share as a plaintext
-// SecretShare field. It is the fixture for reading a store written before the
-// share moved into protected memory - the case Seal must stay compatible with.
-//
-// A test may hold the plaintext share on the heap; production code may not,
-// which is why this construction lives here and not in the package.
+// legacyKeyPackageDocument builds a document with a plaintext SecretShare field, as encoding/json wrote it.
 func legacyKeyPackageDocument(t *testing.T, kp *frost.KeyPackage, keyID, groupID string) []byte {
 	t.Helper()
 
@@ -405,19 +394,7 @@ func legacyKeyPackageDocument(t *testing.T, kp *frost.KeyPackage, keyID, groupID
 	return document
 }
 
-// TestOpenStoredKeyPackage_RejectsEscapedMemberName closes a parser
-// differential between this package's share scan and encoding/json.
-//
-// encoding/json unescapes member names; the scan compares raw bytes. So
-// "\u0053ecretShare" is a second SecretShare to the decoder and an unrelated
-// member to the scan. A document carrying both would look to the scan as
-// though it carried the share exactly once - passing the duplicate check -
-// while the two parsers disagreed about which share it holds. Measured before
-// the fix, on the document below: encoding/json resolved the share to bbbbbbbb
-// and the scan to aaaaaaaa, and the document was accepted.
-//
-// Nothing this package writes carries an escaped name, so rejecting every one
-// of them closes the difference without an unescaping pass through the heap.
+// TestOpenStoredKeyPackage_RejectsEscapedMemberName rejects \u0053ecretShare, which the decoder and the raw scan would read differently.
 func TestOpenStoredKeyPackage_RejectsEscapedMemberName(t *testing.T) {
 	first := base64.StdEncoding.EncodeToString([]byte{0xAA, 0xAA, 0xAA, 0xAA})
 	second := base64.StdEncoding.EncodeToString([]byte{0xBB, 0xBB, 0xBB, 0xBB})

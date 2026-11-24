@@ -297,15 +297,7 @@ func TestMemoryStorage_GetSecret_NotFound(t *testing.T) {
 	}
 }
 
-// TestMemoryStorage_GetSecret_PromotesPlainValue verifies that reading a value
-// written through the plain Put path MOVES it into protected memory rather
-// than copying it out.
-//
-// The assertions are on the backend, not on the returned value: a copy that
-// reads back correctly while the original stays in the plain map is exactly
-// the defect this guards against. The serialized key package would remain
-// resident outside protected memory for the life of the process, however many
-// times it was read through the protected API.
+// TestMemoryStorage_GetSecret_PromotesPlainValue checks that reading a plain value moves it out of the backend into protected memory.
 func TestMemoryStorage_GetSecret_PromotesPlainValue(t *testing.T) {
 	backend := NewMemoryStorage()
 	defer backend.Close()
@@ -667,12 +659,7 @@ func TestMemoryStorage_SecretExpiration(t *testing.T) {
 	}
 }
 
-// TestMemoryStorage_ExpirationDestroysTheEnclave pins the lifetime a TTL is
-// there to bound. An expired entry must not merely read as absent: its enclave
-// has to be destroyed and its entry removed, or the payload stays resident for
-// the rest of the process's life. Every accessor is checked, because an entry
-// only ever reaped by one of them accumulates under any workload that uses the
-// others.
+// TestMemoryStorage_ExpirationDestroysTheEnclave checks that every accessor destroys and removes an expired entry.
 func TestMemoryStorage_ExpirationDestroysTheEnclave(t *testing.T) {
 	key := "frost/keypackages/expired.json"
 
@@ -795,17 +782,7 @@ func TestMemoryStorage_PutSecretAfterClose(t *testing.T) {
 	}
 }
 
-// TestMemoryStorage_ConcurrentCrossKeyspaceWrite pins the invariant that makes
-// a key shared between the plain and protected keyspaces safe: a Put and a
-// PutSecret racing on the same key are each atomic, so once both report
-// success the key holds exactly one of the two payloads - never nothing.
-//
-// The interleaving this guards against is Put storing its plain value,
-// PutSecret installing its protected clone, Put dropping that clone, and
-// PutSecret then deleting the plain value: both calls return nil and the key
-// is gone, silently losing a key package. Every iteration starts the two
-// writers from a common barrier to open that window as wide as the scheduler
-// allows, and checks the invariant unconditionally afterwards.
+// TestMemoryStorage_ConcurrentCrossKeyspaceWrite checks that racing Put and PutSecret on one key leave exactly one payload.
 func TestMemoryStorage_ConcurrentCrossKeyspaceWrite(t *testing.T) {
 	const iterations = 200
 	const plainValue = "plain payload"
@@ -975,16 +952,7 @@ func (g *gatedBackend) Delete(key string) error {
 	return g.expiringBackend.Delete(key)
 }
 
-// TestMemoryStorage_CrossKeyspaceWritesAreOneCriticalSection is the
-// deterministic form of TestMemoryStorage_ConcurrentCrossKeyspaceWrite: rather
-// than racing two writers and hoping to hit the bad window, it holds a writer
-// inside its backend call and asserts that mu is held at that moment.
-//
-// That is the property the cross-keyspace invariant rests on. Put must not
-// reach the backend before taking mu (or a concurrent PutSecret could install
-// a protected value between the two, which Put would then drop), and PutSecret
-// must not still be clearing the plain value after releasing mu (or it could
-// delete a plain value a later Put had legitimately stored).
+// TestMemoryStorage_CrossKeyspaceWritesAreOneCriticalSection checks deterministically that mu is held during each writer's backend call.
 func TestMemoryStorage_CrossKeyspaceWritesAreOneCriticalSection(t *testing.T) {
 	key := "frost/keypackages/critical-section.json"
 

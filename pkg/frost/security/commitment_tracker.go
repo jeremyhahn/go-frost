@@ -41,19 +41,7 @@ func (c *CommitmentIdentifier) Hash() string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-// CommitmentTracker provides thread-safe tracking of cryptographic commitments
-// to prevent catastrophic reuse in both AEAD ciphers and threshold signature schemes.
-//
-// This interface is generic and can be used for:
-//   - AEAD nonce tracking (AES-GCM, ChaCha20-Poly1305)
-//   - FROST signing nonce commitments
-//   - Any other cryptographic commitment scheme requiring uniqueness
-//
-// Security considerations:
-//   - All implementations MUST be thread-safe
-//   - Memory usage grows with tracked commitments
-//   - Consider TTL-based expiration for long-running systems
-//   - Persistent storage recommended for production systems
+// CommitmentTracker is a thread-safe record of used commitments (AEAD nonces, FROST nonces) that prevents reuse.
 type CommitmentTracker interface {
 	// RecordCommitment stores a commitment for tracking.
 	// Returns error if the commitment was already recorded (reuse detected).

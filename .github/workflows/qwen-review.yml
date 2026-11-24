@@ -1,30 +1,11 @@
-# Qwen review: the #18 workflow's qwen job (dept-infra#164, option A).
-#
-# The interim codex sweep hands a PR it cannot review (codex unavailable,
-# #174) to this job by labelling it `agent:opencode` + `task:ready`. The job
-# runs on runner 60 (`runs-on: qwen`), whose label maps to the
-# qwen-review image pinned by digest: opencode at go-quicbaas's toolchain.mk
-# pin, provider Ollama on the review host, model
-# review-q8 with thinking off. The model reads the PR and posts its own
-# review as `opencode`; an opencode APPROVED on the head releases automerge.
-#
-# Superseded by code-review.yml v5 (route-labels), which routes
-# `agent:opencode` to this runner from the one workflow; until then this job
-# runs on the `agent:opencode` label alone.
-#
-# | Input | Where |
-# |---|---|
-# | Gitea token of `opencode` | `/run/reviewer/token`, a root-only host file mounted read-only by the runner (never a secret, never in the repo) |
-# | Model and provider | `/opt/review/opencode.json` in the image |
-# | Prompt | `/opt/review/review-agent.md` in the image (dept-software `prompts/review-agent.md`) |
+# Reviews a PR labelled `agent:opencode` with opencode on the `qwen` runner; the reviewer token is a read-only host file mounted by the runner.
 name: Qwen Review
 
 on:
   pull_request_target:
     types: [opened, reopened, synchronize, labeled]
 
-# One review per PR at a time; the guard de-duplicates what cancellation
-# cannot (codex-review.yml's reasoning, unchanged).
+# One review per PR at a time; the guard de-duplicates what cancellation cannot.
 concurrency:
   group: qwen-review-${{ github.event.pull_request.number }}
   cancel-in-progress: true
@@ -42,13 +23,7 @@ env:
 jobs:
   review:
     name: Code Review (qwen)
-    # A JOB-LEVEL `if:`, unlike codex-review.yml, and safe here: this check is
-    # not a required context (repo-policy.sh gate_context_for requires only the
-    # CI gate), so a `skipped` conclusion gates nothing. Without it every PR
-    # event would queue on runner 60's single slot. The guard re-checks the
-    # LIVE labels; this reads the event's.
-    # The head-repository condition (code-review template v5.10.6 (b)): a
-    # fork's head never takes the qwen runner.
+    # Job-level if: this check is not required, so a skipped run gates nothing; a fork's head never takes the qwen runner.
     if: >-
       contains(github.event.pull_request.labels.*.name, 'agent:opencode')
       && github.event.pull_request.head.repo.full_name == github.repository
@@ -81,8 +56,7 @@ jobs:
               *)   die "$1 $2 answered HTTP $code" ;;
             esac
           }
-          # The reviewer's submitted, non-dismissed reviews of THIS head.
-          # PENDING is a draft only its author sees: no verdict.
+          # The reviewer's submitted, undismissed reviews of this head; a pending draft is no verdict.
           my_verdicts() {
             local page=1 all='[]' got
             while :; do
@@ -99,7 +73,7 @@ jobs:
           # shellcheck source=/dev/null
           . "$WORK/lib.sh"
 
-          # FAIL CLOSED on the credential: no token, no review.
+          # No token, no review.
           [ -r "$TOKEN_FILE" ] || die "the reviewer token $TOKEN_FILE is not mounted on this runner (dept-infra#164)"
           tok=""
           IFS= read -r tok < "$TOKEN_FILE" || true
@@ -115,7 +89,7 @@ jobs:
           [ "$me" = "$REVIEWER" ] ||
             die "the token at $TOKEN_FILE belongs to '${me:-unknown}', not '$REVIEWER' (dept-infra#164)"
 
-          # The LIVE pull request: a re-run replays its original payload.
+          # Read the live pull request: a re-run replays its original payload.
           pr=$(api GET "/pulls/$PR_NUM")
           head=$(jq -r '.head.sha // empty' <<<"$pr")
           if [ "$(jq -r '.state // empty' <<<"$pr")" != open ] || [ "$(jq -r '.merged // false' <<<"$pr")" = true ]; then
@@ -163,9 +137,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      # The model posts its own review (review-agent.md). opencode exits 0 when
-      # the model stops talking, posted or not, so a turn that ends without a
-      # verdict is resumed ONCE with `--continue` (same session, context kept).
+      # opencode exits 0 whether or not it posted, so a turn without a verdict is resumed once with --continue.
       - name: Review the head with opencode and review-q8
         if: steps.guard.outputs.requested == 'true' && steps.guard.outputs.skip == ''
         env:
@@ -194,9 +166,7 @@ jobs:
           cannot finish, post REQUEST_CHANGES with what you established and say what is unfinished."
           fi
 
-      # THE JOB'S STATUS IS NOT THE VERDICT (go-luks2 #137: green over a PENDING
-      # draft). Green only when a submitted opencode review with a body stands
-      # on this head and is not a rejection; never an approval on a draft.
+      # Green only when a submitted, non-rejecting opencode review stands on this head.
       - name: Confirm an opencode verdict stands on this head
         if: >-
           steps.guard.outputs.requested == 'true' &&

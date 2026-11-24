@@ -1,11 +1,4 @@
-// Package p256 provides constant-time P-256 scalar field arithmetic.
-//
-// This file implements constant-time modular arithmetic for the P-256 scalar field
-// (integers modulo the group order n). All operations are designed to execute in
-// constant time regardless of input values to prevent timing side-channel attacks.
-//
-// The implementation uses filippo.io/bigmod which provides constant-time arithmetic
-// re-exported from Go's internal crypto/internal/fips140/bigmod package.
+// Constant-time P-256 scalar field arithmetic on filippo.io/bigmod.
 package p256
 
 import (

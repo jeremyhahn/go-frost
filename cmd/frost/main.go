@@ -28,20 +28,12 @@ var (
 	BuildDate = "unknown"
 )
 
-// addCiphersuiteFlag declares --ciphersuite on a subcommand. Every subcommand
-// that takes one goes through here: the flag was declared independently six
-// times, which is six places for one to keep an old default when the policy
-// moves — and the default did move, from the literal "ristretto255" to the
-// empty string meaning "whatever the runtime's default is".
+// addCiphersuiteFlag declares --ciphersuite on a subcommand; every subcommand uses it so the default lives in one place.
 func addCiphersuiteFlag(fs *flag.FlagSet) *string {
 	return fs.String("ciphersuite", "", "Ciphersuite to use (default ristretto255, or p256 under FIPS 140-3 mode)")
 }
 
-// getCiphersuite resolves the --ciphersuite flag, or exits with the reason.
-// An unrecognized name is fatal rather than a warning: substituting
-// ristretto255 for a typo produced key material on a curve the operator never
-// asked for and still exited 0. An empty name selects the library default,
-// which is P-256 when FIPS 140-3 mode is active.
+// getCiphersuite resolves --ciphersuite, exiting on an unknown name; empty selects the library default (P-256 under FIPS 140-3).
 func getCiphersuite(name string) ciphersuite.Ciphersuite {
 	suite, err := suites.ByName(name)
 	if err != nil {
@@ -51,10 +43,7 @@ func getCiphersuite(name string) ciphersuite.Ciphersuite {
 	return suite
 }
 
-// getSupportedCiphersuites lists the supported ciphersuites for --help. It is
-// built from the library's own table so the help text cannot drift away from
-// what the flag actually accepts, and it marks the default for the runtime it
-// is printed in.
+// getSupportedCiphersuites lists the supported ciphersuites for --help from the library's own table.
 func getSupportedCiphersuites() string {
 	defaultID := suites.Default()
 	ids := suites.List()

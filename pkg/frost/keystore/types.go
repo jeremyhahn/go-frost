@@ -1,7 +1,4 @@
 // Package keystore provides secure storage for FROST key material using go-xkms.
-//
-// The keystore layer abstracts key storage operations and provides integration with
-// the go-xkms library for secure, production-ready key management.
 package keystore
 
 import (
@@ -15,12 +12,7 @@ type StoredKeyPackage struct {
 	// Identifier of the participant
 	Identifier frost.Identifier
 
-	// SecretShareProtected holds the participant's secret key share in
-	// encrypted, mlock'd memory. It is the only in-memory copy of the share:
-	// the struct never holds a plaintext duplicate. The field itself is not
-	// serialized; Seal emits the share directly from the enclave into a
-	// document that is itself protected, and OpenStoredKeyPackage decodes such
-	// a document straight back into one.
+	// SecretShareProtected is the only in-memory copy of the share, in mlock'd memory; Seal and OpenStoredKeyPackage serialize it.
 	SecretShareProtected *secmem.SecretBytes `json:"-"`
 
 	// GroupPublicKey is the group's public key (serialized)
@@ -84,28 +76,12 @@ type GroupPublicKeyEntry struct {
 	CreatedAt int64
 }
 
-// MarshalJSON implements json.Marshaler for StoredKeyPackage by refusing.
-//
-// A serialized key package carries the secret share, so the document is secret
-// too, and encoding/json cannot produce one without leaving the share on the
-// ordinary heap: it assembles the result in a pooled buffer it neither
-// zeroizes nor releases, and returns a second heap copy. The refusal is the
-// point - it makes json.Marshal(storedKeyPackage) fail loudly rather than
-// quietly write a document the caller cannot clean up.
-//
-// Use Seal instead, which returns the same document sealed in protected
-// memory. See wire.go.
+// MarshalJSON refuses, because encoding/json would leave the share on the heap; use Seal.
 func (s *StoredKeyPackage) MarshalJSON() ([]byte, error) {
 	return nil, ErrPlaintextSerialization
 }
 
-// UnmarshalJSON implements json.Unmarshaler for StoredKeyPackage by refusing,
-// for the reason MarshalJSON does: the document holds the secret share, and
-// decoding it here would put a plaintext copy on the ordinary heap.
-//
-// Use OpenStoredKeyPackage instead, which decodes the document from inside its
-// enclave and seals the share into protected memory without either ever
-// existing as a heap allocation. See wire.go.
+// UnmarshalJSON refuses, because decoding here would put the share on the heap; use OpenStoredKeyPackage.
 func (s *StoredKeyPackage) UnmarshalJSON(data []byte) error {
 	return ErrPlaintextSerialization
 }
@@ -120,10 +96,7 @@ func (s *StoredKeyPackage) Zeroize() {
 	s.SecretShareProtected = nil
 }
 
-// ToKeyPackage converts a StoredKeyPackage back to a frost.KeyPackage.
-// The secret share is decrypted from protected memory for the duration of the
-// deserialization only; ErrMissingSecretShare is returned when the stored key
-// package carries no protected share.
+// ToKeyPackage returns the frost.KeyPackage, decrypting the share only while deserializing; ErrMissingSecretShare if none.
 func (s *StoredKeyPackage) ToKeyPackage(g group.Group) (*frost.KeyPackage, error) {
 	if s.SecretShareProtected == nil {
 		return nil, ErrMissingSecretShare
@@ -173,49 +146,13 @@ func (s *StoredKeyPackage) ToKeyPackage(g group.Group) (*frost.KeyPackage, error
 	}, nil
 }
 
-// FromKeyPackage creates a StoredKeyPackage from a frost.KeyPackage.
-// The secret share is held only in protected memory via SecretShareProtected;
-// the serialized plaintext produced here is zeroized as it is sealed. Callers
-// own the returned package and should Zeroize it once they are done with it.
+// FromKeyPackage returns a StoredKeyPackage with the share only in protected memory; callers should Zeroize it.
 func FromKeyPackage(keyID, groupID string, kp *frost.KeyPackage, minSigners, maxSigners uint32, createdAt int64) (*StoredKeyPackage, error) {
 	if kp == nil || kp.SecretShare == nil {
 		return nil, ErrInvalidKeyPackage
 	}
 
-	// PROTECTED-MEMORY BOUNDARY. Serializing the share allocates it on the
-	// ordinary heap for the length of this one call, and that allocation
-	// cannot be avoided: it is the only thing the scalar implementations can
-	// hand back.
-	//
-	// group.Scalar is this package's own interface, but every implementation
-	// of Bytes delegates to a dependency whose sole exported encoding returns
-	// a fresh slice, with no variant that fills a caller-provided
-	// destination:
-	//
-	//	filippo.io/edwards25519  Scalar.Bytes() []byte
-	//	                         (bytes(out *[32]byte) is unexported)
-	//	filippo.io/bigmod        Nat.Bytes(m *Modulus) []byte  - allocates
-	//	gitlab.com/yawning/
-	//	  secp256k1-voi          Scalar.Bytes() []byte
-	//	                         (getBytes(dst *[32]byte) is unexported)
-	//	github.com/gtank/
-	//	  ristretto255           Scalar.Bytes() []byte. Encode(b []byte) does
-	//	                         take a destination, but it is deprecated and
-	//	                         copies from Bytes() anyway - same allocation
-	//
-	// So the window is closed rather than removed: the serialized share is
-	// passed straight into NewSecretBytes, which copies it into mlock'd memory
-	// and zeroizes the transient in place before returning. It is never bound
-	// to a variable here and cannot escape this expression.
-	// TestFromKeyPackage_LeavesNoPlaintextShare holds that bound by scanning
-	// process memory for the share afterwards.
-	//
-	// Widening group.Scalar with a fill-destination method would not help and
-	// would mislead: four of the five suites would implement it as a copy out
-	// of Bytes(), making the same allocation behind an API that promised
-	// otherwise. The scalar itself is heap-resident for its whole life anyway,
-	// which is the constraint the secmem package documents - arithmetic on
-	// these types cannot happen inside protected memory.
+	// The scalar types only return a fresh []byte, so the serialized share goes straight into NewSecretBytes, which zeroizes it.
 	secretShareProtected := secmem.NewSecretBytes(kp.SecretShare.Bytes())
 	if secretShareProtected == nil {
 		return nil, ErrInvalidKeyPackage
