@@ -4,7 +4,7 @@
 # #174) to this job by labelling it `agent:opencode` + `task:ready`. The job
 # runs on runner 60 (`runs-on: qwen`), whose label maps to the
 # qwen-review image pinned by digest: opencode at go-quicbaas's toolchain.mk
-# pin, provider http://198.51.100.91:11434/v1 (Ollama on gpu-host), model
+# pin, provider Ollama on the review host, model
 # review-q8 with thinking off. The model reads the PR and posts its own
 # review as `opencode`; an opencode APPROVED on the head releases automerge.
 #
